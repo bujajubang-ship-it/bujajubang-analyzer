@@ -1,0 +1,491 @@
+let allProducts = [];
+let currentFilter = 'all';
+let currentSort = { key: null, asc: false };
+
+let allCandidates = [];
+let currentChannel = 'all';
+let currentSrcPage = 1;
+let totalSrcPages = 1;
+
+// ── Page switching ──────────────────────────────────────────────────
+function switchPage(page) {
+  const isSearch = page === 'search';
+  document.getElementById('nav-search').classList.toggle('active', isSearch);
+  document.getElementById('nav-sourcing').classList.toggle('active', !isSearch);
+  document.getElementById('hero-section').classList.toggle('hidden', !isSearch || currentSection !== 'hero');
+  document.getElementById('loading-section').classList.toggle('hidden', !isSearch || currentSection !== 'loading');
+  document.getElementById('result-section').classList.toggle('hidden', !isSearch || currentSection !== 'result');
+  document.getElementById('sourcing-page').classList.toggle('hidden', isSearch);
+  document.getElementById('header-search').style.display = isSearch && currentSection !== 'hero' ? 'flex' : 'none';
+  if (!isSearch) loadSourcing(currentSrcPage);
+}
+
+let currentSection = 'hero';
+
+const MALL_COLORS = {
+  coupang:     { bg: '#fff1f0', color: '#cf1322', label: '🛍️ 쿠팡' },
+  '11st':      { bg: '#fff2e8', color: '#d46b08', label: '🔴 11번가' },
+  gmarket:     { bg: '#fffbe6', color: '#d48806', label: '🟡 G마켓' },
+  auction:     { bg: '#fff7e6', color: '#d46b08', label: '🟠 옥션' },
+  ssg:         { bg: '#f9f0ff', color: '#531dab', label: '🟣 SSG' },
+  lotte:       { bg: '#fff1f0', color: '#a8071a', label: '🔴 롯데온' },
+  naver:       { bg: '#f6ffed', color: '#389e0d', label: '🟢 네이버' },
+  wemakeprice: { bg: '#e6f4ff', color: '#096dd9', label: '🔵 위메프' },
+  tmon:        { bg: '#fdf3e7', color: '#b45309', label: '🟤 티몬' },
+  interpark:   { bg: '#fffbe6', color: '#b45309', label: '🟡 인터파크' },
+  other:       { bg: '#f3f4f6', color: '#6b7280', label: '⬜ 기타' },
+};
+
+function mallBadge(type, name) {
+  const m = MALL_COLORS[type] || MALL_COLORS.other;
+  return `<span class="mall-badge" style="background:${m.bg};color:${m.color}">${name || m.label}</span>`;
+}
+
+function setKw(kw) {
+  document.getElementById('hero-keyword').value = kw;
+  doSearch();
+}
+
+function doSearch() {
+  const heroInput = document.getElementById('hero-keyword');
+  const headerInput = document.getElementById('header-keyword');
+  const kw = (heroInput.value || headerInput.value || '').trim();
+  if (!kw) { heroInput.focus(); return; }
+  heroInput.value = kw;
+  headerInput.value = kw;
+
+  showSection('loading');
+
+  const steps = ['네이버 쇼핑 API 검색 중...', '상품 데이터 수집 중...', '경쟁강도 분석 중...', '리포트 생성 중...'];
+  let si = 0;
+  const stepEl = document.getElementById('loading-step');
+  const stepInterval = setInterval(() => {
+    si = (si + 1) % steps.length;
+    stepEl.textContent = steps[si];
+  }, 700);
+
+  fetch('/api/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ keyword: kw }),
+  }).then(res => {
+    clearInterval(stepInterval);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    function read() {
+      reader.read().then(({ done, value }) => {
+        if (done) return;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.step === 'error') { alert(data.message); showSection('hero'); return; }
+            if (data.step === 'progress' || data.step === 'start') {
+              document.getElementById('loading-step').textContent = data.message;
+            }
+            if (data.step === 'done') { renderResult(data); showSection('result'); return; }
+          } catch {}
+        }
+        read();
+      });
+    }
+    read();
+  }).catch(e => {
+    clearInterval(stepInterval);
+    alert('오류: ' + e.message);
+    showSection('hero');
+  });
+}
+
+function showSection(name) {
+  currentSection = name;
+  document.getElementById('hero-section').classList.toggle('hidden', name !== 'hero');
+  document.getElementById('loading-section').classList.toggle('hidden', name !== 'loading');
+  document.getElementById('result-section').classList.toggle('hidden', name !== 'result');
+  document.getElementById('header-search').style.display = name !== 'hero' ? 'flex' : 'none';
+}
+
+function renderResult(data) {
+  allProducts = data.products;
+  currentFilter = 'all';
+  currentSort = { key: null, asc: false };
+
+  document.getElementById('result-kw').textContent = data.keyword;
+  const source = data.source || '네이버 쇼핑';
+  document.getElementById('result-meta').textContent =
+    `${source} 검색 결과 약 ${data.total_results.toLocaleString()}개 중 상위 ${data.products.length}개 분석`;
+  document.getElementById('dummy-badge').style.display = data.is_dummy ? '' : 'none';
+
+  renderGauge(data.stats);
+  renderStats(data.stats);
+  renderMallBars(data.stats, data.products.length);
+  renderInsights(data.stats, data.keyword);
+  renderMallFilters(data.stats);
+  renderTable(allProducts);
+}
+
+function renderGauge(stats) {
+  const arc = document.getElementById('gauge-arc');
+  const total = 283;
+  arc.style.strokeDashoffset = total - (stats.score / 100) * total;
+  arc.style.stroke = stats.color;
+  document.getElementById('gauge-score').textContent = stats.score;
+  document.getElementById('gauge-score').style.color = stats.color;
+  document.getElementById('gauge-label').textContent = stats.label;
+  document.getElementById('gauge-label').style.color = stats.color;
+}
+
+function renderStats(stats) {
+  document.getElementById('stat-avg-price').textContent = '₩' + stats.avg_price.toLocaleString();
+  document.getElementById('stat-min-price').textContent = '₩' + stats.min_price.toLocaleString();
+  document.getElementById('stat-max-price').textContent = '₩' + stats.max_price.toLocaleString();
+  document.getElementById('stat-unique-malls').textContent = stats.unique_malls + '개';
+  document.getElementById('stat-top-mall').textContent = stats.top_mall;
+  document.getElementById('stat-price-range').textContent = stats.price_range_ratio + '%';
+}
+
+function renderMallBars(stats, total) {
+  const counts = stats.mall_counts || {};
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const maxCount = sorted[0]?.[1] || 1;
+  document.getElementById('delivery-bars').innerHTML = sorted.map(([mall, cnt]) => {
+    const mtype = Object.entries({
+      쿠팡:'coupang','11번가':'11st','G마켓':'gmarket','옥션':'auction',
+      'SSG.COM':'ssg','SSG닷컴':'ssg','롯데온':'lotte','위메프':'wemakeprice',
+      '티몬':'tmon','인터파크':'interpark',
+    }).find(([k]) => mall.includes(k))?.[1] || 'other';
+    const m = MALL_COLORS[mtype] || MALL_COLORS.other;
+    const pct = Math.round(cnt / total * 100);
+    return `
+      <div class="delivery-bar-row">
+        <div class="delivery-bar-label" style="color:${m.color}">${mall}</div>
+        <div class="delivery-bar-track">
+          <div class="delivery-bar-fill" style="width:${Math.round(cnt/maxCount*100)}%;background:${m.color}"></div>
+        </div>
+        <div class="delivery-bar-count">${cnt}개 (${pct}%)</div>
+      </div>`;
+  }).join('');
+}
+
+function renderInsights(stats, kw) {
+  const ins = [];
+  const top = stats.top_mall || '-';
+  const topCnt = (stats.mall_counts || {})[top] || 0;
+  const topRatio = stats.unique_malls > 0 ? Math.round(topCnt / Object.values(stats.mall_counts || {}).reduce((a,b)=>a+b,0) * 100) : 0;
+
+  if (topRatio >= 40) {
+    ins.push({ color: '#ef4444', text: `<strong>${top}이 ${topRatio}%</strong> 점유 — 특정 플랫폼이 독점하고 있어 다른 채널 진입이 불리합니다.` });
+  } else {
+    ins.push({ color: '#22c55e', text: `<strong>${stats.unique_malls}개 플랫폼</strong>에 분산 — 경쟁이 다양해 신규 진입 가능성이 있습니다.` });
+  }
+
+  if (stats.price_range_ratio < 30) {
+    ins.push({ color: '#ef4444', text: `가격 범위 편차 <strong>${stats.price_range_ratio}%</strong> — 가격이 좁게 몰려 있는 성숙 시장입니다.` });
+  } else if (stats.price_range_ratio < 80) {
+    ins.push({ color: '#eab308', text: `가격 범위 편차 <strong>${stats.price_range_ratio}%</strong> — 가격 포지셔닝 전략이 중요한 시장입니다.` });
+  } else {
+    ins.push({ color: '#22c55e', text: `가격 범위 편차 <strong>${stats.price_range_ratio}%</strong> — 가격 다양성이 높아 차별화 여지가 있습니다.` });
+  }
+
+  const avg = stats.avg_price;
+  if (avg >= 500000) {
+    ins.push({ color: '#f97316', text: `평균가 <strong>₩${avg.toLocaleString()}</strong> — 고가 시장으로 신뢰도·리뷰가 구매 결정에 크게 영향합니다.` });
+  } else if (avg >= 100000) {
+    ins.push({ color: '#eab308', text: `평균가 <strong>₩${avg.toLocaleString()}</strong> — 중가 시장으로 가격·스펙 비교가 핵심입니다.` });
+  } else {
+    ins.push({ color: '#22c55e', text: `평균가 <strong>₩${avg.toLocaleString()}</strong> — 저가 시장으로 가격 경쟁이 치열하지만 진입 비용이 낮습니다.` });
+  }
+
+  document.getElementById('insight-box').innerHTML = ins.map(i => `
+    <div class="insight-item">
+      <div class="insight-dot" style="background:${i.color}"></div>
+      <div class="insight-text">${i.text}</div>
+    </div>`).join('');
+}
+
+function renderMallFilters(stats) {
+  const counts = stats.mall_counts || {};
+  const top5 = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([m])=>m);
+  const wrap = document.getElementById('table-filters');
+  wrap.innerHTML = `<button class="filter-btn active" onclick="filterMall('all',this)">전체</button>` +
+    top5.map(m => `<button class="filter-btn" onclick="filterMall('${esc(m)}',this)">${esc(m)}</button>`).join('');
+}
+
+function filterMall(mall, btn) {
+  currentFilter = mall;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const filtered = mall === 'all' ? allProducts : allProducts.filter(p => p.mall === mall);
+  renderTable(filtered);
+}
+
+function sortBy(key) {
+  currentSort = currentSort.key === key
+    ? { key, asc: !currentSort.asc }
+    : { key, asc: false };
+  const filtered = currentFilter === 'all' ? allProducts : allProducts.filter(p => p.mall === currentFilter);
+  const sorted = [...filtered].sort((a, b) => {
+    let va = a[key], vb = b[key];
+    if (typeof va === 'string') return currentSort.asc ? va.localeCompare(vb) : vb.localeCompare(va);
+    return currentSort.asc ? va - vb : vb - va;
+  });
+  renderTable(sorted);
+}
+
+function renderTable(products) {
+  document.getElementById('product-tbody').innerHTML = products.map(p => {
+    const mtype = p.delivery || 'other';
+    return `
+    <tr>
+      <td><span class="rank-num ${p.rank <= 3 ? 'top' : ''}">${p.rank}</span></td>
+      <td>
+        <div class="product-name">
+          <a href="${esc(p.url)}" target="_blank" rel="noopener" ${p.url ? '' : 'style="pointer-events:none"'}>${esc(p.name)}</a>
+        </div>
+        <div class="product-brand">${esc(p.brand)}</div>
+        ${p.category ? `<div class="product-cat">${esc(p.category)}</div>` : ''}
+      </td>
+      <td>
+        <div class="price-val">₩${p.price.toLocaleString()}</div>
+        ${p.discount > 0 ? `<div class="price-discount">-${p.discount}% 할인 가능</div>` : ''}
+      </td>
+      <td>${mallBadge(mtype, p.mall)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.activeElement === document.getElementById('header-keyword')) {
+    doSearch();
+  }
+});
+
+// ── Sourcing ────────────────────────────────────────────────────────
+
+function loadSourcing(page) {
+  page = page || currentSrcPage;
+  currentSrcPage = page;
+  document.getElementById('sourcing-grid').innerHTML =
+    '<div class="src-loading"><div class="spinner-big"></div><div style="margin-top:12px;font-size:15px;font-weight:600">소싱 데이터 로딩 중...</div></div>';
+
+  const params = new URLSearchParams({ channel: currentChannel, page });
+  fetch('/api/sourcing?' + params)
+    .then(r => r.json())
+    .then(data => {
+      allCandidates = data.candidates;
+      totalSrcPages = data.meta.total_pages;
+      currentSrcPage = data.meta.page;
+      renderSourcingMeta(data.meta);
+      renderSourcingSummary(allCandidates);
+      renderSourcingCards(allCandidates);
+      renderPagination(data.meta);
+    })
+    .catch(e => {
+      document.getElementById('sourcing-grid').innerHTML =
+        `<div style="grid-column:1/-1;text-align:center;padding:60px;color:var(--muted)">데이터 로딩 실패: ${esc(e.message)}</div>`;
+    });
+}
+
+function renderSourcingMeta(meta) {
+  document.getElementById('sourcing-meta').innerHTML = `
+    <div class="sourcing-meta-item">
+      <span class="sourcing-meta-label">마지막 업데이트</span>
+      <span class="sourcing-meta-val">${esc(meta.last_run)}</span>
+    </div>
+    <div class="sourcing-meta-item">
+      <span class="sourcing-meta-label">다음 업데이트</span>
+      <span class="sourcing-meta-val">${esc(meta.next_run)}</span>
+    </div>
+    ${meta.is_dummy ? '<span class="dummy-badge">더미 데이터</span>' : ''}
+  `;
+}
+
+function renderSourcingSummary(candidates) {
+  const avgMargin = candidates.length
+    ? Math.round(candidates.reduce((s, c) => s + c.margin.rate, 0) / candidates.length) : 0;
+  const avgNet = candidates.length
+    ? Math.round(candidates.reduce((s, c) => s + c.margin.net, 0) / candidates.length) : 0;
+  const topScore = candidates.length ? candidates[0].score : 0;
+  document.getElementById('sourcing-summary').innerHTML = `
+    <div class="sum-card"><div class="sum-icon">📦</div><div><div class="sum-val">${candidates.length}개</div><div class="sum-label">추천 상품</div></div></div>
+    <div class="sum-card"><div class="sum-icon">💰</div><div><div class="sum-val">${avgMargin}%</div><div class="sum-label">평균 마진율</div></div></div>
+    <div class="sum-card"><div class="sum-icon">💵</div><div><div class="sum-val">₩${avgNet.toLocaleString()}</div><div class="sum-label">평균 순이익</div></div></div>
+    <div class="sum-card"><div class="sum-icon">🏆</div><div><div class="sum-val">${topScore}점</div><div class="sum-label">최고 추천점수</div></div></div>
+  `;
+}
+
+function filterChannel(channel, btn) {
+  currentChannel = channel;
+  currentSrcPage = 1;
+  document.querySelectorAll('.stab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  loadSourcing(1);
+}
+
+function renderPagination(meta) {
+  let el = document.getElementById('src-pagination');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'src-pagination';
+    el.className = 'src-pagination';
+    document.getElementById('sourcing-section').appendChild(el);
+  }
+  if (meta.total_pages <= 1) { el.innerHTML = ''; return; }
+  el.innerHTML = `
+    <button class="src-page-btn" onclick="goSrcPage(${meta.page - 1})" ${meta.page <= 1 ? 'disabled' : ''}>← 이전 100개</button>
+    <span class="src-page-info">${meta.page} / ${meta.total_pages} 페이지 &nbsp;·&nbsp; 총 ${meta.total}개</span>
+    <button class="src-page-btn" onclick="goSrcPage(${meta.page + 1})" ${meta.page >= meta.total_pages ? 'disabled' : ''}>다음 100개 →</button>
+  `;
+}
+
+function goSrcPage(page) {
+  loadSourcing(page);
+  document.getElementById('sourcing-section').scrollIntoView({ behavior: 'smooth' });
+}
+
+let _imgObserver = null;
+
+function renderSourcingCards(candidates) {
+  if (!candidates.length) {
+    document.getElementById('sourcing-grid').innerHTML =
+      '<div style="grid-column:1/-1;text-align:center;padding:60px;color:var(--muted)">해당 채널의 추천 상품이 없습니다.</div>';
+    return;
+  }
+  document.getElementById('sourcing-grid').innerHTML = candidates.map(c => srcCard(c)).join('');
+  observeImages();
+}
+
+function observeImages() {
+  if (_imgObserver) _imgObserver.disconnect();
+  _imgObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      const wrap = entry.target;
+      const name = wrap.dataset.name;
+      if (!name || wrap.dataset.loaded) return;
+      wrap.dataset.loaded = '1';
+      _imgObserver.unobserve(wrap);
+      fetch(`/api/image?name=${encodeURIComponent(name)}`)
+        .then(r => r.json())
+        .then(d => {
+          if (!d.url) return;
+          const placeholder = wrap.querySelector('.src-img-placeholder');
+          if (placeholder) {
+            const img = document.createElement('img');
+            img.src = d.url;
+            img.alt = name;
+            img.loading = 'lazy';
+            img.onerror = () => {};
+            wrap.replaceChild(img, placeholder);
+          }
+        })
+        .catch(() => {});
+    });
+  }, { rootMargin: '200px' });
+
+  document.querySelectorAll('.src-img-wrap[data-name]').forEach(el => {
+    _imgObserver.observe(el);
+  });
+}
+
+function srcCard(c) {
+  const scoreCls = c.score >= 70 ? 'high' : c.score >= 50 ? 'mid' : 'low';
+  const comp = c.competition;
+  const compCls = comp.intensity < 30 ? 'comp-low' : comp.intensity < 50 ? 'comp-mid' : 'comp-high';
+  const compW = Math.round(comp.intensity);
+  const channelTag = c.channel === 'both'
+    ? '<span class="src-channel-tag both">쿠팡+스마트스토어</span>'
+    : '<span class="src-channel-tag coupang">쿠팡 전용</span>';
+
+  const filters = [
+    { ok: c.filters.reviews_ok, text: `리뷰 ${comp.top_reviews}개 ${c.filters.reviews_ok ? '✓' : '✗'}` },
+    { ok: c.filters.rocket_ok, text: `로켓 ${comp.rocket_ratio}% ${c.filters.rocket_ok ? '✓' : '✗'}` },
+    { ok: c.filters.price_ok, text: `₩${c.selling.toLocaleString()} ${c.filters.price_ok ? '✓' : '✗'}` },
+  ];
+
+  const breakdown = c.score_breakdown;
+  return `
+  <div class="src-card">
+    <div class="src-img-wrap" data-name="${esc(c.name)}">
+      <span class="src-img-placeholder">📦</span>
+      <div class="src-rank-overlay">#${c.rank}</div>
+      <div class="src-score-overlay ${scoreCls}">${c.score}</div>
+    </div>
+    <div class="src-card-body">
+      <div class="src-card-top">
+        <div>
+          <div class="src-rank">${esc(c.category)} ${channelTag}</div>
+          <div class="src-name">${esc(c.name)}</div>
+          <div class="src-related">연관: ${esc(c.related)}</div>
+        </div>
+      </div>
+
+      <div class="src-margin-row">
+        <div class="src-margin-box">
+          <div class="src-margin-val" style="color:var(--green)">+${c.margin.rate}%</div>
+          <div class="src-margin-label">마진율</div>
+          <div class="src-margin-detail">순이익 ₩${c.margin.net.toLocaleString()}</div>
+        </div>
+        <div class="src-margin-box">
+          <div class="src-price-item" style="margin-bottom:4px">
+            <span class="src-price-label">판매가</span>
+            <span class="src-price-val">₩${c.selling.toLocaleString()}</span>
+          </div>
+          <div class="src-price-item">
+            <span class="src-price-label">소싱가</span>
+            <span class="src-price-val">₩${c.sourcing.toLocaleString()}</span>
+          </div>
+        </div>
+        <div class="src-margin-box">
+          <div class="src-price-item" style="margin-bottom:4px">
+            <span class="src-price-label">물류비</span>
+            <span class="src-price-val">₩${c.logistics.toLocaleString()}</span>
+          </div>
+          <div class="src-price-item">
+            <span class="src-price-label">수수료</span>
+            <span class="src-price-val">₩${c.margin.commission.toLocaleString()}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="src-comp-row">
+        <span class="src-comp-label">경쟁강도</span>
+        <div class="src-comp-track"><div class="src-comp-fill ${compCls}" style="width:${compW}%"></div></div>
+        <span class="src-comp-val" style="color:${comp.intensity<30?'var(--green)':comp.intensity<50?'var(--yellow)':'#ef4444'}">${comp.label}</span>
+      </div>
+
+      <div class="src-breakdown">
+        <div class="src-breakdown-item"><div class="src-breakdown-val">${breakdown.competition}</div><div class="src-breakdown-label">경쟁</div></div>
+        <div class="src-breakdown-item"><div class="src-breakdown-val">${breakdown.margin}</div><div class="src-breakdown-label">마진</div></div>
+        <div class="src-breakdown-item"><div class="src-breakdown-val">${breakdown.relevance}</div><div class="src-breakdown-label">적합도</div></div>
+        <div class="src-breakdown-item"><div class="src-breakdown-val">${breakdown.customer_fit}</div><div class="src-breakdown-label">고객핏</div></div>
+      </div>
+
+      <div class="src-filters">
+        ${filters.map(f => `<span class="src-filter-tag ${f.ok ? 'ok' : 'bad'}">${f.text}</span>`).join('')}
+      </div>
+
+      <div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px">🔑 1688 키워드 (클릭하면 복사)</div>
+        <div class="src-keywords">
+          ${c.keywords_1688.map(kw => `<span class="src-kw-chip" onclick="open1688('${esc(kw)}')" title="1688에서 검색">${esc(kw)} 🔗</span>`).join('')}
+        </div>
+      </div>
+
+      <div class="src-fit-reason">${esc(c.fit_reason)}</div>
+    </div>
+  </div>`;
+}
+
+function open1688(kw) {
+  const url = 'https://www.cninsider.co.kr/mall/#/product?keywords=' + encodeURIComponent(kw) + '&type=text&imageAddress=&searchDiff=1';
+  window.open(url, '_blank', 'noopener');
+}

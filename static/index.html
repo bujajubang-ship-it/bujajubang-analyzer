@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>쇼핑 키워드 분석기</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-icon">🛍️</span>
+        <span class="logo-text">쇼핑 키워드 분석기</span>
+        <span class="logo-badge">네이버 쇼핑</span>
+      </div>
+      <nav class="site-nav">
+        <button class="nav-btn active" id="nav-search" onclick="switchPage('search')">🔍 키워드 분석</button>
+        <button class="nav-btn" id="nav-sourcing" onclick="switchPage('sourcing')">📦 소싱 추천</button>
+      </nav>
+      <div class="search-wrap" id="header-search" style="display:none">
+        <input type="text" id="header-keyword" placeholder="키워드 검색..." onkeydown="if(event.key==='Enter')doSearch()" />
+        <button onclick="doSearch()">검색</button>
+      </div>
+    </div>
+  </header>
+
+  <section id="hero-section" class="hero">
+    <h1>키워드 하나로<br/>시장 경쟁 분석</h1>
+    <p class="hero-sub">네이버 쇼핑 데이터 기반으로 가격 분포·판매처 점유율·경쟁강도를 실시간 분석합니다</p>
+    <div class="hero-search">
+      <input type="text" id="hero-keyword" placeholder="예: 업소용 냉장고, 스테인레스 작업대, 가스레인지..."
+        onkeydown="if(event.key==='Enter')doSearch()" autofocus />
+      <button class="hero-btn" onclick="doSearch()">🔍 분석 시작</button>
+    </div>
+    <div class="hero-tags">
+      <span onclick="setKw('업소용 냉장고')">업소용 냉장고</span>
+      <span onclick="setKw('업소용 가스레인지')">업소용 가스레인지</span>
+      <span onclick="setKw('식당 선반')">식당 선반</span>
+      <span onclick="setKw('스테인레스 작업대')">스테인레스 작업대</span>
+    </div>
+  </section>
+
+  <section id="loading-section" class="hidden">
+    <div class="loading-box">
+      <div class="spinner-big"></div>
+      <div class="loading-text">분석 중...</div>
+      <div class="loading-sub" id="loading-step">네이버 쇼핑 API 검색 중</div>
+    </div>
+  </section>
+
+  <section id="result-section" class="hidden">
+    <div class="result-header">
+      <div class="result-keyword">"<span id="result-kw"></span>" 분석 결과
+        <span class="dummy-badge" id="dummy-badge">더미 데이터</span>
+      </div>
+      <div class="result-meta" id="result-meta"></div>
+    </div>
+
+    <div class="metrics-row">
+      <div class="metric-card gauge-card">
+        <div class="gauge-wrap">
+          <svg class="gauge-svg" viewBox="0 0 200 120">
+            <path d="M 20 110 A 90 90 0 0 1 180 110" fill="none" stroke="#e5e7eb" stroke-width="18" stroke-linecap="round"/>
+            <path id="gauge-arc" d="M 20 110 A 90 90 0 0 1 180 110" fill="none" stroke="#22c55e" stroke-width="18"
+              stroke-linecap="round" stroke-dasharray="283" stroke-dashoffset="283"/>
+          </svg>
+          <div class="gauge-center">
+            <div class="gauge-score" id="gauge-score">—</div>
+            <div class="gauge-label" id="gauge-label">—</div>
+          </div>
+        </div>
+        <div class="metric-title">경쟁강도 점수</div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-icon">💰</div>
+          <div class="stat-body"><div class="stat-value" id="stat-avg-price">—</div><div class="stat-label">평균 가격</div></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">📉</div>
+          <div class="stat-body"><div class="stat-value" id="stat-min-price">—</div><div class="stat-label">최저가</div></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">📈</div>
+          <div class="stat-body"><div class="stat-value" id="stat-max-price">—</div><div class="stat-label">최고가</div></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">🏪</div>
+          <div class="stat-body"><div class="stat-value" id="stat-unique-malls">—</div><div class="stat-label">판매 플랫폼 수</div></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">👑</div>
+          <div class="stat-body"><div class="stat-value" id="stat-top-mall">—</div><div class="stat-label">최다 판매처</div></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">📊</div>
+          <div class="stat-body"><div class="stat-value" id="stat-price-range">—</div><div class="stat-label">가격 편차율</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="dist-row">
+      <div class="dist-card">
+        <div class="dist-title">판매처 분포</div>
+        <div class="delivery-bars" id="delivery-bars"></div>
+      </div>
+      <div class="dist-card">
+        <div class="dist-title">경쟁강도 해석</div>
+        <div class="insight-box" id="insight-box"></div>
+      </div>
+    </div>
+
+    <div class="table-card">
+      <div class="table-header-row">
+        <div class="table-title">📦 상품 목록</div>
+        <div class="table-filters" id="table-filters"></div>
+      </div>
+      <div class="table-wrap">
+        <table class="product-table">
+          <thead>
+            <tr>
+              <th>순위</th>
+              <th onclick="sortBy('name')" class="sortable">상품명</th>
+              <th onclick="sortBy('price')" class="sortable">가격 ↕</th>
+              <th>판매처</th>
+            </tr>
+          </thead>
+          <tbody id="product-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Sourcing Page ── -->
+  <section id="sourcing-page" class="hidden">
+    <div id="sourcing-section">
+      <div class="sourcing-header">
+        <div>
+          <div class="sourcing-title">📦 소싱 추천 대시보드</div>
+          <div class="sourcing-sub">업소용 주방기기 구매 고객에게 바로 팔 수 있는 경쟁력 있는 상품 추천</div>
+        </div>
+        <div class="sourcing-meta-row" id="sourcing-meta"></div>
+      </div>
+
+      <div class="sourcing-tabs">
+        <button class="stab active" onclick="filterChannel('all',this)">전체</button>
+        <button class="stab" onclick="filterChannel('both',this)">🛒 쿠팡+스마트스토어</button>
+        <button class="stab" onclick="filterChannel('coupang',this)">🛍️ 쿠팡 전용</button>
+      </div>
+
+      <div class="sourcing-summary" id="sourcing-summary"></div>
+
+      <div class="sourcing-grid" id="sourcing-grid">
+        <div class="src-loading">
+          <div class="spinner-big"></div>
+          <div style="margin-top:12px;font-size:15px;font-weight:600">소싱 데이터 로딩 중...</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
