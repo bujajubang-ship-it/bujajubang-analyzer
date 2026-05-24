@@ -4,9 +4,10 @@ import os
 import re
 import random
 import math
+from pathlib import Path
 import httpx
-from fastapi import FastAPI
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -299,6 +300,41 @@ async def get_sourcing(channel: str = "all", page: int = 1):
 async def get_image(name: str):
     url = await _fetch_image(name)
     return {"url": url}
+
+
+# ── Memo API (서버 저장 — 브라우저/기기 무관하게 유지) ──────────────
+MEMOS_FILE = Path("memos.json")
+
+def _load_memos() -> dict:
+    try:
+        return json.loads(MEMOS_FILE.read_text(encoding="utf-8")) if MEMOS_FILE.exists() else {}
+    except Exception:
+        return {}
+
+def _save_memos(memos: dict):
+    MEMOS_FILE.write_text(json.dumps(memos, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+@app.get("/api/memos")
+async def get_memos():
+    return _load_memos()
+
+
+@app.post("/api/memos/{memo_id}")
+async def upsert_memo(memo_id: str, request: Request):
+    data = await request.json()
+    memos = _load_memos()
+    memos[memo_id] = data
+    _save_memos(memos)
+    return {"ok": True}
+
+
+@app.delete("/api/memos/{memo_id}")
+async def delete_memo(memo_id: str):
+    memos = _load_memos()
+    memos.pop(memo_id, None)
+    _save_memos(memos)
+    return {"ok": True}
 
 
 app.mount("/static", StaticFiles(directory="static"), name="static")

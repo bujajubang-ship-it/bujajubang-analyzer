@@ -17,7 +17,7 @@ function switchPage(page) {
   document.getElementById('result-section').classList.toggle('hidden', !isSearch || currentSection !== 'result');
   document.getElementById('sourcing-page').classList.toggle('hidden', isSearch);
   document.getElementById('header-search').style.display = isSearch && currentSection !== 'hero' ? 'flex' : 'none';
-  if (!isSearch) loadSourcing(currentSrcPage);
+  if (!isSearch) { syncMemosFromServer().then(() => loadSourcing(currentSrcPage)); }
 }
 
 let currentSection = 'hero';
@@ -530,21 +530,46 @@ function getMemos() {
   try { return JSON.parse(localStorage.getItem('sourcing_memos') || '{}'); } catch { return {}; }
 }
 
+function _setLocal(memos) {
+  localStorage.setItem('sourcing_memos', JSON.stringify(memos));
+}
+
+// 서버 메모 불러와서 로컬과 병합 (나중에 저장된 것 우선)
+async function syncMemosFromServer() {
+  try {
+    const serverMemos = await fetch('/api/memos').then(r => r.json());
+    const local = getMemos();
+    const merged = { ...local };
+    for (const [id, m] of Object.entries(serverMemos)) {
+      if (!local[id] || new Date(m.savedAt) > new Date(local[id]?.savedAt)) {
+        merged[id] = m;
+      }
+    }
+    _setLocal(merged);
+    updateMemoBadge();
+  } catch {}
+}
+
 function saveMemo(id, name, text) {
   const memos = getMemos();
   if (text.trim()) {
-    memos[id] = { text: text.trim(), name, savedAt: new Date().toLocaleString('ko-KR') };
+    const entry = { text: text.trim(), name, savedAt: new Date().toLocaleString('ko-KR') };
+    memos[id] = entry;
+    _setLocal(memos);
+    fetch(`/api/memos/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(entry) }).catch(() => {});
   } else {
     delete memos[id];
+    _setLocal(memos);
+    fetch(`/api/memos/${id}`, { method: 'DELETE' }).catch(() => {});
   }
-  localStorage.setItem('sourcing_memos', JSON.stringify(memos));
   updateMemoBadge();
 }
 
 function deleteMemo(id) {
   const memos = getMemos();
   delete memos[id];
-  localStorage.setItem('sourcing_memos', JSON.stringify(memos));
+  _setLocal(memos);
+  fetch(`/api/memos/${id}`, { method: 'DELETE' }).catch(() => {});
   updateMemoBadge();
 }
 
