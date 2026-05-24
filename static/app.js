@@ -351,7 +351,9 @@ function goSrcPage(page) {
   document.getElementById('sourcing-section').scrollIntoView({ behavior: 'smooth' });
 }
 
-let _imgObserver = null;
+// ── 이미지 순서대로 로드 ────────────────────────────────────────────
+const _imgQueue = [];
+let _imgRunning = false;
 
 function renderSourcingCards(candidates) {
   if (!candidates.length) {
@@ -360,43 +362,39 @@ function renderSourcingCards(candidates) {
     return;
   }
   document.getElementById('sourcing-grid').innerHTML = candidates.map(c => srcCard(c)).join('');
-  observeImages();
+  candidates.forEach(c => renderMemoOnCard(c.id));
+  updateMemoBadge();
+  _imgQueue.length = 0;
+  document.querySelectorAll('.src-img-wrap[data-name]').forEach(el => _imgQueue.push(el));
+  if (!_imgRunning) _processNextImage();
 }
 
-function observeImages() {
-  if (_imgObserver) _imgObserver.disconnect();
-  _imgObserver = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (!entry.isIntersecting) return;
-      const wrap = entry.target;
-      const name = wrap.dataset.name;
-      if (!name || wrap.dataset.loaded) return;
-      wrap.dataset.loaded = '1';
-      _imgObserver.unobserve(wrap);
-      fetch(`/api/image?name=${encodeURIComponent(name)}`)
-        .then(r => r.json())
-        .then(d => {
-          if (!d.url) return;
-          const placeholder = wrap.querySelector('.src-img-placeholder');
-          if (placeholder) {
-            const img = document.createElement('img');
-            img.src = d.url;
-            img.alt = name;
-            img.loading = 'lazy';
-            img.onerror = () => {};
-            wrap.replaceChild(img, placeholder);
-          }
-        })
-        .catch(() => {});
-    });
-  }, { rootMargin: '200px' });
-
-  document.querySelectorAll('.src-img-wrap[data-name]').forEach(el => {
-    _imgObserver.observe(el);
-  });
+function _processNextImage() {
+  if (_imgQueue.length === 0) { _imgRunning = false; return; }
+  _imgRunning = true;
+  const wrap = _imgQueue.shift();
+  if (!wrap || !wrap.isConnected || wrap.dataset.loaded) { _processNextImage(); return; }
+  wrap.dataset.loaded = '1';
+  fetch(`/api/image?name=${encodeURIComponent(wrap.dataset.name)}`)
+    .then(r => r.json())
+    .then(d => {
+      if (d.url) {
+        const ph = wrap.querySelector('.src-img-placeholder');
+        if (ph) {
+          const img = document.createElement('img');
+          img.src = d.url;
+          img.alt = wrap.dataset.name;
+          img.onerror = () => {};
+          wrap.replaceChild(img, ph);
+        }
+      }
+    })
+    .catch(() => {})
+    .finally(() => setTimeout(_processNextImage, 180));
 }
 
 function srcCard(c) {
+  const borderCls = c.filters.price_ok ? 'card-price-ok' : 'card-price-warn';
   const scoreCls = c.score >= 70 ? 'high' : c.score >= 50 ? 'mid' : 'low';
   const comp = c.competition;
   const compCls = comp.intensity < 30 ? 'comp-low' : comp.intensity < 50 ? 'comp-mid' : 'comp-high';
@@ -404,54 +402,71 @@ function srcCard(c) {
   const channelTag = c.channel === 'both'
     ? '<span class="src-channel-tag both">쿠팡+스마트스토어</span>'
     : '<span class="src-channel-tag coupang">쿠팡 전용</span>';
+  const moq = c.moq || {};
+  const breakdown = c.score_breakdown;
+  const recCls = c.rec_cls || scoreCls;
+  const recLabel = c.rec_label || (c.score >= 80 ? '소싱추천' : c.score >= 60 ? '검토' : '비추');
 
   const filters = [
-    { ok: c.filters.reviews_ok, text: `리뷰 ${comp.top_reviews}개 ${c.filters.reviews_ok ? '✓' : '✗'}` },
-    { ok: c.filters.rocket_ok, text: `로켓 ${comp.rocket_ratio}% ${c.filters.rocket_ok ? '✓' : '✗'}` },
-    { ok: c.filters.price_ok, text: `₩${c.selling.toLocaleString()} ${c.filters.price_ok ? '✓' : '✗'}` },
+    { ok: c.filters.reviews_ok, text: c.filters.reviews_ok ? `✓ 경쟁 리뷰 적음 (${comp.top_reviews}개)` : `✗ 경쟁 리뷰 많음 (${comp.top_reviews}개)` },
+    { ok: c.filters.rocket_ok, text: c.filters.rocket_ok ? `✓ 로켓배송 적음 (${comp.rocket_ratio}%)` : `✗ 로켓배송 많음 (${comp.rocket_ratio}%)` },
+    { ok: c.filters.price_ok, text: c.filters.price_ok ? `✓ 판매가 적정` : `✗ 판매가 재검토 필요` },
   ];
 
-  const breakdown = c.score_breakdown;
   return `
-  <div class="src-card">
+  <div class="src-card ${borderCls}" data-id="${c.id}" data-name="${esc(c.name)}">
     <div class="src-img-wrap" data-name="${esc(c.name)}">
       <span class="src-img-placeholder">📦</span>
       <div class="src-rank-overlay">#${c.rank}</div>
       <div class="src-score-overlay ${scoreCls}">${c.score}</div>
     </div>
     <div class="src-card-body">
-      <div class="src-card-top">
-        <div>
-          <div class="src-rank">${esc(c.category)} ${channelTag}</div>
-          <div class="src-name">${esc(c.name)}</div>
-          <div class="src-related">연관: ${esc(c.related)}</div>
+      <div class="src-card-head">
+        <span class="src-rec-badge ${recCls}">${recLabel}</span>
+        <span class="src-category-tag">${esc(c.category)}</span>
+        ${channelTag}
+      </div>
+
+      <div>
+        <div class="src-name">${esc(c.name)}</div>
+        <div class="src-related">연관: ${esc(c.related)}</div>
+      </div>
+
+      <div class="src-price-flow">
+        <div class="src-price-flow-item">
+          <div class="src-price-flow-label">매입가격</div>
+          <div class="src-price-flow-val">₩${c.sourcing.toLocaleString()}</div>
+        </div>
+        <div class="src-price-flow-arrow">→</div>
+        <div class="src-price-flow-item">
+          <div class="src-price-flow-label">판매예상가</div>
+          <div class="src-price-flow-val">₩${c.selling.toLocaleString()}</div>
+        </div>
+        <div class="src-price-flow-arrow">→</div>
+        <div class="src-profit-hero">
+          <div class="src-profit-net">+₩${c.margin.net.toLocaleString()}</div>
+          <div class="src-profit-rate ${c.margin.rate >= 30 ? 'good' : 'ok'}">${c.margin.rate}% 마진</div>
         </div>
       </div>
 
-      <div class="src-margin-row">
-        <div class="src-margin-box">
-          <div class="src-margin-val" style="color:var(--green)">+${c.margin.rate}%</div>
-          <div class="src-margin-label">마진율</div>
-          <div class="src-margin-detail">순이익 ₩${c.margin.net.toLocaleString()}</div>
-        </div>
-        <div class="src-margin-box">
-          <div class="src-price-item" style="margin-bottom:4px">
-            <span class="src-price-label">판매가</span>
-            <span class="src-price-val">₩${c.selling.toLocaleString()}</span>
+      <div class="src-moq-box">
+        <div class="src-moq-title">📦 MOQ 분석</div>
+        <div class="src-moq-grid">
+          <div class="src-moq-item">
+            <div class="src-moq-val">${moq.qty || 0}개</div>
+            <div class="src-moq-label">최소 주문 수량</div>
           </div>
-          <div class="src-price-item">
-            <span class="src-price-label">소싱가</span>
-            <span class="src-price-val">₩${c.sourcing.toLocaleString()}</span>
+          <div class="src-moq-item">
+            <div class="src-moq-val">₩${(moq.total_purchase || 0).toLocaleString()}</div>
+            <div class="src-moq-label">총 매입비용</div>
           </div>
-        </div>
-        <div class="src-margin-box">
-          <div class="src-price-item" style="margin-bottom:4px">
-            <span class="src-price-label">물류비</span>
-            <span class="src-price-val">₩${c.logistics.toLocaleString()}</span>
+          <div class="src-moq-item">
+            <div class="src-moq-val">₩${(moq.total_profit || 0).toLocaleString()}</div>
+            <div class="src-moq-label">전량판매 순이익</div>
           </div>
-          <div class="src-price-item">
-            <span class="src-price-label">수수료</span>
-            <span class="src-price-val">₩${c.margin.commission.toLocaleString()}</span>
+          <div class="src-moq-item">
+            <div class="src-moq-val">${moq.break_even || 0}개</div>
+            <div class="src-moq-label">손익분기 수량</div>
           </div>
         </div>
       </div>
@@ -474,13 +489,32 @@ function srcCard(c) {
       </div>
 
       <div>
-        <div style="font-size:11px;color:var(--muted);margin-bottom:6px">🔑 1688 키워드 (클릭하면 복사)</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px">🔑 키워드 클릭 → cninsider 검색 &nbsp;<span style="background:#fef9c3;color:#92400e;font-weight:700;padding:2px 6px;border-radius:4px;font-size:11px">⭐ 实力商家 배지 확인!</span></div>
         <div class="src-keywords">
-          ${c.keywords_1688.map(kw => `<span class="src-kw-chip" onclick="open1688('${esc(kw)}')" title="1688에서 검색">${esc(kw)} 🔗</span>`).join('')}
+          ${c.keywords_1688.map(kw => `<span class="src-kw-chip" onclick="open1688('${esc(kw)}')" title="cninsider에서 검색">${esc(kw)} 🔗</span>`).join('')}
         </div>
       </div>
 
       <div class="src-fit-reason">${esc(c.fit_reason)}</div>
+
+      ${c.suppliers && c.suppliers.length ? `
+      <div class="src-suppliers">
+        <div class="src-suppliers-title">🏭 추천 판매처</div>
+        ${c.suppliers.map(s => `
+          <a class="src-supplier-row" href="${esc(s.url)}" target="_blank" rel="noopener">
+            <div class="src-supplier-left">
+              ${s.badge ? '<span class="src-sj-badge">⭐ 실력상가</span>' : '<span class="src-sj-badge no">일반</span>'}
+              <span class="src-supplier-name">${esc(s.name)}</span>
+            </div>
+            <div class="src-supplier-right">
+              <span class="src-supplier-stat">★ ${s.rating}</span>
+              <span class="src-supplier-stat">${esc(s.sales)}</span>
+              <span class="src-supplier-stat">${s.years}년</span>
+            </div>
+          </a>`).join('')}
+      </div>` : ''}
+
+      <div class="src-memo-area"></div>
     </div>
   </div>`;
 }
@@ -488,4 +522,151 @@ function srcCard(c) {
 function open1688(kw) {
   const url = 'https://www.cninsider.co.kr/mall/#/product?keywords=' + encodeURIComponent(kw) + '&type=text&imageAddress=&searchDiff=1';
   window.open(url, '_blank', 'noopener');
+}
+
+// ── Memo system (localStorage) ───────────────────────────────────────
+
+function getMemos() {
+  try { return JSON.parse(localStorage.getItem('sourcing_memos') || '{}'); } catch { return {}; }
+}
+
+function saveMemo(id, name, text) {
+  const memos = getMemos();
+  if (text.trim()) {
+    memos[id] = { text: text.trim(), name, savedAt: new Date().toLocaleString('ko-KR') };
+  } else {
+    delete memos[id];
+  }
+  localStorage.setItem('sourcing_memos', JSON.stringify(memos));
+  updateMemoBadge();
+}
+
+function deleteMemo(id) {
+  const memos = getMemos();
+  delete memos[id];
+  localStorage.setItem('sourcing_memos', JSON.stringify(memos));
+  updateMemoBadge();
+}
+
+function updateMemoBadge() {
+  const count = Object.keys(getMemos()).length;
+  const btn = document.getElementById('memo-fab');
+  if (btn) btn.textContent = count > 0 ? `📝 내 메모 (${count})` : '📝 내 메모';
+}
+
+function openMemoEditor(id) {
+  const card = document.querySelector(`.src-card[data-id="${id}"]`);
+  if (!card) return;
+  const existing = getMemos()[id]?.text || '';
+  const memoArea = card.querySelector('.src-memo-area');
+  memoArea.innerHTML = `
+    <textarea class="src-memo-input" placeholder="이 상품에 대한 메모를 남기세요..." rows="3">${esc(existing)}</textarea>
+    <div class="src-memo-btns">
+      <button class="src-memo-save" onclick="submitMemo(${id})">저장</button>
+      <button class="src-memo-cancel" onclick="renderMemoOnCard(${id})">취소</button>
+    </div>
+  `;
+  memoArea.querySelector('textarea').focus();
+}
+
+function submitMemo(id) {
+  const card = document.querySelector(`.src-card[data-id="${id}"]`);
+  if (!card) return;
+  const text = card.querySelector('.src-memo-input')?.value || '';
+  saveMemo(id, card.dataset.name, text);
+  renderMemoOnCard(id);
+  if (document.getElementById('memo-panel')?.classList.contains('open')) renderMemoPanel();
+}
+
+function renderMemoOnCard(id) {
+  const card = document.querySelector(`.src-card[data-id="${id}"]`);
+  if (!card) return;
+  const memo = getMemos()[id];
+  const memoArea = card.querySelector('.src-memo-area');
+  if (memo) {
+    memoArea.innerHTML = `
+      <div class="src-memo-saved">
+        <span class="src-memo-icon">📌</span>
+        <div class="src-memo-text">${esc(memo.text)}</div>
+        <div class="src-memo-actions">
+          <button class="src-memo-edit-btn" onclick="openMemoEditor(${id})" title="수정">✏️</button>
+          <button class="src-memo-del-btn" onclick="deleteMemoFromCard(${id})" title="삭제">🗑️</button>
+        </div>
+      </div>
+      <div class="src-memo-date">${memo.savedAt}</div>
+    `;
+  } else {
+    memoArea.innerHTML = `<button class="src-memo-btn" onclick="openMemoEditor(${id})">📝 메모 남기기</button>`;
+  }
+}
+
+function deleteMemoFromCard(id) {
+  deleteMemo(id);
+  renderMemoOnCard(id);
+  if (document.getElementById('memo-panel')?.classList.contains('open')) renderMemoPanel();
+}
+
+function toggleMemoPanel() {
+  const panel = document.getElementById('memo-panel');
+  const overlay = document.getElementById('memo-overlay');
+  const isOpen = panel.classList.toggle('open');
+  overlay.style.display = isOpen ? 'block' : 'none';
+  if (isOpen) renderMemoPanel();
+}
+
+function renderMemoPanel() {
+  const memos = getMemos();
+  const list = document.getElementById('memo-panel-list');
+  const entries = Object.entries(memos).sort((a, b) => {
+    return new Date(b[1].savedAt) - new Date(a[1].savedAt);
+  });
+  if (!entries.length) {
+    list.innerHTML = '<div class="memo-panel-empty">저장된 메모가 없습니다.<br>카드 하단의 📝 메모 남기기를 눌러보세요.</div>';
+    return;
+  }
+  list.innerHTML = entries.map(([id, m]) => `
+    <div class="memo-panel-item" id="memo-item-${id}" onclick="jumpToCard(${id}, event)">
+      <div class="memo-panel-name">${esc(m.name)} <span class="memo-panel-goto">→ 상품 보기</span></div>
+      <div class="memo-panel-text">${esc(m.text)}</div>
+      <div class="memo-panel-meta">
+        <span class="memo-panel-date">${m.savedAt}</span>
+        <button class="memo-panel-del" onclick="deleteMemoFromPanel(${id})">삭제</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function deleteMemoFromPanel(id) {
+  deleteMemo(id);
+  document.getElementById(`memo-item-${id}`)?.remove();
+  const card = document.querySelector(`.src-card[data-id="${id}"]`);
+  if (card) renderMemoOnCard(id);
+  const memos = getMemos();
+  if (!Object.keys(memos).length) renderMemoPanel();
+}
+
+function jumpToCard(id, event) {
+  if (event.target.classList.contains('memo-panel-del')) return;
+  const card = document.querySelector(`.src-card[data-id="${id}"]`);
+  if (card) {
+    toggleMemoPanel();
+    setTimeout(() => {
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.classList.add('card-highlight');
+      setTimeout(() => card.classList.remove('card-highlight'), 1800);
+    }, 300);
+  } else {
+    // 현재 페이지에 없으면 해당 페이지로 이동
+    const targetPage = id <= 100 ? 1 : 2;
+    toggleMemoPanel();
+    goSrcPage(targetPage);
+    setTimeout(() => {
+      const c = document.querySelector(`.src-card[data-id="${id}"]`);
+      if (c) {
+        c.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        c.classList.add('card-highlight');
+        setTimeout(() => c.classList.remove('card-highlight'), 1800);
+      }
+    }, 900);
+  }
 }

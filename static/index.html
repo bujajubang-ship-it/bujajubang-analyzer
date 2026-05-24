@@ -144,6 +144,11 @@
         <div class="sourcing-meta-row" id="sourcing-meta"></div>
       </div>
 
+      <div class="sourcing-tip">
+        <span class="sourcing-tip-icon">⭐</span>
+        <span>공급업체 선택 전 반드시 확인 → <strong>实力商家 (실력상가) 배지</strong>가 있는 판매자만 거래하세요. 거래 횟수·별점이 높을수록 안전해요.</span>
+      </div>
+
       <div class="sourcing-tabs">
         <button class="stab active" onclick="filterChannel('all',this)">전체</button>
         <button class="stab" onclick="filterChannel('both',this)">🛒 쿠팡+스마트스토어</button>
@@ -160,6 +165,18 @@
       </div>
     </div>
   </section>
+
+  <!-- ── Memo FAB + Panel ── -->
+  <button class="memo-fab" id="memo-fab" onclick="toggleMemoPanel()">📝 내 메모</button>
+
+  <div class="memo-panel-overlay" id="memo-overlay" onclick="toggleMemoPanel()" style="display:none"></div>
+  <div class="memo-panel" id="memo-panel">
+    <div class="memo-panel-header">
+      <span>📝 메모 히스토리</span>
+      <button onclick="toggleMemoPanel()">✕</button>
+    </div>
+    <div class="memo-panel-list" id="memo-panel-list"></div>
+  </div>
 
   <script src="/static/app.js"></script>
 </body>
