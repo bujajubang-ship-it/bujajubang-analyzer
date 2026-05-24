@@ -4,6 +4,10 @@ import os
 import re
 import random
 import math
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from urllib.parse import quote as urlquote
 from pathlib import Path
 import httpx
 from fastapi import FastAPI, Request
@@ -326,6 +330,7 @@ async def upsert_memo(memo_id: str, request: Request):
     memos = _load_memos()
     memos[memo_id] = data
     _save_memos(memos)
+    asyncio.create_task(_send_memo_email(data.get("name", ""), data.get("text", ""), data.get("savedAt", "")))
     return {"ok": True}
 
 
@@ -335,6 +340,52 @@ async def delete_memo(memo_id: str):
     memos.pop(memo_id, None)
     _save_memos(memos)
     return {"ok": True}
+
+
+# ── 메모 이메일 발송 ─────────────────────────────────────────────────
+MEMO_TO = "tjdrjs0007@naver.com"
+
+def _send_memo_email_sync(name: str, text: str, saved_at: str):
+    sender = os.getenv("EMAIL_FROM", "").strip()
+    password = os.getenv("EMAIL_PASSWORD", "").strip()
+    if not sender or not password:
+        return
+
+    naver_url = f"https://search.shopping.naver.com/search/all?query={urlquote(name)}"
+    site_url = "https://bujajubang-analyzer.onrender.com"
+
+    html = f"""
+    <div style="font-family:-apple-system,sans-serif;max-width:560px;margin:0 auto;padding:24px">
+      <div style="background:#fefce8;border:1.5px solid #fde047;border-radius:12px;padding:20px 24px;margin-bottom:16px">
+        <div style="font-size:13px;color:#92400e;font-weight:700;margin-bottom:8px">📌 소싱 메모</div>
+        <div style="font-size:18px;font-weight:800;color:#111827;margin-bottom:12px">{name}</div>
+        <div style="font-size:15px;color:#374151;line-height:1.7;white-space:pre-wrap">{text}</div>
+      </div>
+      <div style="display:flex;gap:10px;margin-bottom:16px">
+        <a href="{naver_url}" style="flex:1;display:block;padding:12px;background:#03c75a;color:#fff;text-align:center;border-radius:8px;font-weight:700;text-decoration:none;font-size:14px">🔍 네이버 쇼핑 검색</a>
+        <a href="{site_url}" style="flex:1;display:block;padding:12px;background:#111827;color:#fff;text-align:center;border-radius:8px;font-weight:700;text-decoration:none;font-size:14px">📦 소싱 사이트 열기</a>
+      </div>
+      <div style="font-size:12px;color:#9ca3af;text-align:right">{saved_at}</div>
+    </div>
+    """
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = f"📌 소싱 메모: {name}"
+    msg["From"] = sender
+    msg["To"] = MEMO_TO
+    msg.attach(MIMEText(html, "html", "utf-8"))
+
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(sender, password)
+            server.sendmail(sender, MEMO_TO, msg.as_string())
+    except Exception as e:
+        print(f"[email] 발송 실패: {e}")
+
+
+async def _send_memo_email(name: str, text: str, saved_at: str):
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, _send_memo_email_sync, name, text, saved_at)
 
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
