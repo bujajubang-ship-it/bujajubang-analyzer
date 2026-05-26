@@ -6,6 +6,7 @@ let allCandidates = [];
 let currentChannel = 'all';
 let currentSrcPage = 1;
 let totalSrcPages = 1;
+let activeFilters = { comp: false, price: false };
 
 // ── Page switching ──────────────────────────────────────────────────
 function switchPage(page) {
@@ -285,7 +286,7 @@ function loadSourcing(page) {
       currentSrcPage = data.meta.page;
       renderSourcingMeta(data.meta);
       renderSourcingSummary(allCandidates);
-      renderSourcingCards(allCandidates);
+      applyAndRender();
       renderPagination(data.meta);
     })
     .catch(e => {
@@ -328,6 +329,30 @@ function filterChannel(channel, btn) {
   document.querySelectorAll('.stab').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   loadSourcing(1);
+}
+
+function toggleSourcingFilter(type, btn) {
+  activeFilters[type] = !activeFilters[type];
+  btn.classList.toggle('active', activeFilters[type]);
+  applyAndRender();
+}
+
+function applyFilters(candidates) {
+  return candidates.filter(c => {
+    if (activeFilters.comp && c.competition.intensity >= 30) return false;
+    if (activeFilters.price && !c.filters.price_ok) return false;
+    return true;
+  });
+}
+
+function applyAndRender() {
+  const filtered = applyFilters(allCandidates);
+  const countEl = document.getElementById('sfil-count');
+  if (countEl) {
+    const isFiltering = activeFilters.comp || activeFilters.price;
+    countEl.textContent = isFiltering ? `${filtered.length}개 표시 중 / 전체 ${allCandidates.length}개` : '';
+  }
+  renderSourcingCards(filtered);
 }
 
 function renderPagination(meta) {
@@ -497,22 +522,14 @@ function srcCard(c) {
 
       <div class="src-fit-reason">${esc(c.fit_reason)}</div>
 
-      ${c.suppliers && c.suppliers.length ? `
-      <div class="src-suppliers">
-        <div class="src-suppliers-title">🏭 추천 판매처</div>
-        ${c.suppliers.map(s => `
-          <a class="src-supplier-row" href="${esc(s.url)}" target="_blank" rel="noopener">
-            <div class="src-supplier-left">
-              ${s.badge ? '<span class="src-sj-badge">⭐ 실력상가</span>' : '<span class="src-sj-badge no">일반</span>'}
-              <span class="src-supplier-name">${esc(s.name)}</span>
-            </div>
-            <div class="src-supplier-right">
-              <span class="src-supplier-stat">★ ${s.rating}</span>
-              <span class="src-supplier-stat">${esc(s.sales)}</span>
-              <span class="src-supplier-stat">${s.years}년</span>
-            </div>
-          </a>`).join('')}
-      </div>` : ''}
+      <div class="src-suppliers" id="suppliers-${c.id}">
+        <div class="src-suppliers-title">🏭 추천 판매처 (실력상가)
+          <button class="src-load-btn" onclick="loadRealSuppliers(${c.id}, '${esc(c.keywords_1688 && c.keywords_1688[0] ? c.keywords_1688[0] : c.name)}')">1688 실시간 조회</button>
+        </div>
+        <div class="src-suppliers-body" id="suppliers-body-${c.id}">
+          <span style="color:#aaa;font-size:12px">버튼을 눌러 실제 실력상가 상품을 가져오세요</span>
+        </div>
+      </div>
 
       <div class="src-memo-area"></div>
     </div>
@@ -522,6 +539,40 @@ function srcCard(c) {
 function open1688(kw) {
   const url = 'https://www.cninsider.co.kr/mall/#/product?keywords=' + encodeURIComponent(kw) + '&type=text&imageAddress=&searchDiff=1';
   window.open(url, '_blank', 'noopener');
+}
+
+async function loadRealSuppliers(cardId, keyword) {
+  const body = document.getElementById('suppliers-body-' + cardId);
+  if (!body) return;
+  body.innerHTML = '<span style="color:#aaa;font-size:12px">⏳ 1688 실력상가 조회 중...</span>';
+
+  try {
+    const res = await fetch('/api/sourcing/suppliers?keyword=' + encodeURIComponent(keyword));
+    const data = await res.json();
+    const suppliers = data.suppliers || [];
+
+    if (!suppliers.length) {
+      body.innerHTML = '<span style="color:#aaa;font-size:12px">실력상가 상품을 찾지 못했습니다</span>';
+      return;
+    }
+
+    body.innerHTML = suppliers.map(s => `
+      <a class="src-supplier-row src-supplier-product" href="${esc(s.url)}" target="_blank" rel="noopener">
+        <img class="src-supplier-img" src="${esc(s.image)}" alt="" onerror="this.style.display='none'">
+        <div class="src-supplier-info">
+          <div class="src-supplier-top">
+            <span class="src-sj-badge">⭐ 실력상가 ${esc(s.medal)}</span>
+            <span class="src-supplier-stat">월 ${s.month_sold.toLocaleString()}건</span>
+            <span class="src-supplier-stat">★ ${s.rating}</span>
+            ${s.repurchase ? `<span class="src-supplier-stat">재구매 ${esc(s.repurchase)}</span>` : ''}
+          </div>
+          <div class="src-supplier-name">${esc(s.name)}</div>
+          ${s.price ? `<div class="src-supplier-price">¥${esc(s.price)}</div>` : ''}
+        </div>
+      </a>`).join('');
+  } catch (e) {
+    body.innerHTML = '<span style="color:#e55;font-size:12px">조회 실패: ' + e.message + '</span>';
+  }
 }
 
 // ── Memo system (localStorage) ───────────────────────────────────────

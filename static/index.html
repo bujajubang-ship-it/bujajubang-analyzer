@@ -155,6 +155,13 @@
         <button class="stab" onclick="filterChannel('coupang',this)">🛍️ 쿠팡 전용</button>
       </div>
 
+      <div class="sourcing-filters">
+        <span class="sfil-label">필터</span>
+        <button class="sfil" id="sfil-comp" onclick="toggleSourcingFilter('comp',this)">🏁 경쟁 낮음</button>
+        <button class="sfil" id="sfil-price" onclick="toggleSourcingFilter('price',this)">💰 판매가 적정</button>
+        <span class="sfil-count" id="sfil-count"></span>
+      </div>
+
       <div class="sourcing-summary" id="sourcing-summary"></div>
 
       <div class="sourcing-grid" id="sourcing-grid">

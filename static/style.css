@@ -276,6 +276,16 @@ body { font-family: -apple-system, 'Noto Sans KR', sans-serif; background: var(-
 }
 .stab.active { background: var(--text); color: #fff; border-color: var(--text); }
 
+.sourcing-filters { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.sfil-label { font-size: 12px; font-weight: 600; color: var(--muted); }
+.sfil {
+  padding: 5px 14px; border: 1.5px solid var(--border); border-radius: 20px;
+  background: #fff; font-size: 13px; font-weight: 600; cursor: pointer;
+  color: var(--muted); transition: all .15s;
+}
+.sfil.active { background: #16a34a; color: #fff; border-color: #16a34a; }
+.sfil-count { font-size: 12px; color: var(--muted); margin-left: 4px; }
+
 .sourcing-summary {
   display: flex; gap: 12px; flex-wrap: wrap;
 }
@@ -417,6 +427,18 @@ body { font-family: -apple-system, 'Noto Sans KR', sans-serif; background: var(-
 .src-sj-badge.no { background: #f3f4f6; color: var(--muted); }
 .src-supplier-name { font-size: 12px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .src-supplier-stat { font-size: 11px; color: var(--muted); white-space: nowrap; }
+
+.src-load-btn {
+  margin-left: 8px; font-size: 10px; font-weight: 700;
+  padding: 2px 8px; border-radius: 4px; border: 1px solid var(--green);
+  background: #f0fdf4; color: var(--green); cursor: pointer;
+}
+.src-load-btn:hover { background: var(--green); color: #fff; }
+.src-supplier-product { align-items: flex-start; padding: 8px; }
+.src-supplier-img { width: 56px; height: 56px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
+.src-supplier-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.src-supplier-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.src-supplier-price { font-size: 13px; font-weight: 700; color: #e55; }
 
 .src-channel-tag {
   display: inline-block; padding: 2px 8px; border-radius: 6px;
