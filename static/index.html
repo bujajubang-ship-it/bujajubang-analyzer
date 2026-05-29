@@ -158,7 +158,12 @@
       <div class="sourcing-filters">
         <span class="sfil-label">필터</span>
         <button class="sfil" id="sfil-comp" onclick="toggleSourcingFilter('comp',this)">🏁 경쟁 낮음</button>
-        <button class="sfil" id="sfil-price" onclick="toggleSourcingFilter('price',this)">💰 판매가 적정</button>
+        <span class="sfil-sep">│</span>
+        <span class="sfil-label">가격대</span>
+        <button class="sfil" id="sfil-price-all" onclick="setPriceRange(null,this)">전체</button>
+        <button class="sfil" id="sfil-price-danger" onclick="setPriceRange('danger',this)">🚫 ~2만원</button>
+        <button class="sfil active" id="sfil-price-sweet" onclick="setPriceRange('sweet',this)">✅ 3만~8만원</button>
+        <button class="sfil" id="sfil-price-premium" onclick="setPriceRange('premium',this)">🔍 8만원+</button>
         <span class="sfil-count" id="sfil-count"></span>
       </div>
 

@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 
 from scraper import scrape, calc_competition
+from supplier_1688 import fetch_1688_suppliers
 from sourcing_data import SOURCING_CANDIDATES
 
 load_dotenv()
@@ -177,10 +178,23 @@ def _get_suppliers(c: dict) -> list[dict]:
     pool = _SUPPLIER_POOL.get(c["category"], _DEFAULT_SUPPLIERS)
     seed = c["id"] % len(pool)
     selected = pool[seed:seed+2] + pool[:max(0, 2-(len(pool)-seed))]
+    # 1688 키워드로 실력상가(实力商家) 필터 검색 URL
+    kw = c["keywords_1688"][0] if c.get("keywords_1688") else c["name"]
     result = []
     for name, badge, rating, sales, years in selected[:2]:
-        kw = c["keywords_1688"][0] if c["keywords_1688"] else c["name"]
-        url = "https://www.cninsider.co.kr/mall/#/product?keywords=" + kw + "&type=text&imageAddress=&searchDiff=1"
+        # 실력상가 뱃지 있는 경우 1688 实力商家 필터로, 없으면 일반 검색
+        if badge:
+            url = (
+                "https://s.1688.com/selloffer/offerlist.htm"
+                "?keywords=" + kw +
+                "&n=y&ispro=true&sortType=va_asc"
+            )
+        else:
+            url = (
+                "https://s.1688.com/selloffer/offerlist.htm"
+                "?keywords=" + kw +
+                "&n=y&sortType=va_asc"
+            )
         result.append({"name": name, "badge": badge, "rating": rating, "sales": sales, "years": years, "url": url})
     return result
 
@@ -269,6 +283,14 @@ def _enrich_candidate(c: dict) -> dict:
 
 
 PER_PAGE = 100
+
+@app.get("/api/sourcing/suppliers")
+async def get_real_suppliers(keyword: str = ""):
+    """1688 실력상가 실제 상품 데이터 반환"""
+    if not keyword:
+        return JSONResponse({"suppliers": []})
+    suppliers = await fetch_1688_suppliers(keyword, top_n=3)
+    return JSONResponse({"suppliers": suppliers})
 
 @app.get("/api/sourcing")
 async def get_sourcing(channel: str = "all", page: int = 1):

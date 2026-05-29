@@ -447,9 +447,12 @@ body { font-family: -apple-system, 'Noto Sans KR', sans-serif; background: var(-
 .src-channel-tag.both    { background: #eff6ff; color: #1d4ed8; }
 .src-channel-tag.coupang { background: #fff1f0; color: #cf1322; }
 
-/* ── Card price border ── */
-.card-price-ok   { border: 2.5px solid #22c55e !important; }
-.card-price-warn { border: 2.5px solid #ef4444 !important; }
+/* ── Card margin border ── */
+.card-price-ok    { border: 2.5px solid #22c55e !important; }
+.card-price-warn  { border: 2.5px solid #ef4444 !important; }
+.card-margin-good { border: 2.5px solid #22c55e !important; }
+.card-margin-ok   { border: 2.5px solid #f59e0b !important; }
+.card-margin-bad  { border: 2.5px solid #ef4444 !important; }
 
 /* ── Rec badge ── */
 .src-rec-badge {
@@ -484,6 +487,9 @@ body { font-family: -apple-system, 'Noto Sans KR', sans-serif; background: var(-
 }
 .src-profit-rate.good { background: #dcfce7; color: #15803d; }
 .src-profit-rate.ok   { background: #fef9c3; color: #92400e; }
+.src-profit-rate.bad  { background: #fee2e2; color: #991b1b; }
+.src-cost-detail { font-size: 11px; color: var(--muted); margin-top: 5px; }
+.sfil-sep { color: #d1d5db; font-size: 16px; line-height: 1; margin: 0 2px; }
 
 /* ── MOQ box ── */
 .src-moq-box {

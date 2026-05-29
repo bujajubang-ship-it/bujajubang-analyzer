@@ -6,7 +6,7 @@ let allCandidates = [];
 let currentChannel = 'all';
 let currentSrcPage = 1;
 let totalSrcPages = 1;
-let activeFilters = { comp: false, price: false };
+let activeFilters = { comp: false, priceRange: 'sweet' };
 
 // ── Page switching ──────────────────────────────────────────────────
 function switchPage(page) {
@@ -337,10 +337,20 @@ function toggleSourcingFilter(type, btn) {
   applyAndRender();
 }
 
+function setPriceRange(range, btn) {
+  activeFilters.priceRange = range;
+  document.querySelectorAll('#sfil-price-all,#sfil-price-danger,#sfil-price-sweet,#sfil-price-premium')
+    .forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  applyAndRender();
+}
+
 function applyFilters(candidates) {
   return candidates.filter(c => {
     if (activeFilters.comp && c.competition.intensity >= 30) return false;
-    if (activeFilters.price && !c.filters.price_ok) return false;
+    if (activeFilters.priceRange === 'danger' && c.selling > 20000) return false;
+    if (activeFilters.priceRange === 'sweet' && (c.selling < 30000 || c.selling > 80000)) return false;
+    if (activeFilters.priceRange === 'premium' && c.selling < 80000) return false;
     return true;
   });
 }
@@ -349,7 +359,7 @@ function applyAndRender() {
   const filtered = applyFilters(allCandidates);
   const countEl = document.getElementById('sfil-count');
   if (countEl) {
-    const isFiltering = activeFilters.comp || activeFilters.price;
+    const isFiltering = activeFilters.comp || activeFilters.priceRange !== null;
     countEl.textContent = isFiltering ? `${filtered.length}개 표시 중 / 전체 ${allCandidates.length}개` : '';
   }
   renderSourcingCards(filtered);
@@ -419,7 +429,7 @@ function _processNextImage() {
 }
 
 function srcCard(c) {
-  const borderCls = c.filters.price_ok ? 'card-price-ok' : 'card-price-warn';
+  const borderCls = c.margin.rate >= 30 ? 'card-margin-good' : c.margin.rate >= 15 ? 'card-margin-ok' : 'card-margin-bad';
   const scoreCls = c.score >= 70 ? 'high' : c.score >= 50 ? 'mid' : 'low';
   const comp = c.competition;
   const compCls = comp.intensity < 30 ? 'comp-low' : comp.intensity < 50 ? 'comp-mid' : 'comp-high';
@@ -435,7 +445,7 @@ function srcCard(c) {
   const filters = [
     { ok: c.filters.reviews_ok, text: c.filters.reviews_ok ? `✓ 경쟁 리뷰 적음 (${comp.top_reviews}개)` : `✗ 경쟁 리뷰 많음 (${comp.top_reviews}개)` },
     { ok: c.filters.rocket_ok, text: c.filters.rocket_ok ? `✓ 로켓배송 적음 (${comp.rocket_ratio}%)` : `✗ 로켓배송 많음 (${comp.rocket_ratio}%)` },
-    { ok: c.filters.price_ok, text: c.filters.price_ok ? `✓ 판매가 적정` : `✗ 판매가 재검토 필요` },
+    { ok: c.selling > 20000 && c.selling <= 80000, text: c.selling <= 20000 ? `⚠ 박리다매 위험 (~₩${(20000).toLocaleString()})` : c.selling <= 80000 ? `✓ 적정가 (₩${c.selling.toLocaleString()})` : `🔍 고가 신중 (₩${c.selling.toLocaleString()})` },
   ];
 
   return `
@@ -470,9 +480,10 @@ function srcCard(c) {
         <div class="src-price-flow-arrow">→</div>
         <div class="src-profit-hero">
           <div class="src-profit-net">+₩${c.margin.net.toLocaleString()}</div>
-          <div class="src-profit-rate ${c.margin.rate >= 30 ? 'good' : 'ok'}">${c.margin.rate}% 마진</div>
+          <div class="src-profit-rate ${c.margin.rate >= 30 ? 'good' : c.margin.rate >= 15 ? 'ok' : 'bad'}">${c.margin.rate}% 마진</div>
         </div>
       </div>
+      <div class="src-cost-detail">소싱 ₩${c.sourcing.toLocaleString()} · 물류 ₩${c.logistics.toLocaleString()} · 쿠팡수수료 ₩${c.margin.commission.toLocaleString()} (10.8%)</div>
 
       <div class="src-moq-box">
         <div class="src-moq-title">📦 MOQ 분석</div>
