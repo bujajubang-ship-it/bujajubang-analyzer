@@ -390,6 +390,41 @@ function goSrcPage(page) {
 const _imgQueue = [];
 let _imgRunning = false;
 
+// ── 쿠팡 시장 데이터 지연 로드 ────────────────────────────────────
+const _cpQueue = [];
+let _cpRunning = false;
+
+function renderCoupangBox(d) {
+  const ratioColor = d.coupang_ratio > 50 ? '#ef4444' : d.coupang_ratio > 25 ? '#f59e0b' : '#22c55e';
+  return `
+    <div class="src-coupang-title">🛍️ 쿠팡 시장 (네이버 기준)</div>
+    <div class="src-coupang-grid">
+      <div class="src-coupang-item"><div class="src-coupang-val">₩${d.price_min.toLocaleString()}</div><div class="src-coupang-label">최저가</div></div>
+      <div class="src-coupang-item"><div class="src-coupang-val">₩${d.price_avg.toLocaleString()}</div><div class="src-coupang-label">평균가</div></div>
+      <div class="src-coupang-item"><div class="src-coupang-val">₩${d.price_max.toLocaleString()}</div><div class="src-coupang-label">최고가</div></div>
+      <div class="src-coupang-item"><div class="src-coupang-val" style="color:${ratioColor}">${d.coupang_ratio}%</div><div class="src-coupang-label">쿠팡 점유율</div></div>
+      <div class="src-coupang-item"><div class="src-coupang-val">${d.coupang_count}개</div><div class="src-coupang-label">쿠팡 상품 수</div></div>
+      <div class="src-coupang-item"><div class="src-coupang-val">${(d.total || 0).toLocaleString()}</div><div class="src-coupang-label">전체 검색량</div></div>
+    </div>`;
+}
+
+function _processNextCoupang() {
+  if (_cpQueue.length === 0) { _cpRunning = false; return; }
+  _cpRunning = true;
+  const { id, keyword } = _cpQueue.shift();
+  const el = document.getElementById('cp-' + id);
+  if (!el || !el.isConnected || el.dataset.loaded) { _processNextCoupang(); return; }
+  el.dataset.loaded = '1';
+  fetch('/api/coupang-market?keyword=' + encodeURIComponent(keyword))
+    .then(r => r.json())
+    .then(d => {
+      if (d.error || d.coupang_count === 0) { el.style.display = 'none'; return; }
+      el.innerHTML = renderCoupangBox(d);
+    })
+    .catch(() => { el.style.display = 'none'; })
+    .finally(() => setTimeout(_processNextCoupang, 350));
+}
+
 function renderSourcingCards(candidates) {
   if (!candidates.length) {
     document.getElementById('sourcing-grid').innerHTML =
@@ -402,6 +437,9 @@ function renderSourcingCards(candidates) {
   _imgQueue.length = 0;
   document.querySelectorAll('.src-img-wrap[data-name]').forEach(el => _imgQueue.push(el));
   if (!_imgRunning) _processNextImage();
+  _cpQueue.length = 0;
+  candidates.forEach(c => _cpQueue.push({ id: c.id, keyword: c.name }));
+  if (!_cpRunning) _processNextCoupang();
 }
 
 function _processNextImage() {
@@ -522,6 +560,10 @@ function srcCard(c) {
 
       <div class="src-filters">
         ${filters.map(f => `<span class="src-filter-tag ${f.ok ? 'ok' : 'bad'}">${f.text}</span>`).join('')}
+      </div>
+
+      <div class="src-coupang-box" id="cp-${c.id}">
+        <div class="src-coupang-loading">🛍️ 쿠팡 시장 로딩 중...</div>
       </div>
 
       <div>

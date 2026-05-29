@@ -284,6 +284,38 @@ def _enrich_candidate(c: dict) -> dict:
 
 PER_PAGE = 100
 
+@app.get("/api/coupang-market")
+async def coupang_market(keyword: str):
+    """네이버 쇼핑 API로 쿠팡 시장 데이터 추출"""
+    client_id = os.getenv("NAVER_CLIENT_ID", "").strip()
+    client_secret = os.getenv("NAVER_CLIENT_SECRET", "").strip()
+    if not client_id or not client_secret:
+        return JSONResponse({"error": "no key"}, status_code=500)
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get(
+                "https://openapi.naver.com/v1/search/shop.json",
+                params={"query": keyword, "display": 100, "sort": "sim"},
+                headers={"X-Naver-Client-Id": client_id, "X-Naver-Client-Secret": client_secret},
+            )
+            r.raise_for_status()
+            data = r.json()
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+    items = data.get("items", [])
+    coupang = [i for i in items if "쿠팡" in i.get("mallName", "")]
+    prices = [int(i["lprice"]) for i in coupang if int(i.get("lprice") or 0) > 0]
+
+    return JSONResponse({
+        "total": data.get("total", 0),
+        "coupang_count": len(coupang),
+        "coupang_ratio": round(len(coupang) / len(items) * 100) if items else 0,
+        "price_min": min(prices) if prices else 0,
+        "price_avg": round(sum(prices) / len(prices)) if prices else 0,
+        "price_max": max(prices) if prices else 0,
+    })
+
 @app.get("/api/sourcing/suppliers")
 async def get_real_suppliers(keyword: str = ""):
     """1688 실력상가 실제 상품 데이터 반환"""

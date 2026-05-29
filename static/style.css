@@ -491,6 +491,18 @@ body { font-family: -apple-system, 'Noto Sans KR', sans-serif; background: var(-
 .src-cost-detail { font-size: 11px; color: var(--muted); margin-top: 5px; }
 .sfil-sep { color: #d1d5db; font-size: 16px; line-height: 1; margin: 0 2px; }
 
+/* ── Coupang market box ── */
+.src-coupang-box {
+  background: #fff8f0; border: 1px solid #fde8d0; border-radius: 8px;
+  padding: 10px 12px; margin-top: 8px;
+}
+.src-coupang-title { font-size: 12px; font-weight: 700; color: #c2410c; margin-bottom: 8px; }
+.src-coupang-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.src-coupang-item { text-align: center; }
+.src-coupang-val { font-size: 13px; font-weight: 700; color: #1a1a1a; }
+.src-coupang-label { font-size: 10px; color: var(--muted); margin-top: 1px; }
+.src-coupang-loading { font-size: 11px; color: var(--muted); text-align: center; padding: 4px 0; }
+
 /* ── MOQ box ── */
 .src-moq-box {
   background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px;
