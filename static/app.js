@@ -6,7 +6,17 @@ let allCandidates = [];
 let currentChannel = 'all';
 let currentSrcPage = 1;
 let totalSrcPages = 1;
-let activeFilters = { comp: false, priceRange: 'sweet' };
+let activeFilters = {
+  channel: 'all',   // 'all' | 'both' | 'coupang'  (server-side reload)
+  grade: 'all',     // 'all' | '소싱추천' | '검토' | '비추'
+  margin: '0',      // min margin % as string
+  comp: 'all',      // 'all' | 'low' | 'mid'
+  pricePreset: 'all', // 'all' | 'danger' | 'sweet' | 'premium' | 'custom'
+  priceMin: null,
+  priceMax: null,
+  reviews: false,
+  rocket: false,
+};
 
 // ── Page switching ──────────────────────────────────────────────────
 function switchPage(page) {
@@ -323,47 +333,134 @@ function renderSourcingSummary(candidates) {
   `;
 }
 
-function filterChannel(channel, btn) {
-  currentChannel = channel;
-  currentSrcPage = 1;
-  document.querySelectorAll('.stab').forEach(b => b.classList.remove('active'));
+// ── 새 필터 시스템 ──────────────────────────────────────────────────
+
+function setFilterChip(group, val, btn) {
+  // 채널 변경은 서버 재요청
+  if (group === 'channel') {
+    activeFilters.channel = val;
+    currentChannel = val;
+    document.querySelectorAll('#fg-channel .fchip').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    loadSourcing(1);
+    return;
+  }
+  activeFilters[group] = val;
+  document.querySelectorAll(`#fg-${group} .fchip`).forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  loadSourcing(1);
+  applyAndRender();
 }
 
-function toggleSourcingFilter(type, btn) {
+function setPricePreset(val, btn) {
+  activeFilters.pricePreset = val;
+  document.querySelectorAll('#fg-price-preset .fchip').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const customEl = document.getElementById('filter-price-custom');
+  if (val === 'custom') {
+    customEl.style.display = '';
+  } else {
+    customEl.style.display = 'none';
+    activeFilters.priceMin = null;
+    activeFilters.priceMax = null;
+  }
+  applyAndRender();
+}
+
+function applyCustomPrice() {
+  const minVal = parseInt(document.getElementById('price-min-input').value) || null;
+  const maxVal = parseInt(document.getElementById('price-max-input').value) || null;
+  activeFilters.priceMin = minVal;
+  activeFilters.priceMax = maxVal;
+  applyAndRender();
+}
+
+function toggleCondition(type, btn) {
   activeFilters[type] = !activeFilters[type];
   btn.classList.toggle('active', activeFilters[type]);
   applyAndRender();
 }
 
-function setPriceRange(range, btn) {
-  activeFilters.priceRange = range;
-  document.querySelectorAll('#sfil-price-all,#sfil-price-danger,#sfil-price-sweet,#sfil-price-premium')
-    .forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
+function resetAllFilters() {
+  activeFilters = {
+    channel: currentChannel,
+    grade: 'all',
+    margin: '0',
+    comp: 'all',
+    pricePreset: 'all',
+    priceMin: null,
+    priceMax: null,
+    reviews: false,
+    rocket: false,
+  };
+  document.querySelectorAll('#fg-grade .fchip, #fg-margin .fchip, #fg-comp .fchip').forEach(b => {
+    b.classList.toggle('active', b.dataset.val === 'all' || b.dataset.val === '0');
+  });
+  document.querySelectorAll('#fg-price-preset .fchip').forEach(b => {
+    b.classList.toggle('active', b.dataset.val === 'all');
+  });
+  document.getElementById('filter-price-custom').style.display = 'none';
+  document.getElementById('price-min-input').value = '';
+  document.getElementById('price-max-input').value = '';
+  document.getElementById('fg-reviews').classList.remove('active');
+  document.getElementById('fg-rocket').classList.remove('active');
   applyAndRender();
 }
 
 function applyFilters(candidates) {
   return candidates.filter(c => {
-    if (activeFilters.comp && c.competition.intensity >= 30) return false;
-    if (activeFilters.priceRange === 'danger' && c.selling > 20000) return false;
-    if (activeFilters.priceRange === 'sweet' && (c.selling < 30000 || c.selling > 80000)) return false;
-    if (activeFilters.priceRange === 'premium' && c.selling < 80000) return false;
+    // 추천 등급
+    if (activeFilters.grade !== 'all' && c.rec_label !== activeFilters.grade) return false;
+    // 마진율
+    const minMargin = parseInt(activeFilters.margin) || 0;
+    if (minMargin > 0 && c.margin.rate < minMargin) return false;
+    // 경쟁강도
+    if (activeFilters.comp === 'low' && c.competition.intensity >= 30) return false;
+    if (activeFilters.comp === 'mid' && c.competition.intensity >= 50) return false;
+    // 판매가 프리셋
+    const p = activeFilters.pricePreset;
+    if (p === 'danger' && c.selling > 20000) return false;
+    if (p === 'sweet' && (c.selling < 30000 || c.selling > 80000)) return false;
+    if (p === 'premium' && c.selling < 80000) return false;
+    // 판매가 직접설정
+    if (p === 'custom') {
+      if (activeFilters.priceMin && c.selling < activeFilters.priceMin) return false;
+      if (activeFilters.priceMax && c.selling > activeFilters.priceMax) return false;
+    }
+    // 조건
+    if (activeFilters.reviews && !c.filters.reviews_ok) return false;
+    if (activeFilters.rocket && !c.filters.rocket_ok) return false;
     return true;
   });
+}
+
+function countActiveFilters() {
+  let n = 0;
+  if (activeFilters.grade !== 'all') n++;
+  if (parseInt(activeFilters.margin) > 0) n++;
+  if (activeFilters.comp !== 'all') n++;
+  if (activeFilters.pricePreset !== 'all') n++;
+  if (activeFilters.reviews) n++;
+  if (activeFilters.rocket) n++;
+  return n;
 }
 
 function applyAndRender() {
   const filtered = applyFilters(allCandidates);
   const countEl = document.getElementById('sfil-count');
+  const badgeEl = document.getElementById('filter-active-count');
+  const n = countActiveFilters();
+  if (badgeEl) {
+    badgeEl.textContent = `${n}개 필터 적용`;
+    badgeEl.classList.toggle('visible', n > 0);
+  }
   if (countEl) {
-    const isFiltering = activeFilters.comp || activeFilters.priceRange !== null;
-    countEl.textContent = isFiltering ? `${filtered.length}개 표시 중 / 전체 ${allCandidates.length}개` : '';
+    countEl.textContent = `${filtered.length}개 표시 중 / 전체 ${allCandidates.length}개`;
   }
   renderSourcingCards(filtered);
 }
+
+// 하위호환 — 기존 코드가 참조할 수 있는 구 함수명
+function filterChannel(channel, btn) { setFilterChip('channel', channel, btn); }
 
 function renderPagination(meta) {
   let el = document.getElementById('src-pagination');
