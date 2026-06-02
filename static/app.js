@@ -491,6 +491,20 @@ let _imgRunning = false;
 const _cpQueue = [];
 let _cpRunning = false;
 
+// ── 1688 실력상가 자동 로드 ───────────────────────────────────────
+const _supplierQueue = [];
+let _supplierRunning = false;
+
+function _processNextSupplier() {
+  if (_supplierQueue.length === 0) { _supplierRunning = false; return; }
+  _supplierRunning = true;
+  const { id, keyword } = _supplierQueue.shift();
+  const el = document.getElementById('suppliers-body-' + id);
+  if (!el || !el.isConnected || el.dataset.loaded) { _processNextSupplier(); return; }
+  el.dataset.loaded = '1';
+  loadRealSuppliers(id, keyword).finally(() => setTimeout(_processNextSupplier, 600));
+}
+
 function renderCoupangBox(d) {
   const ratioColor = d.coupang_ratio > 50 ? '#ef4444' : d.coupang_ratio > 25 ? '#f59e0b' : '#22c55e';
   return `
@@ -537,6 +551,10 @@ function renderSourcingCards(candidates) {
   _cpQueue.length = 0;
   candidates.forEach(c => _cpQueue.push({ id: c.id, keyword: c.name }));
   if (!_cpRunning) _processNextCoupang();
+
+  _supplierQueue.length = 0;
+  candidates.forEach(c => _supplierQueue.push({ id: c.id, keyword: c.keywords_1688?.[0] || c.name }));
+  if (!_supplierRunning) _processNextSupplier();
 }
 
 function _processNextImage() {
@@ -673,11 +691,9 @@ function srcCard(c) {
       <div class="src-fit-reason">${esc(c.fit_reason)}</div>
 
       <div class="src-suppliers" id="suppliers-${c.id}">
-        <div class="src-suppliers-title">🏭 추천 판매처 (실력상가)
-          <button class="src-load-btn" onclick="loadRealSuppliers(${c.id}, '${esc(c.keywords_1688 && c.keywords_1688[0] ? c.keywords_1688[0] : c.name)}')">1688 실시간 조회</button>
-        </div>
+        <div class="src-suppliers-title">🏭 1688 실력상가 바로가기</div>
         <div class="src-suppliers-body" id="suppliers-body-${c.id}">
-          <span style="color:#aaa;font-size:12px">버튼을 눌러 실제 실력상가 상품을 가져오세요</span>
+          <span style="color:#aaa;font-size:12px">⏳ 조회 중...</span>
         </div>
       </div>
 
