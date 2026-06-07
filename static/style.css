@@ -340,6 +340,72 @@ body { font-family: -apple-system, 'Noto Sans KR', sans-serif; background: var(-
 }
 .price-input-row input:focus { border-color: var(--red); }
 
+/* ── Sort Row ── */
+.filter-sort-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 0 14px; border-bottom: 1px solid var(--border);
+  margin-bottom: 16px; flex-wrap: wrap;
+}
+.filter-sort-label {
+  font-size: 11px; font-weight: 700; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .04em; white-space: nowrap;
+}
+.filter-sort-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.sort-chip {
+  padding: 5px 13px; border: 1.5px solid var(--border);
+  border-radius: 20px; background: #fff;
+  font-size: 12px; font-weight: 600; color: var(--muted);
+  cursor: pointer; transition: all .15s; white-space: nowrap;
+}
+.sort-chip:hover { border-color: var(--red); color: var(--red); }
+.sort-chip.active { background: var(--red); color: #fff; border-color: var(--red); }
+
+/* ── Category clear btn ── */
+.filter-cat-clear {
+  font-size: 10px; font-weight: 700; color: var(--red);
+  background: #fff1f0; border: 1px solid #fecaca;
+  border-radius: 8px; padding: 1px 7px; cursor: pointer;
+  margin-left: 6px; transition: all .15s;
+}
+.filter-cat-clear:hover { background: #fee2e2; }
+
+/* ── Full-width filter group ── */
+.filter-group-full { grid-column: 1 / -1; }
+
+/* ── Sliders ── */
+.filter-slider-row {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 4px;
+}
+.filter-slider {
+  flex: 1; -webkit-appearance: none; appearance: none;
+  height: 5px; border-radius: 3px;
+  background: #e5e7eb; outline: none; cursor: pointer;
+  transition: background .15s;
+}
+.filter-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 18px; height: 18px;
+  border-radius: 50%; background: var(--red);
+  border: 2.5px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.25);
+  cursor: pointer; transition: transform .1s;
+}
+.filter-slider::-webkit-slider-thumb:hover { transform: scale(1.15); }
+.filter-slider::-moz-range-thumb {
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--red); border: 2.5px solid #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,.25); cursor: pointer;
+}
+.filter-slider-val {
+  font-size: 13px; font-weight: 700; min-width: 58px;
+  text-align: right; color: var(--red); white-space: nowrap;
+}
+.filter-slider-marks {
+  display: flex; justify-content: space-between;
+  font-size: 10px; color: var(--muted);
+}
+
+/* ── Slider active track fill (JS sets --pct) ── */
+.filter-slider.has-value { background: linear-gradient(to right, var(--red) 0%, var(--red) var(--pct,0%), #e5e7eb var(--pct,0%), #e5e7eb 100%); }
+
 .filter-result-bar {
   margin-top: 14px; padding-top: 12px;
   border-top: 1px solid var(--border);

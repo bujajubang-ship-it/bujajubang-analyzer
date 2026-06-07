@@ -152,10 +152,23 @@
       <!-- 필터 패널 -->
       <div class="filter-panel">
         <div class="filter-panel-top">
-          <div class="filter-panel-title">🔎 필터</div>
+          <div class="filter-panel-title">🔎 필터 &amp; 정렬</div>
           <div class="filter-panel-right">
             <span class="filter-active-count" id="filter-active-count"></span>
-            <button class="filter-reset-btn" id="filter-reset-btn" onclick="resetAllFilters()">초기화</button>
+            <button class="filter-reset-btn" onclick="resetAllFilters()">초기화</button>
+          </div>
+        </div>
+
+        <!-- 정렬 -->
+        <div class="filter-sort-row">
+          <span class="filter-sort-label">📊 정렬</span>
+          <div class="filter-sort-chips" id="fg-sort">
+            <button class="sort-chip active" data-val="score" onclick="setSort('score',this)">추천순</button>
+            <button class="sort-chip" data-val="margin" onclick="setSort('margin',this)">마진율 ↑</button>
+            <button class="sort-chip" data-val="net" onclick="setSort('net',this)">순이익 ↑</button>
+            <button class="sort-chip" data-val="comp" onclick="setSort('comp',this)">경쟁강도 ↓</button>
+            <button class="sort-chip" data-val="price_asc" onclick="setSort('price_asc',this)">가격 낮은순</button>
+            <button class="sort-chip" data-val="price_desc" onclick="setSort('price_desc',this)">가격 높은순</button>
           </div>
         </div>
 
@@ -182,36 +195,53 @@
             </div>
           </div>
 
-          <!-- 마진율 -->
-          <div class="filter-group">
-            <div class="filter-group-label">💰 마진율</div>
-            <div class="filter-chips" id="fg-margin">
-              <button class="fchip active" data-val="0" onclick="setFilterChip('margin','0',this)">전체</button>
-              <button class="fchip" data-val="15" onclick="setFilterChip('margin','15',this)">15%+</button>
-              <button class="fchip" data-val="20" onclick="setFilterChip('margin','20',this)">20%+</button>
-              <button class="fchip" data-val="30" onclick="setFilterChip('margin','30',this)">30%+</button>
+          <!-- 카테고리 -->
+          <div class="filter-group filter-group-full">
+            <div class="filter-group-label">🏷 카테고리 <span id="cat-clear-btn" class="filter-cat-clear" onclick="clearCategories()" style="display:none">✕ 전체</span></div>
+            <div class="filter-chips" id="fg-category">
+              <span style="color:#aaa;font-size:12px">로딩 중...</span>
             </div>
           </div>
 
-          <!-- 경쟁강도 -->
+          <!-- 마진율 슬라이더 -->
           <div class="filter-group">
-            <div class="filter-group-label">🏁 경쟁강도</div>
-            <div class="filter-chips" id="fg-comp">
-              <button class="fchip active" data-val="all" onclick="setFilterChip('comp','all',this)">전체</button>
-              <button class="fchip" data-val="low" onclick="setFilterChip('comp','low',this)">낮음만</button>
-              <button class="fchip" data-val="mid" onclick="setFilterChip('comp','mid',this)">보통 이하</button>
+            <div class="filter-group-label">💰 마진율 최소</div>
+            <div class="filter-slider-row">
+              <input type="range" class="filter-slider" id="margin-slider" min="0" max="50" value="0" step="5" oninput="setMarginSlider(this.value)" />
+              <span class="filter-slider-val" id="margin-slider-val">전체</span>
             </div>
+            <div class="filter-slider-marks"><span>0%</span><span>10%</span><span>20%</span><span>30%</span><span>40%</span><span>50%</span></div>
+          </div>
+
+          <!-- 경쟁강도 슬라이더 -->
+          <div class="filter-group">
+            <div class="filter-group-label">🏁 경쟁강도 최대</div>
+            <div class="filter-slider-row">
+              <input type="range" class="filter-slider" id="comp-slider" min="0" max="100" value="100" step="10" oninput="setCompSlider(this.value)" />
+              <span class="filter-slider-val" id="comp-slider-val">전체</span>
+            </div>
+            <div class="filter-slider-marks"><span>낮음 ←</span><span style="margin-left:auto">→ 높음</span></div>
+          </div>
+
+          <!-- 순이익 슬라이더 -->
+          <div class="filter-group">
+            <div class="filter-group-label">💵 순이익 최소</div>
+            <div class="filter-slider-row">
+              <input type="range" class="filter-slider" id="net-slider" min="0" max="15000" value="0" step="1000" oninput="setNetSlider(this.value)" />
+              <span class="filter-slider-val" id="net-slider-val">전체</span>
+            </div>
+            <div class="filter-slider-marks"><span>₩0</span><span style="margin-left:auto">₩15,000+</span></div>
           </div>
 
           <!-- 판매가 범위 -->
-          <div class="filter-group filter-group-price">
-            <div class="filter-group-label">💵 판매가 범위</div>
+          <div class="filter-group">
+            <div class="filter-group-label">🏷 판매가 범위</div>
             <div class="filter-price-presets" id="fg-price-preset">
               <button class="fchip active" data-val="all" onclick="setPricePreset('all',this)">전체</button>
               <button class="fchip fchip-danger" data-val="danger" onclick="setPricePreset('danger',this)">~2만원</button>
               <button class="fchip" data-val="sweet" onclick="setPricePreset('sweet',this)">3만~8만원</button>
               <button class="fchip" data-val="premium" onclick="setPricePreset('premium',this)">8만원+</button>
-              <button class="fchip" data-val="custom" onclick="setPricePreset('custom',this)">직접설정</button>
+              <button class="fchip" data-val="custom" onclick="setPricePreset('custom',this)">직접입력</button>
             </div>
             <div class="filter-price-custom" id="filter-price-custom" style="display:none">
               <div class="price-input-row">

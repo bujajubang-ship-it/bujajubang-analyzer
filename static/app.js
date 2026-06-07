@@ -7,15 +7,18 @@ let currentChannel = 'all';
 let currentSrcPage = 1;
 let totalSrcPages = 1;
 let activeFilters = {
-  channel: 'all',   // 'all' | 'both' | 'coupang'  (server-side reload)
-  grade: 'all',     // 'all' | '소싱추천' | '검토' | '비추'
-  margin: '0',      // min margin % as string
-  comp: 'all',      // 'all' | 'low' | 'mid'
-  pricePreset: 'all', // 'all' | 'danger' | 'sweet' | 'premium' | 'custom'
+  channel: 'all',      // 'all' | 'both' | 'coupang'  (server-side reload)
+  grade: 'all',        // 'all' | '소싱추천' | '검토' | '비추'
+  marginMin: 0,        // min margin % (0 = 전체)
+  compMax: 100,        // max competition intensity (100 = 전체)
+  minNet: 0,           // min net profit KRW
+  pricePreset: 'all',  // 'all' | 'danger' | 'sweet' | 'premium' | 'custom'
   priceMin: null,
   priceMax: null,
   reviews: false,
   rocket: false,
+  sort: 'score',       // 'score'|'margin'|'net'|'comp'|'price_asc'|'price_desc'
+  categories: [],      // [] = 전체
 };
 
 // ── Page switching ──────────────────────────────────────────────────
@@ -296,6 +299,7 @@ function loadSourcing(page) {
       currentSrcPage = data.meta.page;
       renderSourcingMeta(data.meta);
       renderSourcingSummary(allCandidates);
+      buildCategoryChips(allCandidates);
       applyAndRender();
       renderPagination(data.meta);
     })
@@ -336,7 +340,6 @@ function renderSourcingSummary(candidates) {
 // ── 새 필터 시스템 ──────────────────────────────────────────────────
 
 function setFilterChip(group, val, btn) {
-  // 채널 변경은 서버 재요청
   if (group === 'channel') {
     activeFilters.channel = val;
     currentChannel = val;
@@ -349,6 +352,76 @@ function setFilterChip(group, val, btn) {
   document.querySelectorAll(`#fg-${group} .fchip`).forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   applyAndRender();
+}
+
+function setSort(val, btn) {
+  activeFilters.sort = val;
+  document.querySelectorAll('#fg-sort .sort-chip').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  applyAndRender();
+}
+
+function setMarginSlider(val) {
+  activeFilters.marginMin = parseInt(val) || 0;
+  const el = document.getElementById('margin-slider-val');
+  if (el) el.textContent = val > 0 ? val + '%+' : '전체';
+  _updateSliderFill('margin-slider', val, 50);
+  applyAndRender();
+}
+
+function setCompSlider(val) {
+  activeFilters.compMax = parseInt(val);
+  const el = document.getElementById('comp-slider-val');
+  if (el) el.textContent = val < 100 ? val + ' 이하' : '전체';
+  _updateSliderFill('comp-slider', val, 100);
+  applyAndRender();
+}
+
+function setNetSlider(val) {
+  activeFilters.minNet = parseInt(val) || 0;
+  const el = document.getElementById('net-slider-val');
+  if (el) el.textContent = val > 0 ? '₩' + parseInt(val).toLocaleString() + '+' : '전체';
+  _updateSliderFill('net-slider', val, 15000);
+  applyAndRender();
+}
+
+function _updateSliderFill(id, val, max) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const pct = Math.round((val / max) * 100);
+  el.style.setProperty('--pct', pct + '%');
+  el.classList.toggle('has-value', pct > 0 && pct < 100);
+}
+
+function toggleCategory(cat, btn) {
+  const idx = activeFilters.categories.indexOf(cat);
+  if (idx >= 0) {
+    activeFilters.categories.splice(idx, 1);
+    btn.classList.remove('active');
+  } else {
+    activeFilters.categories.push(cat);
+    btn.classList.add('active');
+  }
+  const clearBtn = document.getElementById('cat-clear-btn');
+  if (clearBtn) clearBtn.style.display = activeFilters.categories.length > 0 ? '' : 'none';
+  applyAndRender();
+}
+
+function clearCategories() {
+  activeFilters.categories = [];
+  document.querySelectorAll('#fg-category .fchip').forEach(b => b.classList.remove('active'));
+  const clearBtn = document.getElementById('cat-clear-btn');
+  if (clearBtn) clearBtn.style.display = 'none';
+  applyAndRender();
+}
+
+function buildCategoryChips(candidates) {
+  const cats = [...new Set(candidates.map(c => c.category || '기타'))].sort();
+  const wrap = document.getElementById('fg-category');
+  if (!wrap) return;
+  wrap.innerHTML = cats.map(cat =>
+    `<button class="fchip" onclick="toggleCategory('${esc(cat)}',this)">${esc(cat)}</button>`
+  ).join('');
 }
 
 function setPricePreset(val, btn) {
@@ -384,20 +457,38 @@ function resetAllFilters() {
   activeFilters = {
     channel: currentChannel,
     grade: 'all',
-    margin: '0',
-    comp: 'all',
+    marginMin: 0,
+    compMax: 100,
+    minNet: 0,
     pricePreset: 'all',
     priceMin: null,
     priceMax: null,
     reviews: false,
     rocket: false,
+    sort: 'score',
+    categories: [],
   };
-  document.querySelectorAll('#fg-grade .fchip, #fg-margin .fchip, #fg-comp .fchip').forEach(b => {
-    b.classList.toggle('active', b.dataset.val === 'all' || b.dataset.val === '0');
+  document.querySelectorAll('#fg-grade .fchip').forEach(b => {
+    b.classList.toggle('active', b.dataset.val === 'all');
   });
   document.querySelectorAll('#fg-price-preset .fchip').forEach(b => {
     b.classList.toggle('active', b.dataset.val === 'all');
   });
+  document.querySelectorAll('#fg-sort .sort-chip').forEach(b => {
+    b.classList.toggle('active', b.dataset.val === 'score');
+  });
+  document.querySelectorAll('#fg-category .fchip').forEach(b => b.classList.remove('active'));
+  const catClear = document.getElementById('cat-clear-btn');
+  if (catClear) catClear.style.display = 'none';
+  const marginSlider = document.getElementById('margin-slider');
+  if (marginSlider) { marginSlider.value = 0; marginSlider.classList.remove('has-value'); }
+  document.getElementById('margin-slider-val').textContent = '전체';
+  const compSlider = document.getElementById('comp-slider');
+  if (compSlider) { compSlider.value = 100; compSlider.classList.remove('has-value'); }
+  document.getElementById('comp-slider-val').textContent = '전체';
+  const netSlider = document.getElementById('net-slider');
+  if (netSlider) { netSlider.value = 0; netSlider.classList.remove('has-value'); }
+  document.getElementById('net-slider-val').textContent = '전체';
   document.getElementById('filter-price-custom').style.display = 'none';
   document.getElementById('price-min-input').value = '';
   document.getElementById('price-max-input').value = '';
@@ -410,18 +501,19 @@ function applyFilters(candidates) {
   return candidates.filter(c => {
     // 추천 등급
     if (activeFilters.grade !== 'all' && c.rec_label !== activeFilters.grade) return false;
-    // 마진율
-    const minMargin = parseInt(activeFilters.margin) || 0;
-    if (minMargin > 0 && c.margin.rate < minMargin) return false;
-    // 경쟁강도
-    if (activeFilters.comp === 'low' && c.competition.intensity >= 30) return false;
-    if (activeFilters.comp === 'mid' && c.competition.intensity >= 50) return false;
+    // 카테고리
+    if (activeFilters.categories.length > 0 && !activeFilters.categories.includes(c.category || '기타')) return false;
+    // 마진율 슬라이더
+    if (activeFilters.marginMin > 0 && c.margin.rate < activeFilters.marginMin) return false;
+    // 경쟁강도 슬라이더
+    if (activeFilters.compMax < 100 && c.competition.intensity > activeFilters.compMax) return false;
+    // 순이익 최소
+    if (activeFilters.minNet > 0 && c.margin.net < activeFilters.minNet) return false;
     // 판매가 프리셋
     const p = activeFilters.pricePreset;
     if (p === 'danger' && c.selling > 20000) return false;
     if (p === 'sweet' && (c.selling < 30000 || c.selling > 80000)) return false;
     if (p === 'premium' && c.selling < 80000) return false;
-    // 판매가 직접설정
     if (p === 'custom') {
       if (activeFilters.priceMin && c.selling < activeFilters.priceMin) return false;
       if (activeFilters.priceMax && c.selling > activeFilters.priceMax) return false;
@@ -433,19 +525,34 @@ function applyFilters(candidates) {
   });
 }
 
+function sortCandidates(candidates) {
+  const sorted = [...candidates];
+  switch (activeFilters.sort) {
+    case 'margin':    sorted.sort((a, b) => b.margin.rate - a.margin.rate); break;
+    case 'net':       sorted.sort((a, b) => b.margin.net - a.margin.net); break;
+    case 'comp':      sorted.sort((a, b) => a.competition.intensity - b.competition.intensity); break;
+    case 'price_asc': sorted.sort((a, b) => a.selling - b.selling); break;
+    case 'price_desc':sorted.sort((a, b) => b.selling - a.selling); break;
+    default:          sorted.sort((a, b) => b.score - a.score); break;
+  }
+  return sorted;
+}
+
 function countActiveFilters() {
   let n = 0;
   if (activeFilters.grade !== 'all') n++;
-  if (parseInt(activeFilters.margin) > 0) n++;
-  if (activeFilters.comp !== 'all') n++;
+  if (activeFilters.marginMin > 0) n++;
+  if (activeFilters.compMax < 100) n++;
+  if (activeFilters.minNet > 0) n++;
   if (activeFilters.pricePreset !== 'all') n++;
   if (activeFilters.reviews) n++;
   if (activeFilters.rocket) n++;
+  if (activeFilters.categories.length > 0) n++;
   return n;
 }
 
 function applyAndRender() {
-  const filtered = applyFilters(allCandidates);
+  const filtered = sortCandidates(applyFilters(allCandidates));
   const countEl = document.getElementById('sfil-count');
   const badgeEl = document.getElementById('filter-active-count');
   const n = countActiveFilters();
@@ -539,7 +646,7 @@ function _processNextCoupang() {
 function renderSourcingCards(candidates) {
   if (!candidates.length) {
     document.getElementById('sourcing-grid').innerHTML =
-      '<div style="grid-column:1/-1;text-align:center;padding:60px;color:var(--muted)">해당 채널의 추천 상품이 없습니다.</div>';
+      '<div style="grid-column:1/-1;text-align:center;padding:60px;color:var(--muted)">조건에 맞는 상품이 없습니다. 필터를 조정해보세요.</div>';
     return;
   }
   document.getElementById('sourcing-grid').innerHTML = candidates.map(c => srcCard(c)).join('');
@@ -682,16 +789,16 @@ function srcCard(c) {
       </div>
 
       <div>
-        <div style="font-size:11px;color:var(--muted);margin-bottom:6px">🔑 키워드 클릭 → cninsider 검색 &nbsp;<span style="background:#fef9c3;color:#92400e;font-weight:700;padding:2px 6px;border-radius:4px;font-size:11px">⭐ 实力商家 배지 확인!</span></div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px">🔑 키워드 클릭 → 1688 직접 검색 (가격범위 자동 적용) &nbsp;<span style="background:#fef9c3;color:#92400e;font-weight:700;padding:2px 6px;border-radius:4px;font-size:11px">⭐ 实力商家 배지 확인!</span></div>
         <div class="src-keywords">
-          ${c.keywords_1688.map(kw => `<span class="src-kw-chip" onclick="open1688('${esc(kw)}')" title="cninsider에서 검색">${esc(kw)} 🔗</span>`).join('')}
+          ${c.keywords_1688.map(kw => `<span class="src-kw-chip" onclick="open1688('${esc(kw)}',${c.sourcing})" title="1688 실력상가 직접 검색">${esc(kw)} 🔗</span>`).join('')}
         </div>
       </div>
 
       <div class="src-fit-reason">${esc(c.fit_reason)}</div>
 
       <div class="src-suppliers" id="suppliers-${c.id}">
-        <div class="src-suppliers-title">🏭 1688 실력상가 바로가기</div>
+        <div class="src-suppliers-title">🏭 1688 실력상가 직접 바로가기</div>
         <div class="src-suppliers-body" id="suppliers-body-${c.id}">
           <span style="color:#aaa;font-size:12px">⏳ 조회 중...</span>
         </div>
@@ -702,9 +809,23 @@ function srcCard(c) {
   </div>`;
 }
 
-function open1688(kw) {
-  const url = 'https://www.cninsider.co.kr/mall/#/product?keywords=' + encodeURIComponent(kw) + '&type=text&imageAddress=&searchDiff=1';
-  window.open(url, '_blank', 'noopener');
+function open1688(kw, sourcingKrw) {
+  // 1688 实力商家 필터 + 월판매 높은순 직접 검색
+  const params = new URLSearchParams({
+    keywords: kw,
+    n: 'y',           // 실력상가 필터
+    ispro: 'true',
+    sortType: 'va_orders_desc',  // 월판매 높은순
+  });
+  // 소싱 원가 기반 CNY 가격 범위 자동 설정 (1 CNY ≈ 190 KRW)
+  if (sourcingKrw && sourcingKrw > 0) {
+    const cny = sourcingKrw / 190;
+    const minCny = Math.max(1, Math.round(cny * 0.4));
+    const maxCny = Math.round(cny * 3.5);
+    params.set('minPrice', minCny);
+    params.set('maxPrice', maxCny);
+  }
+  window.open('https://s.1688.com/selloffer/offerlist.htm?' + params.toString(), '_blank', 'noopener');
 }
 
 async function loadRealSuppliers(cardId, keyword) {
