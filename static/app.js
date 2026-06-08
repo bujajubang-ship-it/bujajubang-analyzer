@@ -789,16 +789,16 @@ function srcCard(c) {
       </div>
 
       <div>
-        <div style="font-size:11px;color:var(--muted);margin-bottom:6px">🔑 키워드 클릭 → 1688 직접 검색 (가격범위 자동 적용) &nbsp;<span style="background:#fef9c3;color:#92400e;font-weight:700;padding:2px 6px;border-radius:4px;font-size:11px">⭐ 实力商家 배지 확인!</span></div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px">🔑 키워드 클릭 → cninsider 검색 (가격범위 자동 적용) &nbsp;<span style="background:#fef9c3;color:#92400e;font-weight:700;padding:2px 6px;border-radius:4px;font-size:11px">⭐ 实力商家 배지 확인!</span></div>
         <div class="src-keywords">
-          ${c.keywords_1688.map(kw => `<span class="src-kw-chip" onclick="open1688('${esc(kw)}',${c.sourcing})" title="1688 실력상가 직접 검색">${esc(kw)} 🔗</span>`).join('')}
+          ${c.keywords_1688.map(kw => `<span class="src-kw-chip" onclick="open1688('${esc(kw)}',${c.sourcing})" title="cninsider 실력상가 검색">${esc(kw)} 🔗</span>`).join('')}
         </div>
       </div>
 
       <div class="src-fit-reason">${esc(c.fit_reason)}</div>
 
       <div class="src-suppliers" id="suppliers-${c.id}">
-        <div class="src-suppliers-title">🏭 1688 실력상가 직접 바로가기</div>
+        <div class="src-suppliers-title">🏭 cninsider 실력상가 바로가기</div>
         <div class="src-suppliers-body" id="suppliers-body-${c.id}">
           <span style="color:#aaa;font-size:12px">⏳ 조회 중...</span>
         </div>
@@ -810,28 +810,21 @@ function srcCard(c) {
 }
 
 function open1688(kw, sourcingKrw) {
-  // 1688 实力商家 필터 + 월판매 높은순 직접 검색
-  const params = new URLSearchParams({
-    keywords: kw,
-    n: 'y',           // 실력상가 필터
-    ispro: 'true',
-    sortType: 'va_orders_desc',  // 월판매 높은순
-  });
+  // cninsider 실력상가 검색 (가격범위 자동 적용)
+  const params = new URLSearchParams({ keyword: kw });
   // 소싱 원가 기반 CNY 가격 범위 자동 설정 (1 CNY ≈ 190 KRW)
   if (sourcingKrw && sourcingKrw > 0) {
     const cny = sourcingKrw / 190;
-    const minCny = Math.max(1, Math.round(cny * 0.4));
-    const maxCny = Math.round(cny * 3.5);
-    params.set('minPrice', minCny);
-    params.set('maxPrice', maxCny);
+    params.set('minPrice', Math.max(1, Math.round(cny * 0.4)));
+    params.set('maxPrice', Math.round(cny * 3.5));
   }
-  window.open('https://s.1688.com/selloffer/offerlist.htm?' + params.toString(), '_blank', 'noopener');
+  window.open('https://www.cninsider.co.kr/mall/#/search?' + params.toString(), '_blank', 'noopener');
 }
 
 async function loadRealSuppliers(cardId, keyword) {
   const body = document.getElementById('suppliers-body-' + cardId);
   if (!body) return;
-  body.innerHTML = '<span style="color:#aaa;font-size:12px">⏳ 1688 실력상가 조회 중...</span>';
+  body.innerHTML = '<span style="color:#aaa;font-size:12px">⏳ cninsider 실력상가 조회 중...</span>';
 
   try {
     const res = await fetch('/api/sourcing/suppliers?keyword=' + encodeURIComponent(keyword));

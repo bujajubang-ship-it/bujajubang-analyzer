@@ -51,9 +51,8 @@ async def fetch_1688_suppliers(keyword: str, top_n: int = 3) -> list[dict]:
         price = item.get("priceInfo", {}).get("price", "")
         promo_price = item.get("priceInfo", {}).get("promotionPrice", "")
 
-        # 1688 상품 상세 직접 링크
         offer_id = item.get("offerId", "")
-        url = f"https://detail.1688.com/offer/{offer_id}.html" if offer_id else item.get("promotionURL", "")
+        url = f"https://www.cninsider.co.kr/mall/#/product/detail?offerId={offer_id}" if offer_id else item.get("promotionURL", "")
 
         result.append({
             "name": item.get("subject", ""),
