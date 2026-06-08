@@ -2,7 +2,7 @@
 cninsider API를 통해 1688 실력상가 상품 데이터를 가져옵니다.
 """
 import httpx
-from urllib.parse import unquote
+from urllib.parse import unquote, quote
 
 CNINSIDER_API = "https://saas.cninsidererp.com/dev-api/mall/product/searchKeywordProduct"
 HEADERS = {
@@ -51,8 +51,9 @@ async def fetch_1688_suppliers(keyword: str, top_n: int = 3) -> list[dict]:
         price = item.get("priceInfo", {}).get("price", "")
         promo_price = item.get("priceInfo", {}).get("promotionPrice", "")
 
-        offer_id = item.get("offerId", "")
-        url = f"https://www.cninsider.co.kr/mall/#/product/detail?offerId={offer_id}" if offer_id else item.get("promotionURL", "")
+        # cninsider 검색 결과 페이지 (상품 상세는 1688으로 리다이렉트되므로 검색 페이지 사용)
+        search_kw = item.get("subjectTrans") or item.get("subject", "")
+        url = f"https://www.cninsider.co.kr/mall/#/search?keyword={quote(search_kw, safe='')}" if search_kw else item.get("promotionURL", "")
 
         result.append({
             "name": item.get("subject", ""),
