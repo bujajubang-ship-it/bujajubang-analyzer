@@ -5,6 +5,7 @@ import re
 import random
 import math
 import smtplib
+import urllib.parse
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from urllib.parse import quote as urlquote
@@ -440,6 +441,38 @@ def _send_memo_email_sync(name: str, text: str, saved_at: str):
 async def _send_memo_email(name: str, text: str, saved_at: str):
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, _send_memo_email_sync, name, text, saved_at)
+
+
+@app.get("/api/myip")
+async def my_ip():
+    async with httpx.AsyncClient(timeout=5) as client:
+        r = await client.get("https://api.ipify.org?format=json")
+        return r.json()
+
+
+@app.post("/api/sms/send")
+async def sms_send_proxy(request: Request):
+    """알리고 SMS 발송 프록시 — Vercel에서 호출, Render 고정 IP로 발송"""
+    data = await request.json()
+    phone = data.get("phone", "")
+    msg = data.get("msg", "")
+    if not phone or not msg:
+        return JSONResponse({"result_code": "-1", "message": "파라미터 누락"}, status_code=400)
+
+    body = urllib.parse.urlencode({
+        "key": os.getenv("ALIGO_API_KEY", ""),
+        "user_id": os.getenv("ALIGO_USER_ID", ""),
+        "sender": os.getenv("ALIGO_SENDER", ""),
+        "receiver": phone,
+        "msg": msg,
+    })
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.post(
+            "https://apis.aligo.in/send/",
+            content=body,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+    return JSONResponse(r.json())
 
 
 app.mount("/static", StaticFiles(directory="static"), name="static")

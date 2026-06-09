@@ -66,7 +66,7 @@ async def fetch_1688_suppliers(keyword: str, top_n: int = 3) -> list[dict]:
             "medal": medal,
             "repurchase": item.get("repurchaseRate", ""),
             "url": url,
-            "offer_id": offer_id,
+            "offer_id": item.get("offerId", ""),
         })
 
     return result
