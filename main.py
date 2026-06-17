@@ -22,7 +22,7 @@ from scraper import scrape, calc_competition
 from supplier_1688 import fetch_1688_suppliers
 from sourcing_data import SOURCING_CANDIDATES
 from coupang_api import CoupangPartnersAPI
-from coupang_analysis import analyze as coupang_analyze
+from coupang_analysis import analyze as coupang_analyze, get_recommendations as coupang_reco
 
 load_dotenv()
 
@@ -136,6 +136,19 @@ async def coupang_analyze_endpoint(keyword: str):
     except Exception as e:
         import traceback
         traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/coupang/recommendations")
+async def coupang_recommendations():
+    """쿠팡 소싱 추천 상품 — 복수 키워드 병렬 검색 후 소싱 점수 상위 반환"""
+    if not os.getenv("COUPANG_ACCESS_KEY"):
+        return JSONResponse({"error": "COUPANG_ACCESS_KEY 미설정"}, status_code=500)
+    try:
+        products = await coupang_reco()
+        return JSONResponse({"products": products})
+    except Exception as e:
+        import traceback; traceback.print_exc()
         return JSONResponse({"error": str(e)}, status_code=500)
 
 

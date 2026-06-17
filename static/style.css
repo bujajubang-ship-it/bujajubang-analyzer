@@ -968,3 +968,78 @@ body { font-family: -apple-system, 'Noto Sans KR', sans-serif; background: var(-
   .cp-insight-row { flex-direction: column; }
   .cp-entry-grid  { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ── Coupang Recommendation Cards ──────────────────────────────────── */
+.cp-reco-header {
+  max-width: 1200px; margin: 0 auto;
+  padding: 28px 24px 16px;
+}
+.cp-reco-title { font-size: 20px; font-weight: 800; margin-bottom: 4px; }
+.cp-reco-sub   { font-size: 13px; color: var(--muted); }
+.cp-reco-grid  {
+  max-width: 1200px; margin: 0 auto;
+  padding: 0 24px 60px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+.cp-reco-card {
+  display: flex; flex-direction: column;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 14px; overflow: hidden;
+  text-decoration: none; color: var(--text);
+  transition: box-shadow .15s, transform .15s;
+}
+.cp-reco-card:hover { box-shadow: var(--shadow-md); transform: translateY(-3px); }
+.cp-reco-img-wrap {
+  position: relative; aspect-ratio: 1/1;
+  background: #f3f4f6; overflow: hidden;
+}
+.cp-reco-img-wrap img {
+  width: 100%; height: 100%; object-fit: cover;
+}
+.cp-reco-no-img {
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; color: var(--muted);
+}
+.cp-reco-score {
+  position: absolute; top: 10px; right: 10px;
+  width: 36px; height: 36px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 800; color: #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,.2);
+}
+.cp-reco-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+.cp-reco-kw {
+  font-size: 11px; font-weight: 600;
+  color: #cf1322; background: #fff1f0;
+  border-radius: 4px; padding: 2px 7px;
+  display: inline-block; align-self: flex-start;
+}
+.cp-reco-name {
+  font-size: 13px; line-height: 1.4; font-weight: 500;
+  display: -webkit-box; -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical; overflow: hidden;
+}
+.cp-reco-price { font-size: 16px; font-weight: 800; color: #cf1322; }
+.cp-reco-meta  {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--muted); flex-wrap: wrap;
+}
+.cp-reco-type {
+  padding: 2px 7px; border-radius: 6px; font-size: 11px; font-weight: 600;
+}
+.cp-reco-type.rocket { background: #eff6ff; color: #3b82f6; }
+.cp-reco-type.wow    { background: #f5f3ff; color: #8b5cf6; }
+.cp-reco-type.normal { background: #f0fdf4; color: #16a34a; }
+.cp-reco-tags  { display: flex; gap: 5px; flex-wrap: wrap; }
+.cp-reco-tag {
+  font-size: 11px; padding: 2px 8px;
+  background: #f0fdf4; color: #16a34a;
+  border-radius: 10px; font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .cp-reco-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 0 12px 40px; }
+}

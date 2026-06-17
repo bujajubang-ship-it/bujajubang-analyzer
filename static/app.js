@@ -1037,15 +1037,31 @@ function jumpToCard(id, event) {
 
 // ── Coupang Sourcing ─────────────────────────────────────────────────
 let _cpAllProducts = [];
-let _cpInitialized = false;
-const CP_DEFAULT_KW = '업소용냉장고';
+let _cpRecoLoaded = false;
 const CP_LS_KEY = 'cp_last_kw';
 
 function _initCoupangPage() {
-  if (_cpInitialized) return;          // 이미 결과 있으면 재검색 안 함
-  const saved = localStorage.getItem(CP_LS_KEY) || CP_DEFAULT_KW;
-  document.getElementById('coupang-kw').value = saved;
-  _doCoupangFetch(saved);
+  if (_cpRecoLoaded) return;
+  _cpRecoLoaded = true;
+  const recoSection = document.getElementById('cp-reco-section');
+  const loading = document.getElementById('coupang-loading');
+  const sub = document.getElementById('cp-loading-sub');
+  if (sub) sub.textContent = '12개 키워드 병렬 검색 중... (약 5~10초 소요)';
+  loading.classList.remove('hidden');
+  recoSection.classList.add('hidden');
+
+  fetch('/api/coupang/recommendations')
+    .then(r => r.json())
+    .then(data => {
+      loading.classList.add('hidden');
+      if (data.error) { recoSection.innerHTML = '<p style="text-align:center;color:#ef4444;padding:20px">' + data.error + '</p>'; }
+      else { renderCpRecommendations(data.products || []); }
+      recoSection.classList.remove('hidden');
+    })
+    .catch(e => {
+      loading.classList.add('hidden');
+      recoSection.classList.remove('hidden');
+    });
 }
 
 function setCoupangKw(kw) {
@@ -1060,8 +1076,11 @@ function doCoupangSearch() {
 }
 
 function _doCoupangFetch(kw) {
+  document.getElementById('cp-reco-section').classList.add('hidden');
   document.getElementById('coupang-result').classList.add('hidden');
   document.getElementById('coupang-loading').classList.remove('hidden');
+  const sub = document.getElementById('cp-loading-sub');
+  if (sub) sub.textContent = '파트너스 API로 실시간 상품 데이터 수집 중';
 
   fetch('/api/coupang/analyze?keyword=' + encodeURIComponent(kw))
     .then(r => r.json())
@@ -1076,6 +1095,43 @@ function _doCoupangFetch(kw) {
       document.getElementById('coupang-loading').classList.add('hidden');
       alert('분석 중 오류가 발생했습니다: ' + e.message);
     });
+}
+
+function renderCpRecommendations(products) {
+  const grid = document.getElementById('cp-reco-grid');
+  if (!products.length) {
+    grid.innerHTML = '<p style="text-align:center;color:#6b7280;padding:30px">추천 상품을 불러오지 못했습니다. 키워드를 직접 검색해보세요.</p>';
+    return;
+  }
+  grid.innerHTML = products.map(p => {
+    const score = p.sourcing_score || 0;
+    const scoreColor = score >= 70 ? '#22c55e' : score >= 45 ? '#f97316' : '#ef4444';
+    const badge = p.is_rocket
+      ? '<span class="cp-reco-type rocket">🚀 로켓</span>'
+      : p.is_rocket_wow
+        ? '<span class="cp-reco-type wow">⚡ WOW</span>'
+        : '<span class="cp-reco-type normal">일반판매</span>';
+    const tags = (p.tags || []).map(t =>
+      '<span class="cp-reco-tag">' + t + '</span>'
+    ).join('');
+    return '<a class="cp-reco-card" href="' + p.url + '" target="_blank">'
+      + '<div class="cp-reco-img-wrap">'
+      + (p.image ? '<img src="' + p.image + '" alt="" onerror="this.style.display=\'none\'" />' : '<div class="cp-reco-no-img">이미지 없음</div>')
+      + '<div class="cp-reco-score" style="background:' + scoreColor + '">' + score + '</div>'
+      + '</div>'
+      + '<div class="cp-reco-body">'
+      + '<div class="cp-reco-kw">' + p.keyword + '</div>'
+      + '<div class="cp-reco-name">' + p.name + '</div>'
+      + '<div class="cp-reco-price">₩' + (p.price || 0).toLocaleString() + '</div>'
+      + '<div class="cp-reco-meta">'
+      + '<span>⭐ ' + (p.rating || 0) + '</span>'
+      + '<span>리뷰 ' + (p.reviews || 0).toLocaleString() + '개</span>'
+      + badge
+      + '</div>'
+      + (tags ? '<div class="cp-reco-tags">' + tags + '</div>' : '')
+      + '</div>'
+      + '</a>';
+  }).join('');
 }
 
 function renderCoupangResult(data) {

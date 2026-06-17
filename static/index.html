@@ -301,11 +301,20 @@
       </div>
     </div>
 
+    <!-- 추천 상품 섹션 (페이지 진입 시 자동 로드) -->
+    <div id="cp-reco-section" class="hidden">
+      <div class="cp-reco-header">
+        <div class="cp-reco-title">🎯 쿠팡 소싱 추천 상품</div>
+        <div class="cp-reco-sub">로켓 없음 · 리뷰 적음 · 진입 기회 순으로 자동 선별</div>
+      </div>
+      <div class="cp-reco-grid" id="cp-reco-grid"></div>
+    </div>
+
     <div id="coupang-loading" class="hidden">
       <div class="loading-box">
         <div class="spinner-big"></div>
         <div class="loading-text">쿠팡 데이터 분석 중...</div>
-        <div class="loading-sub">파트너스 API로 실시간 상품 데이터 수집 중</div>
+        <div class="loading-sub" id="cp-loading-sub">파트너스 API로 실시간 상품 데이터 수집 중</div>
       </div>
     </div>
 

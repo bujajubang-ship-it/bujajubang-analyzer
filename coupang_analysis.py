@@ -3,6 +3,7 @@
 - Coupang Partners API: 실제 쿠팡 상품 데이터 (가격, 리뷰, 로켓 여부)
 - Naver Shopping API: 시장 규모 교차 검증
 """
+import asyncio
 import math
 import os
 from typing import Dict, List
@@ -10,6 +11,77 @@ from typing import Dict, List
 import httpx
 
 from coupang_api import CoupangPartnersAPI
+
+DEFAULT_KEYWORDS = [
+    "냄비뚜껑거치대", "주방용 S후크", "실리콘냄비그립",
+    "업소용집게", "스테인레스국자", "주방용집게세트",
+    "업소용앞치마", "조리용장갑", "주방용비닐장갑",
+    "식당용수저통", "업소용소금통", "주방용오일병",
+]
+
+
+def score_product(p: Dict) -> int:
+    """개별 상품 소싱 기회 점수 (0-100, 높을수록 진입 유리)"""
+    score = 0
+    reviews = p.get("reviews", 0)
+    if reviews == 0:     score += 40
+    elif reviews < 50:   score += 35
+    elif reviews < 200:  score += 25
+    elif reviews < 500:  score += 15
+    elif reviews < 1000: score += 5
+
+    if not p.get("is_rocket") and not p.get("is_rocket_wow"):
+        score += 25
+
+    rating = p.get("rating", 0)
+    if rating >= 4.0:    score += 20
+    elif rating >= 3.5:  score += 12
+    elif rating > 0:     score += 5
+
+    price = p.get("price", 0)
+    if 3000 <= price <= 80000:    score += 15
+    elif 1000 <= price <= 200000: score += 8
+
+    return min(100, score)
+
+
+async def get_recommendations(keywords: List[str] | None = None) -> List[Dict]:
+    """여러 키워드 병렬 검색 → 소싱 점수 상위 상품 추출"""
+    if keywords is None:
+        keywords = DEFAULT_KEYWORDS
+    client = _coupang_client()
+
+    tasks = [client.search(kw, limit=20) for kw in keywords]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    all_products: List[Dict] = []
+    for kw, resp in zip(keywords, results):
+        if isinstance(resp, Exception):
+            continue
+        for p in client.parse_products(resp):
+            p["keyword"] = kw
+            p["sourcing_score"] = score_product(p)
+            tags = []
+            if not p.get("is_rocket") and not p.get("is_rocket_wow"):
+                tags.append("로켓 없음")
+            if p.get("reviews", 0) < 100:
+                tags.append("리뷰 적음")
+            if p.get("reviews", 0) == 0:
+                tags.append("선점 기회")
+            elif p.get("reviews", 0) < 30:
+                tags.append("진입 유리")
+            p["tags"] = tags
+            all_products.append(p)
+
+    seen: set = set()
+    unique: List[Dict] = []
+    for p in sorted(all_products, key=lambda x: -x["sourcing_score"]):
+        pid = p.get("product_id")
+        if pid and pid not in seen:
+            seen.add(pid)
+            unique.append(p)
+
+    return unique[:24]
 
 
 def _coupang_client() -> CoupangPartnersAPI:
