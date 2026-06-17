@@ -20,8 +20,8 @@ DEFAULT_KEYWORDS = [
 
 def _coupang_client() -> CoupangPartnersAPI:
     return CoupangPartnersAPI(
-        os.getenv("COUPANG_ACCESS_KEY", ""),
-        os.getenv("COUPANG_SECRET_KEY", ""),
+        os.getenv("COUPANG_ACCESS_KEY", "").strip(),
+        os.getenv("COUPANG_SECRET_KEY", "").strip(),
     )
 
 
