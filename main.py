@@ -23,6 +23,7 @@ from supplier_1688 import fetch_1688_suppliers
 from sourcing_data import SOURCING_CANDIDATES
 from coupang_api import CoupangPartnersAPI
 from coupang_analysis import analyze as coupang_analyze, get_recommendations as coupang_reco
+from coupang_opportunities import scan_opportunities
 
 load_dotenv()
 
@@ -169,6 +170,17 @@ async def coupang_analyze_endpoint(keyword: str):
     except Exception as e:
         import traceback
         traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/coupang/opportunities")
+async def coupang_opportunities_endpoint():
+    """네이버 + 쿠팡 파트너스 결합 소싱 기회 스캔"""
+    try:
+        results = await scan_opportunities()
+        return JSONResponse({"opportunities": results})
+    except Exception as e:
+        import traceback; traceback.print_exc()
         return JSONResponse({"error": str(e)}, status_code=500)
 
 

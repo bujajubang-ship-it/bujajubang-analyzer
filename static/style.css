@@ -1043,3 +1043,81 @@ body { font-family: -apple-system, 'Noto Sans KR', sans-serif; background: var(-
 @media (max-width: 768px) {
   .cp-reco-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 0 12px 40px; }
 }
+
+/* ── Coupang Opportunity Cards ──────────────────────────────────────── */
+.cp-opp-header {
+  max-width: 1200px; margin: 0 auto;
+  padding: 28px 24px 16px;
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+}
+.cp-opp-title { font-size: 20px; font-weight: 800; }
+.cp-opp-sub   { font-size: 13px; color: var(--muted); flex: 1; }
+.cp-refresh-btn {
+  padding: 7px 16px; background: #fff; border: 1.5px solid var(--border);
+  border-radius: 8px; font-size: 13px; cursor: pointer;
+}
+.cp-refresh-btn:hover { border-color: #cf1322; color: #cf1322; }
+
+.cp-opp-grid {
+  max-width: 1200px; margin: 0 auto;
+  padding: 0 24px 60px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+}
+.opp-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 14px; overflow: hidden;
+  display: flex; flex-direction: column;
+  box-shadow: var(--shadow);
+  transition: box-shadow .15s, transform .15s;
+}
+.opp-card:hover { box-shadow: var(--shadow-md); transform: translateY(-3px); }
+.opp-img-wrap {
+  position: relative; aspect-ratio: 1/1;
+  background: #f3f4f6; overflow: hidden;
+}
+.opp-img-wrap img { width: 100%; height: 100%; object-fit: cover; }
+.opp-no-img {
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 40px;
+}
+.opp-score {
+  position: absolute; top: 10px; right: 10px;
+  width: 38px; height: 38px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 800; color: #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,.25);
+}
+.opp-body { padding: 14px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.opp-kw    { font-size: 18px; font-weight: 800; color: var(--text); }
+.opp-label { font-size: 13px; font-weight: 700; }
+.opp-metrics { display: flex; flex-direction: column; gap: 4px; }
+.opp-metric  { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.opp-metric-icon { font-size: 13px; }
+.opp-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+.opp-tag  {
+  font-size: 11px; padding: 2px 8px; border-radius: 10px;
+  background: #f3f4f6; color: #6b7280; font-weight: 600;
+}
+.opp-tag.good { background: #f0fdf4; color: #16a34a; }
+.opp-badge-rocket {
+  font-size: 11px; padding: 2px 8px; border-radius: 10px;
+  background: #eff6ff; color: #3b82f6; font-weight: 600;
+}
+.opp-btn {
+  margin-top: auto; display: block; text-align: center;
+  padding: 9px; background: #cf1322; color: #fff;
+  border-radius: 8px; font-size: 13px; font-weight: 600;
+  text-decoration: none;
+}
+.opp-btn:hover { opacity: .88; }
+.opp-btn-dim {
+  display: block; text-align: center; padding: 9px;
+  background: #f3f4f6; color: #9ca3af;
+  border-radius: 8px; font-size: 12px;
+}
+@media (max-width: 768px) {
+  .cp-opp-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+}

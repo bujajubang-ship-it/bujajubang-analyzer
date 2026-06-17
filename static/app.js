@@ -1036,40 +1036,34 @@ function jumpToCard(id, event) {
 }
 
 // ── Coupang Sourcing ─────────────────────────────────────────────────
-let _cpAllProducts = [];
-let _cpRecoLoaded = false;
-const CP_LS_KEY = 'cp_last_kw';
+let _cpOppLoaded = false;
 
 function _initCoupangPage() {
-  if (_cpRecoLoaded) return;
-  const recoSection = document.getElementById('cp-reco-section');
+  if (_cpOppLoaded) return;
+  const oppSection = document.getElementById('cp-opp-section');
   const loading = document.getElementById('coupang-loading');
-  const sub = document.getElementById('cp-loading-sub');
-  if (sub) sub.textContent = '12개 키워드 순차 검색 중... (약 15초 소요)';
+  oppSection.classList.add('hidden');
   loading.classList.remove('hidden');
-  recoSection.classList.add('hidden');
 
-  fetch('/api/coupang/recommendations')
-    .then(r => {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
-    })
+  fetch('/api/coupang/opportunities')
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
     .then(data => {
       loading.classList.add('hidden');
       if (data.error) {
-        document.getElementById('cp-reco-grid').innerHTML =
-          '<p style="text-align:center;color:#ef4444;padding:20px">오류: ' + data.error + '</p>';
+        document.getElementById('cp-opp-grid').innerHTML =
+          '<p style="text-align:center;color:#ef4444;padding:30px">오류: ' + data.error + '</p>';
       } else {
-        renderCpRecommendations(data.products || []);
+        renderCpOpportunities(data.opportunities || []);
+        if ((data.opportunities || []).length > 0) _cpOppLoaded = true;
       }
-      if ((data.products || []).length > 0) _cpRecoLoaded = true; // 성공시만 플래그 설정
-      recoSection.classList.remove('hidden');
+      oppSection.classList.remove('hidden');
     })
     .catch(e => {
       loading.classList.add('hidden');
-      document.getElementById('cp-reco-grid').innerHTML =
-        '<p style="text-align:center;color:#ef4444;padding:20px">네트워크 오류: ' + e.message + '<br><button onclick="_cpRecoLoaded=false;_initCoupangPage()" style="margin-top:10px;padding:8px 16px;background:#cf1322;color:#fff;border:none;border-radius:8px;cursor:pointer">다시 시도</button></p>';
-      recoSection.classList.remove('hidden');
+      document.getElementById('cp-opp-grid').innerHTML =
+        '<p style="text-align:center;color:#ef4444;padding:30px">오류: ' + e.message
+        + '<br><button onclick="_cpOppLoaded=false;_initCoupangPage()" style="margin-top:12px;padding:8px 18px;background:#cf1322;color:#fff;border:none;border-radius:8px;cursor:pointer">다시 시도</button></p>';
+      oppSection.classList.remove('hidden');
     });
 }
 
@@ -1104,6 +1098,47 @@ function _doCoupangFetch(kw) {
       document.getElementById('coupang-loading').classList.add('hidden');
       alert('분석 중 오류가 발생했습니다: ' + e.message);
     });
+}
+
+function renderCpOpportunities(opps) {
+  const grid = document.getElementById('cp-opp-grid');
+  if (!opps.length) {
+    grid.innerHTML = '<p style="text-align:center;color:#6b7280;padding:40px">분석 결과 없음 — 다시 스캔해보세요.</p>';
+    return;
+  }
+  grid.innerHTML = opps.map(o => {
+    const rr = o.rocket_ratio >= 0
+      ? '<span class="opp-badge-rocket">🚀 로켓 ' + o.rocket_ratio + '%</span>'
+      : '<span class="opp-badge-rocket" style="background:#f3f4f6;color:#9ca3af">🚀 데이터없음</span>';
+    const revLabel = o.avg_reviews === 0
+      ? '<span class="opp-tag good">리뷰 0개 (선점 기회)</span>'
+      : o.avg_reviews < 100
+        ? '<span class="opp-tag good">리뷰 ' + o.avg_reviews + '개 (경쟁 낮음)</span>'
+        : '<span class="opp-tag">리뷰 평균 ' + o.avg_reviews.toLocaleString() + '개</span>';
+    const img = o.image
+      ? '<img src="' + o.image + '" alt="" onerror="this.style.display=\'none\'" />'
+      : '<div class="opp-no-img">🛍️</div>';
+
+    return '<div class="opp-card">'
+      + '<div class="opp-img-wrap">'
+      + img
+      + '<div class="opp-score" style="background:' + o.color + '">' + o.score + '</div>'
+      + '</div>'
+      + '<div class="opp-body">'
+      + '<div class="opp-kw">' + o.keyword + '</div>'
+      + '<div class="opp-label" style="color:' + o.color + '">' + o.label + '</div>'
+      + '<div class="opp-metrics">'
+      + '<div class="opp-metric"><span class="opp-metric-icon">📦</span><span>검색결과 ' + (o.total || 0).toLocaleString() + '개</span></div>'
+      + '<div class="opp-metric"><span class="opp-metric-icon">💰</span><span>평균가 ₩' + (o.avg_price || 0).toLocaleString() + '</span></div>'
+      + '<div class="opp-metric"><span class="opp-metric-icon">🛍️</span><span>쿠팡 점유 ' + o.coupang_ratio + '%</span></div>'
+      + '</div>'
+      + '<div class="opp-tags">' + revLabel + rr + '</div>'
+      + (o.landing_url
+        ? '<a class="opp-btn" href="' + o.landing_url + '" target="_blank">쿠팡에서 보기 →</a>'
+        : '<span class="opp-btn-dim">쿠팡 데이터 없음</span>')
+      + '</div>'
+      + '</div>';
+  }).join('');
 }
 
 function renderCpRecommendations(products) {
