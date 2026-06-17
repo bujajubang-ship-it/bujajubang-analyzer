@@ -1042,24 +1042,33 @@ const CP_LS_KEY = 'cp_last_kw';
 
 function _initCoupangPage() {
   if (_cpRecoLoaded) return;
-  _cpRecoLoaded = true;
   const recoSection = document.getElementById('cp-reco-section');
   const loading = document.getElementById('coupang-loading');
   const sub = document.getElementById('cp-loading-sub');
-  if (sub) sub.textContent = '12개 키워드 병렬 검색 중... (약 5~10초 소요)';
+  if (sub) sub.textContent = '12개 키워드 순차 검색 중... (약 15초 소요)';
   loading.classList.remove('hidden');
   recoSection.classList.add('hidden');
 
   fetch('/api/coupang/recommendations')
-    .then(r => r.json())
+    .then(r => {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
     .then(data => {
       loading.classList.add('hidden');
-      if (data.error) { recoSection.innerHTML = '<p style="text-align:center;color:#ef4444;padding:20px">' + data.error + '</p>'; }
-      else { renderCpRecommendations(data.products || []); }
+      if (data.error) {
+        document.getElementById('cp-reco-grid').innerHTML =
+          '<p style="text-align:center;color:#ef4444;padding:20px">오류: ' + data.error + '</p>';
+      } else {
+        renderCpRecommendations(data.products || []);
+      }
+      if ((data.products || []).length > 0) _cpRecoLoaded = true; // 성공시만 플래그 설정
       recoSection.classList.remove('hidden');
     })
     .catch(e => {
       loading.classList.add('hidden');
+      document.getElementById('cp-reco-grid').innerHTML =
+        '<p style="text-align:center;color:#ef4444;padding:20px">네트워크 오류: ' + e.message + '<br><button onclick="_cpRecoLoaded=false;_initCoupangPage()" style="margin-top:10px;padding:8px 16px;background:#cf1322;color:#fff;border:none;border-radius:8px;cursor:pointer">다시 시도</button></p>';
       recoSection.classList.remove('hidden');
     });
 }

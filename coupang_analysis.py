@@ -13,9 +13,8 @@ import httpx
 from coupang_api import CoupangPartnersAPI
 
 DEFAULT_KEYWORDS = [
-    "집게", "주걱", "앞치마", "행주",
-    "국자", "도마", "소쿠리", "뒤집개",
-    "냄비", "솥뚜껑", "찜기", "체",
+    "집게", "주걱", "앞치마",
+    "국자", "도마", "뒤집개",
 ]
 
 
@@ -227,7 +226,7 @@ async def get_recommendations(keywords: Optional[List[str]] = None) -> List[Dict
     all_products: List[Dict] = []
     for kw in keywords:
         try:
-            resp = await client.search(kw, limit=20)
+            resp = await client.search(kw, limit=10)
             parsed = client.parse_products(resp)
             print(f"[reco] {kw}: {len(parsed)}개")
             for p in parsed:
