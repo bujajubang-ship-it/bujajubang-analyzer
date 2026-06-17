@@ -22,6 +22,7 @@ from scraper import scrape, calc_competition
 from supplier_1688 import fetch_1688_suppliers
 from sourcing_data import SOURCING_CANDIDATES
 from coupang_api import CoupangPartnersAPI
+from coupang_analysis import analyze as coupang_analyze
 
 load_dotenv()
 
@@ -120,6 +121,18 @@ async def coupang_search(keyword: str, limit: int = 20):
             "products": products,
             "landing_url": resp.get("data", {}).get("landingUrl", ""),
         })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/coupang/analyze")
+async def coupang_analyze_endpoint(keyword: str):
+    """쿠팡 소싱 분석 — Partners API + Naver API 통합"""
+    if not os.getenv("COUPANG_ACCESS_KEY"):
+        return JSONResponse({"error": "COUPANG_ACCESS_KEY 환경변수 미설정"}, status_code=500)
+    try:
+        result = await coupang_analyze(keyword)
+        return JSONResponse(result)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 

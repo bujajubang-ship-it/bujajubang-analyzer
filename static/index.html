@@ -17,6 +17,7 @@
       <nav class="site-nav">
         <button class="nav-btn active" id="nav-search" onclick="switchPage('search')">🔍 키워드 분석</button>
         <button class="nav-btn" id="nav-sourcing" onclick="switchPage('sourcing')">📦 소싱 추천</button>
+        <button class="nav-btn" id="nav-coupang" onclick="switchPage('coupang')">🛍️ 쿠팡 소싱</button>
       </nav>
       <div class="search-wrap" id="header-search" style="display:none">
         <input type="text" id="header-keyword" placeholder="키워드 검색..." onkeydown="if(event.key==='Enter')doSearch()" />
@@ -278,6 +279,133 @@
           <div style="margin-top:12px;font-size:15px;font-weight:600">소싱 데이터 로딩 중...</div>
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- ── Coupang Sourcing Page ── -->
+  <section id="coupang-page" class="hidden">
+    <div class="coupang-hero">
+      <div class="coupang-hero-title">🛍️ 쿠팡 소싱 분석</div>
+      <div class="coupang-hero-sub">쿠팡파트너스 API 기반 실제 데이터로 경쟁강도·진입 가능성·추천 가격대 분석</div>
+      <div class="coupang-search-bar">
+        <input type="text" id="coupang-kw" placeholder="예: 업소용냉장고, 스테인레스선반, 업소용가스렌지..."
+          onkeydown="if(event.key==='Enter')doCoupangSearch()" />
+        <button class="coupang-search-btn" onclick="doCoupangSearch()">🔍 분석</button>
+      </div>
+      <div class="coupang-quick-tags">
+        <span onclick="setCoupangKw('업소용냉장고')">업소용냉장고</span>
+        <span onclick="setCoupangKw('스테인레스선반')">스테인레스선반</span>
+        <span onclick="setCoupangKw('업소용가스레인지')">업소용가스레인지</span>
+        <span onclick="setCoupangKw('업소용싱크대')">업소용싱크대</span>
+        <span onclick="setCoupangKw('주방집게')">주방집게</span>
+      </div>
+    </div>
+
+    <div id="coupang-loading" class="hidden">
+      <div class="loading-box">
+        <div class="spinner-big"></div>
+        <div class="loading-text">쿠팡 데이터 분석 중...</div>
+        <div class="loading-sub">파트너스 API로 실시간 상품 데이터 수집 중</div>
+      </div>
+    </div>
+
+    <div id="coupang-result" class="hidden">
+
+      <!-- 요약 헤더 -->
+      <div class="cp-result-header">
+        <div class="cp-keyword-title">"<span id="cp-kw-label"></span>" 쿠팡 소싱 분석</div>
+        <div class="cp-meta" id="cp-meta"></div>
+        <a id="cp-landing-link" href="#" target="_blank" class="cp-landing-btn" style="display:none">쿠팡에서 보기 →</a>
+      </div>
+
+      <!-- 핵심 지표 -->
+      <div class="cp-metrics-row">
+        <div class="cp-gauge-card">
+          <svg class="gauge-svg" viewBox="0 0 200 120">
+            <path d="M 20 110 A 90 90 0 0 1 180 110" fill="none" stroke="#e5e7eb" stroke-width="18" stroke-linecap="round"/>
+            <path id="cp-gauge-arc" d="M 20 110 A 90 90 0 0 1 180 110" fill="none" stroke="#22c55e" stroke-width="18"
+              stroke-linecap="round" stroke-dasharray="283" stroke-dashoffset="283"/>
+          </svg>
+          <div class="gauge-center">
+            <div class="gauge-score" id="cp-score">—</div>
+            <div class="gauge-label" id="cp-score-label">—</div>
+          </div>
+          <div class="cp-gauge-title">경쟁강도 점수</div>
+        </div>
+
+        <div class="cp-stats-grid">
+          <div class="cp-stat">
+            <div class="cp-stat-icon">🚀</div>
+            <div class="cp-stat-val" id="cp-rocket">—</div>
+            <div class="cp-stat-lbl">로켓배송 비율</div>
+          </div>
+          <div class="cp-stat">
+            <div class="cp-stat-icon">⭐</div>
+            <div class="cp-stat-val" id="cp-reviews">—</div>
+            <div class="cp-stat-lbl">평균 리뷰수</div>
+          </div>
+          <div class="cp-stat">
+            <div class="cp-stat-icon">💰</div>
+            <div class="cp-stat-val" id="cp-price-avg">—</div>
+            <div class="cp-stat-lbl">평균 가격</div>
+          </div>
+          <div class="cp-stat">
+            <div class="cp-stat-icon">📉</div>
+            <div class="cp-stat-val" id="cp-price-min">—</div>
+            <div class="cp-stat-lbl">최저가</div>
+          </div>
+          <div class="cp-stat">
+            <div class="cp-stat-icon">📈</div>
+            <div class="cp-stat-val" id="cp-price-max">—</div>
+            <div class="cp-stat-lbl">최고가</div>
+          </div>
+          <div class="cp-stat">
+            <div class="cp-stat-icon">📦</div>
+            <div class="cp-stat-val" id="cp-total">—</div>
+            <div class="cp-stat-lbl">분석 상품 수</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 인사이트 + 가격대 분포 -->
+      <div class="cp-insight-row">
+        <div class="cp-insight-box">
+          <div class="cp-section-title">💡 소싱 인사이트</div>
+          <ul class="cp-insight-list" id="cp-insights"></ul>
+        </div>
+        <div class="cp-bands-box">
+          <div class="cp-section-title">📊 가격대별 경쟁 분포</div>
+          <div class="cp-bands" id="cp-bands"></div>
+        </div>
+      </div>
+
+      <!-- 진입 추천 상품 -->
+      <div class="cp-entry-box">
+        <div class="cp-section-title">🎯 진입 추천 상품 <span class="cp-entry-sub">로켓 없음 + 리뷰 적은 순</span></div>
+        <div class="cp-entry-grid" id="cp-entry-grid"></div>
+      </div>
+
+      <!-- 전체 상품 목록 -->
+      <div class="cp-table-box">
+        <div class="cp-section-title">📋 전체 상품 목록</div>
+        <div class="cp-table-filters">
+          <button class="cp-fchip active" onclick="filterCpProducts('all',this)">전체</button>
+          <button class="cp-fchip" onclick="filterCpProducts('rocket',this)">🚀 로켓만</button>
+          <button class="cp-fchip" onclick="filterCpProducts('non_rocket',this)">일반만</button>
+          <button class="cp-fchip" onclick="filterCpProducts('low_review',this)">리뷰 적은순</button>
+        </div>
+        <div class="cp-table-wrap">
+          <table class="cp-table">
+            <thead>
+              <tr>
+                <th>#</th><th>상품명</th><th>가격</th><th>리뷰</th><th>평점</th><th>배송</th><th>링크</th>
+              </tr>
+            </thead>
+            <tbody id="cp-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
     </div>
   </section>
 
