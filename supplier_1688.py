@@ -51,9 +51,12 @@ async def fetch_1688_suppliers(keyword: str, top_n: int = 3) -> list[dict]:
         price = item.get("priceInfo", {}).get("price", "")
         promo_price = item.get("priceInfo", {}).get("promotionPrice", "")
 
-        # cninsider 검색 결과 페이지 (상품 상세는 1688으로 리다이렉트되므로 검색 페이지 사용)
-        search_kw = item.get("subjectTrans") or item.get("subject", "")
-        url = f"https://www.cninsider.co.kr/mall/#/search?keyword={quote(search_kw, safe='')}" if search_kw else item.get("promotionURL", "")
+        offer_id = item.get("offerId", "")
+        if offer_id:
+            url = f"https://www.cninsider.co.kr/mall/#/detail?id={offer_id}"
+        else:
+            search_kw = item.get("subjectTrans") or item.get("subject", "")
+            url = f"https://www.cninsider.co.kr/mall/#/search?keyword={quote(search_kw, safe='')}" if search_kw else item.get("promotionURL", "")
 
         result.append({
             "name": item.get("subject", ""),
