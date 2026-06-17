@@ -125,6 +125,19 @@ async def coupang_search(keyword: str, limit: int = 20):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@app.get("/api/coupang/debug")
+async def coupang_debug(keyword: str = "집게"):
+    """원시 API 응답 확인용 디버그 엔드포인트"""
+    client = _coupang_client()
+    if not client:
+        return JSONResponse({"error": "키 미설정"}, status_code=500)
+    try:
+        resp = await client.search(keyword, limit=5)
+        return JSONResponse({"raw": resp})
+    except Exception as e:
+        return JSONResponse({"error": str(e), "type": type(e).__name__}, status_code=500)
+
+
 @app.get("/api/coupang/analyze")
 async def coupang_analyze_endpoint(keyword: str):
     """쿠팡 소싱 분석 — Partners API + Naver API 통합"""
