@@ -11,3 +11,7 @@ services:
         sync: false
       - key: NAVER_CLIENT_SECRET
         sync: false
+      - key: COUPANG_ACCESS_KEY
+        sync: false
+      - key: COUPANG_SECRET_KEY
+        sync: false

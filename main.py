@@ -21,8 +21,14 @@ from dotenv import load_dotenv
 from scraper import scrape, calc_competition
 from supplier_1688 import fetch_1688_suppliers
 from sourcing_data import SOURCING_CANDIDATES
+from coupang_api import CoupangPartnersAPI
 
 load_dotenv()
+
+def _coupang_client() -> CoupangPartnersAPI | None:
+    ak = os.getenv("COUPANG_ACCESS_KEY", "").strip()
+    sk = os.getenv("COUPANG_SECRET_KEY", "").strip()
+    return CoupangPartnersAPI(ak, sk) if ak and sk else None
 
 app = FastAPI(title="쿠팡 상품 분석기")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -95,7 +101,41 @@ async def root():
 async def health():
     return {
         "naver": bool(os.getenv("NAVER_CLIENT_ID")),
+        "coupang": bool(os.getenv("COUPANG_ACCESS_KEY")),
     }
+
+
+@app.get("/api/coupang/search")
+async def coupang_search(keyword: str, limit: int = 20):
+    """쿠팡파트너스 API로 실제 상품 검색"""
+    client = _coupang_client()
+    if not client:
+        return JSONResponse({"error": "COUPANG_ACCESS_KEY / COUPANG_SECRET_KEY 환경변수 미설정"}, status_code=500)
+    try:
+        resp = await client.search(keyword, limit=min(limit, 100))
+        products = client.parse_products(resp)
+        return JSONResponse({
+            "keyword": keyword,
+            "count": len(products),
+            "products": products,
+            "landing_url": resp.get("data", {}).get("landingUrl", ""),
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/coupang/bestsellers")
+async def coupang_bestsellers(category_id: str = "1", limit: int = 20):
+    """쿠팡파트너스 API 카테고리별 베스트셀러"""
+    client = _coupang_client()
+    if not client:
+        return JSONResponse({"error": "COUPANG_ACCESS_KEY / COUPANG_SECRET_KEY 환경변수 미설정"}, status_code=500)
+    try:
+        resp = await client.best_sellers(category_id, limit=min(limit, 100))
+        products = client.parse_products(resp)
+        return JSONResponse({"category_id": category_id, "count": len(products), "products": products})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.post("/api/search")
