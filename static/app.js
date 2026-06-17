@@ -39,6 +39,7 @@ function switchPage(page) {
   document.getElementById('header-search').style.display = isSearch && currentSection !== 'hero' ? 'flex' : 'none';
 
   if (isSourcing) { syncMemosFromServer().then(() => loadSourcing(currentSrcPage)); }
+  if (isCoupang)  { _initCoupangPage(); }
 }
 
 let currentSection = 'hero';
@@ -1036,6 +1037,16 @@ function jumpToCard(id, event) {
 
 // ── Coupang Sourcing ─────────────────────────────────────────────────
 let _cpAllProducts = [];
+let _cpInitialized = false;
+const CP_DEFAULT_KW = '업소용냉장고';
+const CP_LS_KEY = 'cp_last_kw';
+
+function _initCoupangPage() {
+  if (_cpInitialized) return;          // 이미 결과 있으면 재검색 안 함
+  const saved = localStorage.getItem(CP_LS_KEY) || CP_DEFAULT_KW;
+  document.getElementById('coupang-kw').value = saved;
+  _doCoupangFetch(saved);
+}
 
 function setCoupangKw(kw) {
   document.getElementById('coupang-kw').value = kw;
@@ -1045,7 +1056,10 @@ function setCoupangKw(kw) {
 function doCoupangSearch() {
   const kw = document.getElementById('coupang-kw').value.trim();
   if (!kw) { document.getElementById('coupang-kw').focus(); return; }
+  _doCoupangFetch(kw);
+}
 
+function _doCoupangFetch(kw) {
   document.getElementById('coupang-result').classList.add('hidden');
   document.getElementById('coupang-loading').classList.remove('hidden');
 
@@ -1054,6 +1068,8 @@ function doCoupangSearch() {
     .then(data => {
       document.getElementById('coupang-loading').classList.add('hidden');
       if (data.error || data.detail) { alert(data.error || data.detail); return; }
+      localStorage.setItem(CP_LS_KEY, kw);
+      _cpInitialized = true;
       renderCoupangResult(data);
     })
     .catch(e => {
