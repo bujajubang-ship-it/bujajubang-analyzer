@@ -17,7 +17,6 @@
       <nav class="site-nav">
         <button class="nav-btn active" id="nav-search" onclick="switchPage('search')">🔍 키워드 분석</button>
         <button class="nav-btn" id="nav-sourcing" onclick="switchPage('sourcing')">📦 소싱 추천</button>
-        <button class="nav-btn" id="nav-coupang" onclick="switchPage('coupang')">🛍️ 쿠팡 소싱</button>
       </nav>
       <div class="search-wrap" id="header-search" style="display:none">
         <input type="text" id="header-keyword" placeholder="키워드 검색..." onkeydown="if(event.key==='Enter')doSearch()" />
@@ -148,6 +147,22 @@
       <div class="sourcing-tip">
         <span class="sourcing-tip-icon">⭐</span>
         <span>공급업체 선택 전 반드시 확인 → <strong>实力商家 (실력상가) 배지</strong>가 있는 판매자만 거래하세요. 거래 횟수·별점이 높을수록 안전해요.</span>
+      </div>
+
+      <!-- 쿠팡 소싱 기회 스캔 -->
+      <div id="coupang-loading" class="src-opp-loading hidden">
+        <div class="src-opp-spinner"></div>
+        <span>쿠팡 소싱 기회 스캔 중... (25개 키워드 × 네이버+쿠팡 분석, 약 20초)</span>
+      </div>
+      <div id="cp-opp-section" class="hidden">
+        <div class="cp-opp-header">
+          <div>
+            <div class="cp-opp-title">🛍️ 쿠팡 소싱 기회 키워드</div>
+            <div class="cp-opp-sub">리뷰 경쟁 낮음 · 로켓 적음 · 시장 수요 있음 순으로 자동 정렬</div>
+          </div>
+          <button class="cp-refresh-btn" onclick="_cpOppLoaded=false;_initCoupangPage()">🔄 다시 스캔</button>
+        </div>
+        <div class="cp-opp-grid" id="cp-opp-grid"></div>
       </div>
 
       <!-- 필터 패널 -->
@@ -282,38 +297,6 @@
     </div>
   </section>
 
-  <!-- ── Coupang Sourcing Page ── -->
-  <section id="coupang-page" class="hidden">
-    <div class="coupang-hero">
-      <div class="coupang-hero-title">🛍️ 쿠팡 소싱 기회 분석</div>
-      <div class="coupang-hero-sub">네이버 시장 데이터 + 쿠팡 로켓 비율을 결합해 지금 당장 소싱하기 좋은 키워드를 자동 발굴합니다</div>
-    </div>
-
-    <div id="coupang-loading" class="hidden">
-      <div class="loading-box">
-        <div class="spinner-big"></div>
-        <div class="loading-text">소싱 기회 스캔 중...</div>
-        <div class="loading-sub" id="cp-loading-sub">25개 키워드 × 네이버+쿠팡 동시 분석 (약 20초)</div>
-      </div>
-    </div>
-
-    <!-- 기회 카드 섹션 -->
-    <div id="cp-opp-section" class="hidden">
-      <div class="cp-opp-header">
-        <div class="cp-opp-title">📊 키워드별 소싱 기회 점수</div>
-        <div class="cp-opp-sub">리뷰 경쟁 낮음 · 로켓 적음 · 시장 수요 있음 순으로 자동 정렬</div>
-        <button class="cp-refresh-btn" onclick="_cpOppLoaded=false;_initCoupangPage()">🔄 다시 스캔</button>
-      </div>
-      <div class="cp-opp-grid" id="cp-opp-grid"></div>
-    </div>
-
-    <div id="coupang-result" class="hidden">
-
-      <!-- 요약 헤더 -->
-      <div class="cp-result-header">
-        <div class="cp-keyword-title">"<span id="cp-kw-label"></span>" 쿠팡 소싱 분석</div>
-        <div class="cp-meta" id="cp-meta"></div>
-  </section>
 
   <!-- ── Memo FAB + Panel ── -->
   <button class="memo-fab" id="memo-fab" onclick="toggleMemoPanel()">📝 내 메모</button>

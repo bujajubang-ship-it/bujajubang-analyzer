@@ -1044,11 +1044,26 @@ body { font-family: -apple-system, 'Noto Sans KR', sans-serif; background: var(-
   .cp-reco-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 0 12px 40px; }
 }
 
+/* ── Sourcing Page — Opportunity scan loading strip ─────────────────── */
+.src-opp-loading {
+  display: flex; align-items: center; gap: 12px;
+  max-width: 1200px; margin: 0 auto 8px;
+  padding: 14px 20px;
+  background: #f8fafc; border: 1px solid var(--border); border-radius: 10px;
+  font-size: 13px; color: var(--muted);
+}
+.src-opp-spinner {
+  flex-shrink: 0;
+  width: 18px; height: 18px; border: 2.5px solid var(--border);
+  border-top-color: var(--red); border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+
 /* ── Coupang Opportunity Cards ──────────────────────────────────────── */
 .cp-opp-header {
   max-width: 1200px; margin: 0 auto;
-  padding: 28px 24px 16px;
-  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  padding: 20px 24px 14px;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
 }
 .cp-opp-title { font-size: 20px; font-weight: 800; }
 .cp-opp-sub   { font-size: 13px; color: var(--muted); flex: 1; }

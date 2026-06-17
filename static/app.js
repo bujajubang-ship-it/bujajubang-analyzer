@@ -25,21 +25,20 @@ let activeFilters = {
 function switchPage(page) {
   const isSearch   = page === 'search';
   const isSourcing = page === 'sourcing';
-  const isCoupang  = page === 'coupang';
 
   document.getElementById('nav-search').classList.toggle('active', isSearch);
   document.getElementById('nav-sourcing').classList.toggle('active', isSourcing);
-  document.getElementById('nav-coupang').classList.toggle('active', isCoupang);
 
   document.getElementById('hero-section').classList.toggle('hidden', !isSearch || currentSection !== 'hero');
   document.getElementById('loading-section').classList.toggle('hidden', !isSearch || currentSection !== 'loading');
   document.getElementById('result-section').classList.toggle('hidden', !isSearch || currentSection !== 'result');
   document.getElementById('sourcing-page').classList.toggle('hidden', !isSourcing);
-  document.getElementById('coupang-page').classList.toggle('hidden', !isCoupang);
   document.getElementById('header-search').style.display = isSearch && currentSection !== 'hero' ? 'flex' : 'none';
 
-  if (isSourcing) { syncMemosFromServer().then(() => loadSourcing(currentSrcPage)); }
-  if (isCoupang)  { _initCoupangPage(); }
+  if (isSourcing) {
+    syncMemosFromServer().then(() => loadSourcing(currentSrcPage));
+    _initCoupangPage();
+  }
 }
 
 let currentSection = 'hero';
@@ -1067,38 +1066,6 @@ function _initCoupangPage() {
     });
 }
 
-function setCoupangKw(kw) {
-  document.getElementById('coupang-kw').value = kw;
-  doCoupangSearch();
-}
-
-function doCoupangSearch() {
-  const kw = document.getElementById('coupang-kw').value.trim();
-  if (!kw) { document.getElementById('coupang-kw').focus(); return; }
-  _doCoupangFetch(kw);
-}
-
-function _doCoupangFetch(kw) {
-  document.getElementById('cp-reco-section').classList.add('hidden');
-  document.getElementById('coupang-result').classList.add('hidden');
-  document.getElementById('coupang-loading').classList.remove('hidden');
-  const sub = document.getElementById('cp-loading-sub');
-  if (sub) sub.textContent = '파트너스 API로 실시간 상품 데이터 수집 중';
-
-  fetch('/api/coupang/analyze?keyword=' + encodeURIComponent(kw))
-    .then(r => r.json())
-    .then(data => {
-      document.getElementById('coupang-loading').classList.add('hidden');
-      if (data.error || data.detail) { alert(data.error || data.detail); return; }
-      localStorage.setItem(CP_LS_KEY, kw);
-      _cpInitialized = true;
-      renderCoupangResult(data);
-    })
-    .catch(e => {
-      document.getElementById('coupang-loading').classList.add('hidden');
-      alert('분석 중 오류가 발생했습니다: ' + e.message);
-    });
-}
 
 function renderCpOpportunities(opps) {
   const grid = document.getElementById('cp-opp-grid');
@@ -1141,167 +1108,4 @@ function renderCpOpportunities(opps) {
   }).join('');
 }
 
-function renderCpRecommendations(products) {
-  const grid = document.getElementById('cp-reco-grid');
-  if (!products.length) {
-    grid.innerHTML = '<p style="text-align:center;color:#6b7280;padding:30px">추천 상품을 불러오지 못했습니다. 키워드를 직접 검색해보세요.</p>';
-    return;
-  }
-  grid.innerHTML = products.map(p => {
-    const score = p.sourcing_score || 0;
-    const scoreColor = score >= 70 ? '#22c55e' : score >= 45 ? '#f97316' : '#ef4444';
-    const badge = p.is_rocket
-      ? '<span class="cp-reco-type rocket">🚀 로켓</span>'
-      : p.is_rocket_wow
-        ? '<span class="cp-reco-type wow">⚡ WOW</span>'
-        : '<span class="cp-reco-type normal">일반판매</span>';
-    const tags = (p.tags || []).map(t =>
-      '<span class="cp-reco-tag">' + t + '</span>'
-    ).join('');
-    return '<a class="cp-reco-card" href="' + p.url + '" target="_blank">'
-      + '<div class="cp-reco-img-wrap">'
-      + (p.image ? '<img src="' + p.image + '" alt="" onerror="this.style.display=\'none\'" />' : '<div class="cp-reco-no-img">이미지 없음</div>')
-      + '<div class="cp-reco-score" style="background:' + scoreColor + '">' + score + '</div>'
-      + '</div>'
-      + '<div class="cp-reco-body">'
-      + '<div class="cp-reco-kw">' + p.keyword + '</div>'
-      + '<div class="cp-reco-name">' + p.name + '</div>'
-      + '<div class="cp-reco-price">₩' + (p.price || 0).toLocaleString() + '</div>'
-      + '<div class="cp-reco-meta">'
-      + '<span>⭐ ' + (p.rating || 0) + '</span>'
-      + '<span>리뷰 ' + (p.reviews || 0).toLocaleString() + '개</span>'
-      + badge
-      + '</div>'
-      + (tags ? '<div class="cp-reco-tags">' + tags + '</div>' : '')
-      + '</div>'
-      + '</a>';
-  }).join('');
-}
 
-function renderCoupangResult(data) {
-  const comp = data.competition || {};
-
-  // Header
-  document.getElementById('cp-kw-label').textContent = data.keyword;
-  let meta = '쿠팡파트너스 ' + data.total_from_api + '개 상품 분석';
-  if (data.naver_coupang_count) meta += ' · 네이버 교차확인 ' + data.naver_coupang_count + '개';
-  document.getElementById('cp-meta').textContent = meta;
-  const landingLink = document.getElementById('cp-landing-link');
-  if (data.landing_url) {
-    landingLink.href = data.landing_url;
-    landingLink.style.display = 'inline-flex';
-  } else {
-    landingLink.style.display = 'none';
-  }
-
-  // Gauge arc (total arc ≈ 283 SVG units for the half-circle)
-  const score = comp.score || 0;
-  const offset = 283 - (score / 100) * 283;
-  const arc = document.getElementById('cp-gauge-arc');
-  arc.setAttribute('stroke-dashoffset', offset);
-  arc.setAttribute('stroke', comp.color || '#22c55e');
-  const scoreEl = document.getElementById('cp-score');
-  scoreEl.textContent = score;
-  scoreEl.style.color = comp.color || '#22c55e';
-  const labelEl = document.getElementById('cp-score-label');
-  labelEl.textContent = comp.label || '';
-  labelEl.style.color = comp.color || '#22c55e';
-
-  // Stats
-  document.getElementById('cp-rocket').textContent = (comp.rocket_ratio || 0) + '%';
-  document.getElementById('cp-free-ship').textContent = (comp.free_shipping_ratio || 0) + '%';
-  document.getElementById('cp-price-avg').textContent = '₩' + (comp.avg_price || 0).toLocaleString();
-  document.getElementById('cp-price-min').textContent = '₩' + (comp.min_price || 0).toLocaleString();
-  document.getElementById('cp-price-max').textContent = '₩' + (comp.max_price || 0).toLocaleString();
-  document.getElementById('cp-total').textContent = data.total_from_api + '개';
-
-  // Insights
-  const insEl = document.getElementById('cp-insights');
-  insEl.innerHTML = (data.insights || []).map(i => '<li>' + i + '</li>').join('');
-
-  // Price bands
-  const bandsEl = document.getElementById('cp-bands');
-  const bands = data.price_bands || [];
-  if (bands.length) {
-    bandsEl.innerHTML = bands.map(b => {
-      const isSweet = data.sweet_spot && b.label === data.sweet_spot.label;
-      return '<div class="cp-band' + (isSweet ? ' cp-band-sweet' : '') + '">'
-        + '<div class="cp-band-label">' + b.label + (isSweet ? ' 🎯' : '') + '</div>'
-        + '<div class="cp-band-stats">'
-        + '<span>' + b.count + '개</span>'
-        + '<span>로켓 ' + b.rocket_ratio + '%</span>'
-        + '<span>무료배송 ' + (b.free_shipping_ratio || 0) + '%</span>'
-        + '</div>'
-        + '<div class="cp-band-bar-wrap"><div class="cp-band-bar-fill" style="width:' + b.rocket_ratio + '%"></div></div>'
-        + '</div>';
-    }).join('');
-  } else {
-    bandsEl.innerHTML = '<div class="cp-empty">가격대 데이터 없음</div>';
-  }
-
-  // Entry candidates
-  const entryEl = document.getElementById('cp-entry-grid');
-  const entries = data.entry_candidates || [];
-  if (entries.length) {
-    entryEl.innerHTML = entries.map(p =>
-      '<a class="cp-entry-card" href="' + p.url + '" target="_blank">'
-      + '<img class="cp-entry-img" src="' + p.image + '" alt="" onerror="this.style.display=\'none\'" />'
-      + '<div class="cp-entry-info">'
-      + '<div class="cp-entry-name">' + p.name + '</div>'
-      + '<div class="cp-entry-meta">'
-      + '<span class="cp-entry-price">₩' + p.price.toLocaleString() + '</span>'
-      + '<span class="cp-entry-reviews">' + (p.is_free_shipping ? '🚚 무료' : '유료배송') + (p.is_rocket ? ' · 🚀로켓' : '') + '</span>'
-      + '</div></div></a>'
-    ).join('');
-  } else {
-    entryEl.innerHTML = '<div class="cp-empty">진입 추천 상품 없음</div>';
-  }
-
-  // Product table
-  _cpAllProducts = data.products || [];
-  _renderCpTable(_cpAllProducts);
-
-  document.getElementById('coupang-result').classList.remove('hidden');
-  document.getElementById('coupang-result').scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-function filterCpProducts(type, btn) {
-  document.querySelectorAll('.cp-fchip').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  let products = _cpAllProducts;
-  if (type === 'rocket') {
-    products = products.filter(p => p.is_rocket || p.is_rocket_wow);
-  } else if (type === 'non_rocket') {
-    products = products.filter(p => !p.is_rocket && !p.is_rocket_wow);
-  } else if (type === 'low_review') {
-    products = [...products].sort((a, b) => a.reviews - b.reviews);
-  }
-  _renderCpTable(products);
-}
-
-function _renderCpTable(products) {
-  const tbody = document.getElementById('cp-tbody');
-  if (!products.length) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#6b7280">상품 없음</td></tr>';
-    return;
-  }
-  tbody.innerHTML = products.map(p => {
-    const badge = p.is_rocket
-      ? '<span class="cp-badge cp-badge-rocket">🚀 로켓</span>'
-      : p.is_rocket_wow
-        ? '<span class="cp-badge cp-badge-wow">⚡ WOW</span>'
-        : '<span class="cp-badge cp-badge-normal">일반</span>';
-    const freeShip = p.is_free_shipping
-      ? '<span style="color:#16a34a;font-weight:600">무료</span>'
-      : '<span style="color:#9ca3af">유료</span>';
-    return '<tr>'
-      + '<td>' + p.rank + '</td>'
-      + '<td class="cp-product-name"><a href="' + p.url + '" target="_blank">' + p.name + '</a></td>'
-      + '<td>₩' + p.price.toLocaleString() + '</td>'
-      + '<td>' + badge + '</td>'
-      + '<td>' + freeShip + '</td>'
-      + '<td>' + (p.category_name || '—') + '</td>'
-      + '<td><a href="' + p.url + '" target="_blank" class="cp-link-btn">보기</a></td>'
-      + '</tr>';
-  }).join('');
-}
