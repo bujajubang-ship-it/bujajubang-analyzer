@@ -138,6 +138,26 @@ async def coupang_debug(keyword: str = "집게"):
         return JSONResponse({"error": str(e), "type": type(e).__name__}, status_code=500)
 
 
+@app.get("/api/coupang/debug-reco")
+async def coupang_debug_reco():
+    """추천 키워드별 결과 수 진단"""
+    from coupang_analysis import DEFAULT_KEYWORDS
+    client = _coupang_client()
+    if not client:
+        return JSONResponse({"error": "키 미설정"}, status_code=500)
+    results = {}
+    for kw in DEFAULT_KEYWORDS:
+        try:
+            resp = await client.search(kw, limit=5)
+            products = client.parse_products(resp)
+            results[kw] = {"count": len(products), "rCode": resp.get("rCode")}
+        except Exception as e:
+            results[kw] = {"error": str(e)}
+        import asyncio
+        await asyncio.sleep(0.3)
+    return JSONResponse(results)
+
+
 @app.get("/api/coupang/analyze")
 async def coupang_analyze_endpoint(keyword: str):
     """쿠팡 소싱 분석 — Partners API + Naver API 통합"""
