@@ -134,6 +134,8 @@ async def coupang_analyze_endpoint(keyword: str):
         result = await coupang_analyze(keyword)
         return JSONResponse(result)
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return JSONResponse({"error": str(e)}, status_code=500)
 
 

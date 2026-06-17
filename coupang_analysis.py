@@ -91,7 +91,12 @@ def _find_sweet_spot(bands: List[Dict]) -> Dict | None:
 def calc_competition(products: List[Dict], naver_count: int = 0) -> Dict:
     """쿠팡 기준 경쟁강도 점수 계산"""
     if not products:
-        return {"score": 0, "label": "데이터 없음", "color": "#6b7280"}
+        return {
+            "score": 0, "label": "데이터 없음", "color": "#6b7280",
+            "rocket_ratio": 0, "avg_reviews": 0, "high_review_ratio": 0,
+            "avg_rating": 0, "avg_price": 0, "min_price": 0, "max_price": 0,
+            "price_cv": 0, "breakdown": {"rocket": 0, "reviews": 0, "price_cv": 0, "high_review": 0},
+        }
 
     n = len(products)
     prices = [p["price"] for p in products if p["price"] > 0]
