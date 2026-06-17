@@ -219,31 +219,35 @@ def build_insights(comp: Dict, bands: List[Dict], sweet_spot: Optional[Dict]) ->
 
 
 async def get_recommendations(keywords: Optional[List[str]] = None) -> List[Dict]:
-    """여러 키워드 병렬 검색 → 소싱 점수 상위 상품 추출"""
+    """키워드 순차 검색 → 소싱 점수 상위 상품 추출 (rate limit 방지로 순차 처리)"""
+    import traceback
     if keywords is None:
         keywords = DEFAULT_KEYWORDS
     client = _coupang_client()
 
-    tasks = [client.search(kw, limit=20) for kw in keywords]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-
     all_products: List[Dict] = []
-    for kw, resp in zip(keywords, results):
-        if isinstance(resp, Exception):
+    for kw in keywords:
+        try:
+            resp = await client.search(kw, limit=20)
+            parsed = client.parse_products(resp)
+            print(f"[reco] {kw}: {len(parsed)}개")
+            for p in parsed:
+                p["keyword"] = kw
+                p["sourcing_score"] = score_product(p)
+                tags = []
+                if not p.get("is_rocket") and not p.get("is_rocket_wow"):
+                    tags.append("로켓 없음")
+                if not p.get("is_free_shipping"):
+                    tags.append("배송 경쟁 낮음")
+                if 5000 <= p.get("price", 0) <= 30000:
+                    tags.append("적정 가격대")
+                p["tags"] = tags
+                all_products.append(p)
+            await asyncio.sleep(0.3)   # rate limit 방지
+        except Exception as e:
+            print(f"[reco] {kw} 오류: {e}")
+            traceback.print_exc()
             continue
-        for p in client.parse_products(resp):
-            p["keyword"] = kw
-            p["sourcing_score"] = score_product(p)
-            tags = []
-            if not p.get("is_rocket") and not p.get("is_rocket_wow"):
-                tags.append("로켓 없음")
-            if not p.get("is_free_shipping"):
-                tags.append("배송 경쟁 낮음")
-            price = p.get("price", 0)
-            if 5000 <= price <= 30000:
-                tags.append("적정 가격대")
-            p["tags"] = tags
-            all_products.append(p)
 
     seen: set = set()
     unique: List[Dict] = []
@@ -253,6 +257,7 @@ async def get_recommendations(keywords: Optional[List[str]] = None) -> List[Dict
             seen.add(pid)
             unique.append(p)
 
+    print(f"[reco] 최종 추천 상품: {len(unique)}개")
     return unique[:24]
 
 
