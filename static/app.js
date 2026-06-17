@@ -1082,13 +1082,17 @@ function renderCpOpportunities(opps) {
       : o.avg_reviews < 100
         ? '<span class="opp-tag good">리뷰 ' + o.avg_reviews + '개 (경쟁 낮음)</span>'
         : '<span class="opp-tag">리뷰 평균 ' + o.avg_reviews.toLocaleString() + '개</span>';
-    const img = o.image
+
+    // 이미지가 있으면 바로 표시, 없으면 lazy-load (data-name으로 /api/image 호출)
+    const hasImg = !!o.image;
+    const imgHtml = hasImg
       ? '<img src="' + o.image + '" alt="" onerror="this.style.display=\'none\'" />'
-      : '<div class="opp-no-img">🛍️</div>';
+      : '<span class="src-img-placeholder">📦</span>';
+    const wrapAttr = hasImg ? '' : ' data-name="' + o.keyword + '"';
 
     return '<div class="opp-card">'
-      + '<div class="opp-img-wrap">'
-      + img
+      + '<div class="opp-img-wrap"' + wrapAttr + '>'
+      + imgHtml
       + '<div class="opp-score" style="background:' + o.color + '">' + o.score + '</div>'
       + '</div>'
       + '<div class="opp-body">'
@@ -1106,6 +1110,10 @@ function renderCpOpportunities(opps) {
       + '</div>'
       + '</div>';
   }).join('');
+
+  // 이미지 없는 카드 lazy-load
+  document.querySelectorAll('#cp-opp-grid .opp-img-wrap[data-name]').forEach(el => _imgQueue.push(el));
+  if (!_imgRunning) _processNextImage();
 }
 
 

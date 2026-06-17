@@ -147,10 +147,13 @@ async def scan_opportunities(keywords: Optional[List[str]] = None) -> List[Dict]
 
     cp = _coupang_client()
 
+    # 네이버 API: 순차 처리 (동시 요청 시 rate limit 초과)
+    naver_results = []
     async with httpx.AsyncClient() as http:
-        # 네이버 API: 동시 요청 (빠름)
-        naver_tasks = [_naver_keyword_analysis(kw, http) for kw in keywords]
-        naver_results = await asyncio.gather(*naver_tasks, return_exceptions=True)
+        for kw in keywords:
+            r = await _naver_keyword_analysis(kw, http)
+            naver_results.append(r)
+            await asyncio.sleep(0.15)
 
     # 쿠팡 Partners API: 순차 (rate limit)
     coupang_results = []
