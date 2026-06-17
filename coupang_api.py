@@ -55,7 +55,8 @@ class CoupangPartnersAPI:
             return r.json()
 
     def parse_products(self, resp: Dict) -> List[Dict]:
-        """API 응답에서 상품 리스트 정규화"""
+        """API 응답에서 상품 리스트 정규화
+        Partners 어필리에이트 API는 avgRating/reviewCount를 제공하지 않음."""
         raw = resp.get("data", {}).get("productData", [])
         products = []
         for i, p in enumerate(raw):
@@ -68,8 +69,7 @@ class CoupangPartnersAPI:
                 "url": p.get("productUrl", ""),
                 "is_rocket": p.get("isRocket", False),
                 "is_rocket_wow": p.get("isRocketWow", False),
-                "rating": p.get("avgRating", 0),
-                "reviews": p.get("reviewCount", 0),
+                "is_free_shipping": p.get("isFreeShipping", False),
                 "category_name": p.get("categoryName", ""),
             })
         return products

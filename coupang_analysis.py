@@ -1,87 +1,23 @@
 """
 쿠팡 소싱 분석 모듈
-- Coupang Partners API: 실제 쿠팡 상품 데이터 (가격, 리뷰, 로켓 여부)
-- Naver Shopping API: 시장 규모 교차 검증
+Partners 어필리에이트 API는 리뷰/평점 데이터 미제공.
+로켓 비율 · 가격 분포 · 무료배송 비율로 경쟁강도를 측정한다.
 """
 import asyncio
 import math
 import os
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import httpx
 
 from coupang_api import CoupangPartnersAPI
 
 DEFAULT_KEYWORDS = [
-    "냄비뚜껑거치대", "주방용 S후크", "실리콘냄비그립",
-    "업소용집게", "스테인레스국자", "주방용집게세트",
-    "업소용앞치마", "조리용장갑", "주방용비닐장갑",
-    "식당용수저통", "업소용소금통", "주방용오일병",
+    "냄비뚜껑거치대", "실리콘주걱세트", "주방집게",
+    "주방용앞치마", "실리콘장갑", "수저통",
+    "소스통", "오일병", "양념통세트",
+    "냄비받침", "주방행주", "실리콘냄비그립",
 ]
-
-
-def score_product(p: Dict) -> int:
-    """개별 상품 소싱 기회 점수 (0-100, 높을수록 진입 유리)"""
-    score = 0
-    reviews = p.get("reviews", 0)
-    if reviews == 0:     score += 40
-    elif reviews < 50:   score += 35
-    elif reviews < 200:  score += 25
-    elif reviews < 500:  score += 15
-    elif reviews < 1000: score += 5
-
-    if not p.get("is_rocket") and not p.get("is_rocket_wow"):
-        score += 25
-
-    rating = p.get("rating", 0)
-    if rating >= 4.0:    score += 20
-    elif rating >= 3.5:  score += 12
-    elif rating > 0:     score += 5
-
-    price = p.get("price", 0)
-    if 3000 <= price <= 80000:    score += 15
-    elif 1000 <= price <= 200000: score += 8
-
-    return min(100, score)
-
-
-async def get_recommendations(keywords: List[str] | None = None) -> List[Dict]:
-    """여러 키워드 병렬 검색 → 소싱 점수 상위 상품 추출"""
-    if keywords is None:
-        keywords = DEFAULT_KEYWORDS
-    client = _coupang_client()
-
-    tasks = [client.search(kw, limit=20) for kw in keywords]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-
-    all_products: List[Dict] = []
-    for kw, resp in zip(keywords, results):
-        if isinstance(resp, Exception):
-            continue
-        for p in client.parse_products(resp):
-            p["keyword"] = kw
-            p["sourcing_score"] = score_product(p)
-            tags = []
-            if not p.get("is_rocket") and not p.get("is_rocket_wow"):
-                tags.append("로켓 없음")
-            if p.get("reviews", 0) < 100:
-                tags.append("리뷰 적음")
-            if p.get("reviews", 0) == 0:
-                tags.append("선점 기회")
-            elif p.get("reviews", 0) < 30:
-                tags.append("진입 유리")
-            p["tags"] = tags
-            all_products.append(p)
-
-    seen: set = set()
-    unique: List[Dict] = []
-    for p in sorted(all_products, key=lambda x: -x["sourcing_score"]):
-        pid = p.get("product_id")
-        if pid and pid not in seen:
-            seen.add(pid)
-            unique.append(p)
-
-    return unique[:24]
 
 
 def _coupang_client() -> CoupangPartnersAPI:
@@ -106,94 +42,78 @@ async def _naver_coupang_count(keyword: str) -> int:
             )
             r.raise_for_status()
             items = r.json().get("items", [])
-            coupang_items = [i for i in items if "쿠팡" in i.get("mallName", "")]
-            return len(coupang_items)
+            return len([i for i in items if "쿠팡" in i.get("mallName", "")])
     except Exception:
         return 0
 
 
-def _price_band_analysis(products: List[Dict]) -> List[Dict]:
-    """가격대별 경쟁 분포 분석"""
-    if not products:
-        return []
+def score_product(p: Dict) -> int:
+    """개별 상품 소싱 기회 점수 (0-100, 높을수록 진입 유리)
+    리뷰 데이터 미제공이므로 로켓 여부·가격대·무료배송으로 산정."""
+    score = 0
 
-    prices = [p["price"] for p in products if p["price"] > 0]
-    if not prices:
-        return []
+    # 로켓 없음 = 일반 판매자 진입 가능 (핵심 지표)
+    if not p.get("is_rocket") and not p.get("is_rocket_wow"):
+        score += 40
 
-    p_max = max(prices)
-    # 동적 구간 생성 (최대가 기준으로 4구간)
-    step = p_max / 4
-    bands = []
-    for i in range(4):
-        lo = round(step * i / 10000) * 10000
-        hi = round(step * (i + 1) / 10000) * 10000
-        in_band = [p for p in products if lo <= p["price"] < hi or (i == 3 and p["price"] >= lo)]
-        if not in_band:
-            continue
-        rocket_cnt = sum(1 for p in in_band if p.get("is_rocket"))
-        avg_reviews = round(sum(p.get("reviews", 0) for p in in_band) / len(in_band))
-        bands.append({
-            "label": f"{lo:,}~{hi:,}원" if i < 3 else f"{lo:,}원~",
-            "count": len(in_band),
-            "rocket_ratio": round(rocket_cnt / len(in_band) * 100),
-            "avg_reviews": avg_reviews,
-            "avg_price": round(sum(p["price"] for p in in_band) / len(in_band)),
-        })
-    return bands
+    # 가격대 적합성 (소비자 주방용품 기준)
+    price = p.get("price", 0)
+    if 5000 <= price <= 30000:
+        score += 35   # 최적 가격대
+    elif 3000 <= price <= 60000:
+        score += 25
+    elif 1000 <= price <= 100000:
+        score += 12
 
+    # 무료배송 아님 = 아직 물류 경쟁 덜 치열
+    if not p.get("is_free_shipping"):
+        score += 15
 
-def _find_sweet_spot(bands: List[Dict]) -> Dict | None:
-    """진입 최적 가격대 찾기: 로켓 비율 낮고 리뷰수 적은 구간"""
-    if not bands:
-        return None
-    # 로켓 비율 낮음 + 리뷰수 적음 + 상품 수 충분한 구간 우선
-    scored = []
-    for b in bands:
-        if b["count"] < 3:
-            continue
-        score = (100 - b["rocket_ratio"]) * 0.6 + max(0, 100 - b["avg_reviews"] / 20) * 0.4
-        scored.append((score, b))
-    if not scored:
-        return None
-    scored.sort(key=lambda x: -x[0])
-    return scored[0][1]
+    # 가격 절대값 보너스: 너무 싸거나 비싸면 소싱 마진 위험
+    if price < 2000:
+        score -= 10
+    elif price > 200000:
+        score -= 5
+
+    return max(0, min(100, score))
 
 
 def calc_competition(products: List[Dict], naver_count: int = 0) -> Dict:
-    """쿠팡 기준 경쟁강도 점수 계산"""
+    """쿠팡 기준 경쟁강도 점수 계산 (리뷰 없이 로켓·가격·무료배송 기반)"""
+    empty = {
+        "score": 0, "label": "데이터 없음", "color": "#6b7280",
+        "rocket_ratio": 0, "free_shipping_ratio": 0,
+        "avg_price": 0, "min_price": 0, "max_price": 0,
+        "price_cv": 0, "product_count": 0,
+        "breakdown": {"rocket": 0, "free_shipping": 0, "price_cv": 0, "volume": 0},
+    }
     if not products:
-        return {
-            "score": 0, "label": "데이터 없음", "color": "#6b7280",
-            "rocket_ratio": 0, "avg_reviews": 0, "high_review_ratio": 0,
-            "avg_rating": 0, "avg_price": 0, "min_price": 0, "max_price": 0,
-            "price_cv": 0, "breakdown": {"rocket": 0, "reviews": 0, "price_cv": 0, "high_review": 0},
-        }
+        return empty
 
     n = len(products)
     prices = [p["price"] for p in products if p["price"] > 0]
     avg_price = sum(prices) / len(prices) if prices else 0
-    price_std = math.sqrt(sum((p - avg_price) ** 2 for p in prices) / len(prices)) if len(prices) > 1 else 0
+    price_std = math.sqrt(sum((x - avg_price) ** 2 for x in prices) / len(prices)) if len(prices) > 1 else 0
     price_cv = price_std / avg_price if avg_price else 0
 
     rocket_cnt = sum(1 for p in products if p.get("is_rocket") or p.get("is_rocket_wow"))
     rocket_ratio = rocket_cnt / n
 
-    reviews = [p.get("reviews", 0) for p in products]
-    avg_reviews = sum(reviews) / n if n else 0
-    high_review_ratio = sum(1 for r in reviews if r >= 1000) / n if n else 0
+    free_cnt = sum(1 for p in products if p.get("is_free_shipping"))
+    free_ratio = free_cnt / n
 
     # 점수 산정 (높을수록 진입 어려움)
-    s_rocket = rocket_ratio * 35            # 로켓 비율 (max 35)
-    s_reviews = min(avg_reviews / 500 * 30, 30)  # 평균 리뷰수 (max 30)
-    s_cv = max(0, (1 - price_cv) * 20)     # 가격 집중도 (낮은 CV = 레드오션)
-    s_high = high_review_ratio * 15        # 1000리뷰+ 비율 (max 15)
-    score = round(s_rocket + s_reviews + s_cv + s_high)
+    s_rocket = rocket_ratio * 50              # 로켓 비율 (max 50)
+    s_free   = free_ratio * 20               # 무료배송 비율 (max 20)
+    s_cv     = max(0, (1 - price_cv) * 20)  # 가격 집중도 낮을수록 레드오션 (max 20)
+    s_vol    = min(naver_count / 500 * 10, 10) if naver_count else 0  # 시장 규모 (max 10)
+
+    score = round(s_rocket + s_free + s_cv + s_vol)
     score = max(0, min(100, score))
 
-    if score >= 70:
+    if score >= 65:
         label, color = "진입 어려움", "#ef4444"
-    elif score >= 45:
+    elif score >= 40:
         label, color = "검토 필요", "#f97316"
     else:
         label, color = "진입 유리", "#22c55e"
@@ -203,70 +123,146 @@ def calc_competition(products: List[Dict], naver_count: int = 0) -> Dict:
         "label": label,
         "color": color,
         "rocket_ratio": round(rocket_ratio * 100),
-        "avg_reviews": round(avg_reviews),
-        "high_review_ratio": round(high_review_ratio * 100),
-        "avg_rating": round(sum(p.get("rating", 0) for p in products) / n, 1),
+        "free_shipping_ratio": round(free_ratio * 100),
         "avg_price": round(avg_price),
         "min_price": min(prices) if prices else 0,
         "max_price": max(prices) if prices else 0,
         "price_cv": round(price_cv * 100),
+        "product_count": n,
         "breakdown": {
             "rocket": round(s_rocket),
-            "reviews": round(s_reviews),
+            "free_shipping": round(s_free),
             "price_cv": round(s_cv),
-            "high_review": round(s_high),
+            "volume": round(s_vol),
         },
     }
 
 
-def build_insights(comp: Dict, bands: List[Dict], sweet_spot: Dict | None) -> List[str]:
+def _price_band_analysis(products: List[Dict]) -> List[Dict]:
+    """가격대별 경쟁 분포"""
+    if not products:
+        return []
+    prices = [p["price"] for p in products if p["price"] > 0]
+    if not prices:
+        return []
+
+    p_max = max(prices)
+    step = p_max / 4
+    bands = []
+    for i in range(4):
+        lo = round(step * i / 1000) * 1000
+        hi = round(step * (i + 1) / 1000) * 1000
+        in_band = [p for p in products if lo <= p["price"] < hi or (i == 3 and p["price"] >= lo)]
+        if not in_band:
+            continue
+        rocket_cnt = sum(1 for p in in_band if p.get("is_rocket") or p.get("is_rocket_wow"))
+        free_cnt   = sum(1 for p in in_band if p.get("is_free_shipping"))
+        bands.append({
+            "label": f"{lo:,}~{hi:,}원" if i < 3 else f"{lo:,}원~",
+            "count": len(in_band),
+            "rocket_ratio": round(rocket_cnt / len(in_band) * 100),
+            "free_shipping_ratio": round(free_cnt / len(in_band) * 100),
+            "avg_price": round(sum(p["price"] for p in in_band) / len(in_band)),
+        })
+    return bands
+
+
+def _find_sweet_spot(bands: List[Dict]) -> Optional[Dict]:
+    """진입 최적 가격대: 로켓 비율 낮고 상품 수 충분한 구간"""
+    if not bands:
+        return None
+    scored = []
+    for b in bands:
+        if b["count"] < 2:
+            continue
+        score = (100 - b["rocket_ratio"]) * 0.7 + (100 - b["free_shipping_ratio"]) * 0.3
+        scored.append((score, b))
+    if not scored:
+        return None
+    scored.sort(key=lambda x: -x[0])
+    return scored[0][1]
+
+
+def build_insights(comp: Dict, bands: List[Dict], sweet_spot: Optional[Dict]) -> List[str]:
     insights = []
     rr = comp["rocket_ratio"]
     if rr >= 70:
-        insights.append(f"🚀 로켓배송 {rr}% — 쿠팡 직매입이 지배적. 가격 경쟁 매우 치열")
+        insights.append(f"🚀 로켓배송 {rr}% — 쿠팡 직매입 지배적. 일반 판매자 경쟁 매우 치열")
     elif rr >= 40:
-        insights.append(f"🚀 로켓배송 {rr}% — 일반 판매자도 기회 있음")
+        insights.append(f"🚀 로켓배송 {rr}% — 로켓·일반 혼재. 차별화 포인트 필요")
     else:
         insights.append(f"🚀 로켓배송 {rr}% — 일반 판매자 중심 시장. 진입 유리")
 
-    ar = comp["avg_reviews"]
-    if ar >= 2000:
-        insights.append(f"⭐ 평균 리뷰 {ar:,}개 — 매우 성숙한 시장. 신규 진입 시 초기 리뷰 확보가 관건")
-    elif ar >= 500:
-        insights.append(f"⭐ 평균 리뷰 {ar:,}개 — 중간 수준. 차별화된 상품으로 진입 가능")
+    fr = comp["free_shipping_ratio"]
+    if fr >= 80:
+        insights.append(f"🚚 무료배송 {fr}% — 배송비 경쟁 포화. 상품력·가격으로 차별화 필수")
+    elif fr >= 50:
+        insights.append(f"🚚 무료배송 {fr}% — 절반 이상 무료배송. 배송 조건 맞추면 경쟁력 있음")
     else:
-        insights.append(f"⭐ 평균 리뷰 {ar:,}개 — 리뷰 경쟁 낮음. 빠른 진입으로 선점 가능")
+        insights.append(f"🚚 무료배송 {fr}% — 배송비 경쟁 낮음. 묶음 구성으로 공략 가능")
 
-    hrr = comp["high_review_ratio"]
-    if hrr >= 50:
-        insights.append(f"📊 상품의 {hrr}%가 1000리뷰+ — 포화 시장")
-    elif hrr >= 20:
-        insights.append(f"📊 상품의 {hrr}%가 1000리뷰+ — 일부 포화, 틈새 발굴 필요")
+    cv = comp["price_cv"]
+    if cv < 20:
+        insights.append(f"💰 가격 변동계수 {cv}% — 가격대 매우 집중. 박리다매 경쟁 주의")
+    elif cv > 60:
+        insights.append(f"💰 가격 변동계수 {cv}% — 가격대 다양. 프리미엄·저가 포지셔닝 모두 가능")
+    else:
+        insights.append(f"💰 가격 변동계수 {cv}% — 적당한 가격 분산. 포지셔닝 전략 중요")
 
     if sweet_spot:
         insights.append(
             f"🎯 추천 진입 가격대: {sweet_spot['label']} "
-            f"(로켓 {sweet_spot['rocket_ratio']}%, 평균 리뷰 {sweet_spot['avg_reviews']:,}개)"
+            f"(로켓 {sweet_spot['rocket_ratio']}% · 상품 {sweet_spot['count']}개)"
         )
 
-    cv = comp["price_cv"]
-    if cv < 20:
-        insights.append(f"💰 가격 변동계수 {cv}% — 가격대 매우 집중. 가격 경쟁 치열")
-    elif cv > 60:
-        insights.append(f"💰 가격 변동계수 {cv}% — 가격대 넓음. 포지셔닝 전략 중요")
-
     return insights
+
+
+async def get_recommendations(keywords: Optional[List[str]] = None) -> List[Dict]:
+    """여러 키워드 병렬 검색 → 소싱 점수 상위 상품 추출"""
+    if keywords is None:
+        keywords = DEFAULT_KEYWORDS
+    client = _coupang_client()
+
+    tasks = [client.search(kw, limit=20) for kw in keywords]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    all_products: List[Dict] = []
+    for kw, resp in zip(keywords, results):
+        if isinstance(resp, Exception):
+            continue
+        for p in client.parse_products(resp):
+            p["keyword"] = kw
+            p["sourcing_score"] = score_product(p)
+            tags = []
+            if not p.get("is_rocket") and not p.get("is_rocket_wow"):
+                tags.append("로켓 없음")
+            if not p.get("is_free_shipping"):
+                tags.append("배송 경쟁 낮음")
+            price = p.get("price", 0)
+            if 5000 <= price <= 30000:
+                tags.append("적정 가격대")
+            p["tags"] = tags
+            all_products.append(p)
+
+    seen: set = set()
+    unique: List[Dict] = []
+    for p in sorted(all_products, key=lambda x: -x["sourcing_score"]):
+        pid = p.get("product_id")
+        if pid and pid not in seen:
+            seen.add(pid)
+            unique.append(p)
+
+    return unique[:24]
 
 
 async def analyze(keyword: str) -> Dict:
     client = _coupang_client()
 
-    # 쿠팡파트너스 API: 최대 100개
     resp = await client.search(keyword, limit=100)
     products = client.parse_products(resp)
     landing_url = resp.get("data", {}).get("landingUrl", "")
 
-    # 네이버 쇼핑: 쿠팡 상품 수 교차 검증 (백그라운드)
     naver_count = await _naver_coupang_count(keyword)
 
     comp = calc_competition(products, naver_count)
@@ -274,9 +270,7 @@ async def analyze(keyword: str) -> Dict:
     sweet_spot = _find_sweet_spot(bands)
     insights = build_insights(comp, bands, sweet_spot)
 
-    # 소싱 추천 상품 (리뷰 적고 로켓 아닌 것 우선)
     non_rocket = [p for p in products if not p.get("is_rocket") and not p.get("is_rocket_wow")]
-    low_review = sorted(non_rocket, key=lambda p: p.get("reviews", 0))
 
     return {
         "keyword": keyword,
@@ -288,5 +282,5 @@ async def analyze(keyword: str) -> Dict:
         "sweet_spot": sweet_spot,
         "insights": insights,
         "products": products[:50],
-        "entry_candidates": low_review[:10],
+        "entry_candidates": non_rocket[:10],
     }

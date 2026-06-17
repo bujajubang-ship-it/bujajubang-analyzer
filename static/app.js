@@ -1165,7 +1165,7 @@ function renderCoupangResult(data) {
 
   // Stats
   document.getElementById('cp-rocket').textContent = (comp.rocket_ratio || 0) + '%';
-  document.getElementById('cp-reviews').textContent = (comp.avg_reviews || 0).toLocaleString() + '개';
+  document.getElementById('cp-free-ship').textContent = (comp.free_shipping_ratio || 0) + '%';
   document.getElementById('cp-price-avg').textContent = '₩' + (comp.avg_price || 0).toLocaleString();
   document.getElementById('cp-price-min').textContent = '₩' + (comp.min_price || 0).toLocaleString();
   document.getElementById('cp-price-max').textContent = '₩' + (comp.max_price || 0).toLocaleString();
@@ -1186,7 +1186,7 @@ function renderCoupangResult(data) {
         + '<div class="cp-band-stats">'
         + '<span>' + b.count + '개</span>'
         + '<span>로켓 ' + b.rocket_ratio + '%</span>'
-        + '<span>리뷰 ' + b.avg_reviews.toLocaleString() + '개</span>'
+        + '<span>무료배송 ' + (b.free_shipping_ratio || 0) + '%</span>'
         + '</div>'
         + '<div class="cp-band-bar-wrap"><div class="cp-band-bar-fill" style="width:' + b.rocket_ratio + '%"></div></div>'
         + '</div>';
@@ -1206,7 +1206,7 @@ function renderCoupangResult(data) {
       + '<div class="cp-entry-name">' + p.name + '</div>'
       + '<div class="cp-entry-meta">'
       + '<span class="cp-entry-price">₩' + p.price.toLocaleString() + '</span>'
-      + '<span class="cp-entry-reviews">⭐' + p.rating + ' · ' + p.reviews.toLocaleString() + '리뷰</span>'
+      + '<span class="cp-entry-reviews">' + (p.is_free_shipping ? '🚚 무료' : '유료배송') + (p.is_rocket ? ' · 🚀로켓' : '') + '</span>'
       + '</div></div></a>'
     ).join('');
   } else {
@@ -1247,13 +1247,16 @@ function _renderCpTable(products) {
       : p.is_rocket_wow
         ? '<span class="cp-badge cp-badge-wow">⚡ WOW</span>'
         : '<span class="cp-badge cp-badge-normal">일반</span>';
+    const freeShip = p.is_free_shipping
+      ? '<span style="color:#16a34a;font-weight:600">무료</span>'
+      : '<span style="color:#9ca3af">유료</span>';
     return '<tr>'
       + '<td>' + p.rank + '</td>'
       + '<td class="cp-product-name"><a href="' + p.url + '" target="_blank">' + p.name + '</a></td>'
       + '<td>₩' + p.price.toLocaleString() + '</td>'
-      + '<td>' + p.reviews.toLocaleString() + '</td>'
-      + '<td>' + p.rating + '</td>'
       + '<td>' + badge + '</td>'
+      + '<td>' + freeShip + '</td>'
+      + '<td>' + (p.category_name || '—') + '</td>'
       + '<td><a href="' + p.url + '" target="_blank" class="cp-link-btn">보기</a></td>'
       + '</tr>';
   }).join('');
