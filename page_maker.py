@@ -22,8 +22,33 @@ NAVER_MAIN     = (1000, 1000)
 NAVER_DETAIL   = 860            # 네이버 스마트스토어 상세: 860px 너비
 
 
+def _get_img_src(img, base: str, page_url: str) -> str:
+    """img 태그에서 실제 이미지 URL 추출 (cafe24 ec-data-src 포함)"""
+    src = (img.get("src") or img.get("data-src") or img.get("data-original")
+           or img.get("ec-data-src") or img.get("data-ec-src") or "")
+    if not src or src.startswith("data:"):
+        return ""
+    if src.startswith("//"):
+        src = "https:" + src
+    elif src.startswith("/"):
+        src = base + src
+    elif not src.startswith("http"):
+        src = urljoin(page_url, src)
+    return src
+
+
+def _is_content_image(src: str) -> bool:
+    low = src.lower()
+    skip = ["logo", "blank", "spacer", "pixel", "tracking",
+            ".gif", "layout/", "close_btn", "naver_pay",
+            "btn_count", "btn_coupon", "btn_price",
+            "ico_pay", "ico_under", "star5",
+            "skin/base", "skin/admin", "echosting"]
+    return not any(k in low for k in skip)
+
+
 async def scrape_images(url: str) -> dict:
-    """상품 페이지에서 이미지 URL 목록과 텍스트 추출"""
+    """상품 페이지에서 이미지 URL 목록과 텍스트 추출 (cafe24 최적화)"""
     try:
         async with httpx.AsyncClient(headers=HEADERS, timeout=15, follow_redirects=True) as client:
             resp = await client.get(url)
@@ -35,64 +60,94 @@ async def scrape_images(url: str) -> dict:
     soup = BeautifulSoup(html, "html.parser")
     base = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
 
-    # 제목
+    # 제목 — og:title > <title> > DOM 요소 순으로 시도
     title = ""
-    for sel in ["h1", "h2", ".goods_name", ".product_name", "#goods_name", ".prd-name", "#prdName"]:
-        el = soup.select_one(sel)
-        if el and el.get_text(strip=True):
-            title = el.get_text(strip=True)
-            break
+    og_title = soup.select_one('meta[property="og:title"]')
+    if og_title and og_title.get("content"):
+        title = og_title["content"].split(" - ")[0].strip()
+    if not title:
+        t = soup.select_one("title")
+        if t:
+            title = t.get_text(strip=True).split(" - ")[0].strip()
+    if not title:
+        for sel in ["#prdName", ".goods_name", ".product_name", "#goods_name",
+                    ".prd-name", "h1"]:
+            el = soup.select_one(sel)
+            txt = el.get_text(strip=True) if el else ""
+            if txt and not txt.startswith("#"):
+                title = txt
+                break
 
-    # 상세페이지 이미지: 상세 영역 우선, 없으면 전체 페이지 img 태그
-    detail_selectors = [
+    images = []
+    seen = set()
+
+    def _add(src):
+        if src and src not in seen and _is_content_image(src):
+            seen.add(src)
+            images.append(src)
+
+    # ① 메인(대표) 이미지 — 상품 썸네일/big 이미지 우선
+    MAIN_SELECTORS = [
+        "#mainImage", ".goods_img_wrap", ".keyImg",
+        ".thumb_wrap", ".thumbnail_wrap", ".goods_thumbnails",
+        ".prdImgWrap", "#prdImgWrap", ".product_img",
+    ]
+    for sel in MAIN_SELECTORS:
+        el = soup.select_one(sel)
+        if el:
+            for img in el.find_all("img"):
+                _add(_get_img_src(img, base, url))
+            if images:
+                break
+
+    # cafe24 product/big URL 패턴 — 메인 이미지 직접 추출
+    for img in soup.find_all("img"):
+        src = _get_img_src(img, base, url)
+        if src and "/product/big/" in src:
+            _add(src)
+
+    # ② 상세 이미지 영역
+    DETAIL_SELECTORS = [
         "#prdDetail", ".prdDetailArea", ".goods_description",
         "#goods_detail", ".detail_content", ".product_detail",
         ".prd-detail", "#detail_image", ".detail_image",
-        "[id*='detail']", "[class*='detail']",
     ]
     detail_el = None
-    for sel in detail_selectors:
+    for sel in DETAIL_SELECTORS:
         el = soup.select_one(sel)
         if el:
             detail_el = el
             break
 
-    search_root = detail_el if detail_el else soup
+    if detail_el:
+        for img in detail_el.find_all("img"):
+            src = _get_img_src(img, base, url)
+            if src and _is_content_image(src):
+                _add(src)
 
-    images = []
-    seen = set()
-    for img in search_root.find_all("img"):
-        src = img.get("src") or img.get("data-src") or img.get("data-original") or ""
-        if not src:
-            continue
-        if src.startswith("//"):
-            src = "https:" + src
-        elif src.startswith("/"):
-            src = base + src
-        elif not src.startswith("http"):
-            src = urljoin(url, src)
+    # cafe24 NNEditor (상세 이미지) — ec-data-src로 직접 추출
+    for img in soup.find_all("img", attrs={"ec-data-src": True}):
+        src = _get_img_src(img, base, url)
+        if src and _is_content_image(src):
+            _add(src)
 
-        # 너무 작은 이미지(아이콘 등) 필터
-        w = int(img.get("width") or 0)
-        h = int(img.get("height") or 0)
-        if (w and w < 100) or (h and h < 100):
-            continue
-        if src not in seen and _is_content_image(src):
-            seen.add(src)
-            images.append(src)
+    # ③ 아무것도 못 찾으면 전체 페이지 스캔 (크기 필터 적용)
+    if not images:
+        for img in soup.find_all("img"):
+            src = _get_img_src(img, base, url)
+            if not src:
+                continue
+            w = int(img.get("width") or 0)
+            h = int(img.get("height") or 0)
+            if (w and w < 100) or (h and h < 100):
+                continue
+            _add(src)
 
-    # description 텍스트
+    # description
     desc_el = soup.select_one(".goods_description, #prdDetail, .detail_content")
     description = desc_el.get_text(" ", strip=True)[:500] if desc_el else ""
 
     return {"images": images, "title": title, "description": description, "error": ""}
-
-
-def _is_content_image(src: str) -> bool:
-    low = src.lower()
-    skip = ["banner", "logo", "icon", "blank", "spacer", "pixel", "tracking",
-            "button", "bullet", "arrow", "badge", ".gif"]
-    return not any(k in low for k in skip)
 
 
 def _open_image(data: bytes) -> Optional[Image.Image]:
