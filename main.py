@@ -1,3 +1,4 @@
+from __future__ import annotations
 import asyncio
 import json
 import os
@@ -24,7 +25,7 @@ from sourcing_data import SOURCING_CANDIDATES
 from coupang_api import CoupangPartnersAPI
 from coupang_analysis import analyze as coupang_analyze, get_recommendations as coupang_reco
 from coupang_opportunities import scan_opportunities
-from page_maker import scrape_images, build_processed_zip
+from page_maker import scrape_images, build_processed_zip, analyze_product_image, stream_ai_sections
 
 load_dotenv()
 
@@ -638,6 +639,34 @@ async def pagemaker_process(request: Request):
         media_type="application/zip",
         headers={"Content-Disposition": "attachment; filename=detail_images.zip"},
     )
+
+
+@app.post("/api/pagemaker/ai-analyze")
+async def pm_ai_analyze(request: Request):
+    data = await request.json()
+    image_url = (data.get("image_url") or "").strip()
+    if not image_url:
+        return JSONResponse({"error": "image_url 필요"}, status_code=400)
+    result = await analyze_product_image(image_url)
+    return JSONResponse(result)
+
+
+@app.post("/api/pagemaker/ai-stream")
+async def pm_ai_stream(request: Request):
+    data = await request.json()
+    image_url    = (data.get("image_url") or "").strip()
+    product_data = data.get("product_data") or {}
+
+    if not image_url:
+        return JSONResponse({"error": "image_url 필요"}, status_code=400)
+
+    async def generate():
+        async for event in stream_ai_sections(image_url, product_data):
+            yield sse(event)
+        yield sse({"done": True})
+
+    return StreamingResponse(generate(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 app.mount("/static", StaticFiles(directory="static"), name="static")

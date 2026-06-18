@@ -1167,6 +1167,7 @@ function pmScrape() {
       document.getElementById('pm-images-card').classList.remove('hidden');
       document.getElementById('pm-logo-card').classList.remove('hidden');
       document.getElementById('pm-process-card').classList.remove('hidden');
+      document.getElementById('pm-ai-card').classList.remove('hidden');
       pmUpdateSelCount();
     })
     .catch(e => {
@@ -1266,9 +1267,195 @@ function pmSetPos(btn) {
 }
 
 let _pmUseAi = false;
+let _pmAiProductData = {};
+let _pmAiImageUrl = '';
+let _pmAiSections = [];  // [{key, name, image_b64}]
 
 function pmToggleAi(checked) {
   _pmUseAi = checked;
+}
+
+// ── AI 분석 ────────────────────────────────────────────────────────
+async function pmAiAnalyze() {
+  const mainImg = _pmScrapedImages.find(x => x.selected && x.isMain)
+               || _pmScrapedImages.find(x => x.selected)
+               || _pmScrapedImages[0];
+  if (!mainImg) { alert('이미지를 선택하세요.'); return; }
+
+  _pmAiImageUrl = mainImg.url;
+  const btn    = document.getElementById('pm-ai-analyze-btn');
+  const status = document.getElementById('pm-ai-analyze-status');
+  btn.disabled = true;
+  btn.textContent = '분석 중...';
+  status.textContent = 'Gemini가 상품 이미지를 분석 중입니다... (10~20초)';
+  status.classList.remove('hidden');
+
+  try {
+    const resp = await fetch('/api/pagemaker/ai-analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_url: _pmAiImageUrl }),
+    });
+    const data = await resp.json();
+    if (data.error && !data.product_name) throw new Error(data.error);
+
+    _pmAiProductData = data;
+    pmFillAiFields(data);
+    document.getElementById('pm-ai-step2').classList.remove('hidden');
+    status.textContent = '✅ 분석 완료! 내용을 확인하고 수정 후 생성을 시작하세요.';
+  } catch (e) {
+    status.textContent = '오류: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔍 AI 분석 시작';
+  }
+}
+
+function pmFillAiFields(d) {
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
+  set('pai-name',     d.product_name);
+  set('pai-category', d.category);
+  set('pai-features', d.key_features);
+  set('pai-specs',    d.specs);
+  set('pai-howto',    d.how_to_use);
+  set('pai-target',   d.target_customer);
+  set('pai-background', d.background);
+  set('pai-mood',     d.mood);
+
+  const mc = (d.main_color || '#2C5F8A').match(/#[0-9a-fA-F]{6}/);
+  const sc = (d.sub_color  || '#F0F4F8').match(/#[0-9a-fA-F]{6}/);
+  const mainHex = mc ? mc[0] : '#2C5F8A';
+  const subHex  = sc ? sc[0] : '#F0F4F8';
+  set('pai-main-color', mainHex);
+  set('pai-main-color-text', d.main_color || mainHex);
+  set('pai-sub-color',  subHex);
+  set('pai-sub-color-text', d.sub_color || subHex);
+
+  document.getElementById('pai-main-color').addEventListener('input', e => {
+    document.getElementById('pai-main-color-text').value = e.target.value;
+  });
+  document.getElementById('pai-sub-color').addEventListener('input', e => {
+    document.getElementById('pai-sub-color-text').value = e.target.value;
+  });
+}
+
+function pmReadAiFields() {
+  const get = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  return {
+    product_name:    get('pai-name'),
+    category:        get('pai-category'),
+    key_features:    get('pai-features'),
+    specs:           get('pai-specs'),
+    how_to_use:      get('pai-howto'),
+    target_customer: get('pai-target'),
+    main_color:      get('pai-main-color-text') || get('pai-main-color'),
+    sub_color:       get('pai-sub-color-text')  || get('pai-sub-color'),
+    background:      get('pai-background'),
+    mood:            get('pai-mood'),
+  };
+}
+
+// ── AI 생성 ────────────────────────────────────────────────────────
+async function pmAiGenerate() {
+  const productData = pmReadAiFields();
+  const btn = document.getElementById('pm-ai-gen-btn');
+  btn.disabled = true;
+  btn.textContent = '생성 중...';
+
+  const step3 = document.getElementById('pm-ai-step3');
+  step3.classList.remove('hidden');
+  const grid     = document.getElementById('pm-ai-preview-grid');
+  const label    = document.getElementById('pm-ai-progress-label');
+  const bar      = document.getElementById('pm-ai-progress-bar');
+  const dlArea   = document.getElementById('pm-ai-dl-area');
+  grid.innerHTML = '';
+  dlArea.classList.add('hidden');
+  _pmAiSections  = [];
+
+  const TOTAL = 8;
+  let done = 0;
+
+  label.textContent = '생성 시작 중...';
+  bar.style.width = '0%';
+
+  try {
+    const resp = await fetch('/api/pagemaker/ai-stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_url: _pmAiImageUrl, product_data: productData }),
+    });
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { value, done: streamDone } = await reader.read();
+      if (streamDone) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        if (!line.startsWith('data:')) continue;
+        const json = line.slice(5).trim();
+        if (!json) continue;
+        let evt;
+        try { evt = JSON.parse(json); } catch { continue; }
+
+        if (evt.done) {
+          label.textContent = '✅ 생성 완료!';
+          bar.style.width = '100%';
+          pmBuildAiZip();
+          break;
+        }
+
+        if (evt.error) {
+          const div = document.createElement('div');
+          div.className = 'pm-ai-section-err';
+          div.textContent = (evt.name || evt.key) + ': ❌ ' + evt.error;
+          grid.appendChild(div);
+          done++;
+        } else if (evt.image_b64) {
+          done++;
+          _pmAiSections.push(evt);
+          const pct = Math.round(done / TOTAL * 100);
+          bar.style.width = pct + '%';
+          label.textContent = done + ' / ' + TOTAL + ' 완료 — ' + evt.name;
+
+          const div = document.createElement('div');
+          div.className = 'pm-ai-section-card';
+          div.innerHTML = '<div class="pm-ai-sec-name">' + evt.name + '</div>'
+            + '<img src="data:image/jpeg;base64,' + evt.image_b64 + '" alt="' + evt.name + '" />';
+          grid.appendChild(div);
+        }
+      }
+    }
+  } catch (e) {
+    label.textContent = '오류: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✨ AI 상세페이지 8장 생성';
+  }
+}
+
+async function pmBuildAiZip() {
+  if (_pmAiSections.length === 0) return;
+  try {
+    const zip = new JSZip();
+    for (const sec of _pmAiSections) {
+      const bytes = Uint8Array.from(atob(sec.image_b64), c => c.charCodeAt(0));
+      zip.file(sec.key + '.jpg', bytes);
+    }
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const url  = URL.createObjectURL(blob);
+    const link = document.getElementById('pm-ai-dl-link');
+    link.href  = url;
+    document.getElementById('pm-ai-dl-area').classList.remove('hidden');
+  } catch (e) {
+    console.error('zip 생성 오류:', e);
+  }
 }
 
 async function pmProcess() {

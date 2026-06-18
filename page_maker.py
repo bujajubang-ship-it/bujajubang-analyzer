@@ -1,19 +1,121 @@
 """
 상세페이지 메이커 — 이미지 스크래핑 + AI 카피 생성 + Pillow 레이아웃 합성
 """
+import base64
 import io
 import json
 import os
 import re
 import zipfile
 from pathlib import Path
-from typing import Optional
+from typing import Optional, AsyncGenerator
 from urllib.parse import urljoin, urlparse
 
 import httpx
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from bs4 import BeautifulSoup
+
+GEMINI_IMAGE_MODEL  = "gemini-2.5-flash-image"
+GEMINI_VISION_MODEL = "gemini-2.5-flash"
+GEMINI_BASE         = "https://generativelanguage.googleapis.com/v1beta/models"
+
+SECTIONS = [
+    {"key": "01_헤더",    "name": "헤더 배너",  "aspect": "9:16"},
+    {"key": "02_특징요약", "name": "핵심 특징",  "aspect": "3:4"},
+    {"key": "03_특징1",   "name": "특징 상세1", "aspect": "3:4"},
+    {"key": "04_특징2",   "name": "특징 상세2", "aspect": "3:4"},
+    {"key": "05_특징3",   "name": "특징 상세3", "aspect": "3:4"},
+    {"key": "06_스펙",    "name": "상세 스펙",  "aspect": "3:4"},
+    {"key": "07_사용법",  "name": "사용 방법",  "aspect": "3:4"},
+    {"key": "08_CTA",     "name": "구매 유도",  "aspect": "3:4"},
+]
+
+def _section_prompt(section_key: str, p: dict) -> str:
+    name        = p.get("product_name", "상품")
+    category    = p.get("category", "")
+    features    = p.get("key_features", "")
+    f1 = (features.split("\n")[0] if features else "").strip("• 1.")
+    f2 = (features.split("\n")[1] if "\n" in features else f1).strip("• 2.")
+    f3 = (features.split("\n")[2] if features.count("\n") >= 2 else f1).strip("• 3.")
+    specs       = p.get("specs", "")
+    how_to_use  = p.get("how_to_use", "")
+    target      = p.get("target_customer", "")
+    main_color  = p.get("main_color", "#2C5F8A")
+    sub_color   = p.get("sub_color", "#F0F4F8")
+    background  = p.get("background", "깔끔한 화이트")
+    mood        = p.get("mood", "모던, 신뢰감 있는")
+    font_style  = p.get("font_style", "굵은 고딕체")
+
+    base = f"""You are creating a section of a Korean e-commerce product detail page image (쿠팡/네이버 스타일).
+Product name: {name}
+Category: {category}
+Main color: {main_color} | Sub color: {sub_color}
+Background style: {background}
+Mood/atmosphere: {mood}
+Font style: {font_style}
+Reference image: the attached photo shows the actual product — use it visually.
+IMPORTANT: All text in the generated image MUST be in Korean (한국어). Make text bold and legible."""
+
+    if "01_헤더" in section_key:
+        return base + f"""
+
+SECTION TYPE: Hero Header Banner
+Key feature to highlight: {f1}
+Design: Large bold Korean product name at top. Product image centered/prominent. Korean tagline below: short powerful phrase. Professional full-bleed banner design. Use {main_color} as accent/background. High visual impact."""
+
+    if "02_특징요약" in section_key:
+        return base + f"""
+
+SECTION TYPE: Key Features Overview
+All features: {features}
+Design: Show 3-4 features as icon+title+description cards in a clean grid. Each card has a Korean title (5 chars max) and brief Korean description. Background: white or {sub_color}. Accent color: {main_color}. Clean, trustworthy layout."""
+
+    if "03_특징1" in section_key:
+        return base + f"""
+
+SECTION TYPE: Feature Deep Dive #1
+Feature to highlight: {f1}
+Design: Large Korean headline about this feature. Product shown in use/context related to this feature. 2-3 Korean bullet points explaining the benefit. High impact single-feature focus. Color: {main_color}."""
+
+    if "04_특징2" in section_key:
+        return base + f"""
+
+SECTION TYPE: Feature Deep Dive #2
+Feature to highlight: {f2}
+Design: Large Korean headline about this feature. Product in relevant context. 2-3 Korean bullet points. Different layout angle from section 3. Color: {main_color}."""
+
+    if "05_특징3" in section_key:
+        return base + f"""
+
+SECTION TYPE: Feature Deep Dive #3
+Feature to highlight: {f3}
+Design: Large Korean headline about this feature. Product in relevant context. 2-3 Korean bullet points. Color: {main_color}."""
+
+    if "06_스펙" in section_key:
+        return base + f"""
+
+SECTION TYPE: Product Specifications
+Specs: {specs if specs else features}
+Design: Clean info-graphic table or card layout. Korean labels and values. Product image on side. Use {main_color} for header row. Easy-to-scan grid. Trustworthy, informative feel."""
+
+    if "07_사용법" in section_key:
+        return base + f"""
+
+SECTION TYPE: How To Use (사용 방법)
+Usage steps: {how_to_use if how_to_use else features}
+Target customer: {target}
+Design: Numbered step-by-step guide in Korean. Visual icon or small illustration per step. Product shown in use. Clean instructional layout. Color: {main_color}."""
+
+    if "08_CTA" in section_key:
+        return base + f"""
+
+SECTION TYPE: Call To Action / Purchase Footer
+Summary of benefits: {features[:200]}
+Target: {target}
+Design: Strong Korean purchase motivation headline. Top 3 benefit icons. "지금 구매하기" style CTA button graphic. Confidence-building elements (quality guarantee, fast shipping). Bold, action-oriented. Color: {main_color}."""
+
+    return base
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -675,3 +777,113 @@ async def build_processed_zip(
 
     zip_buf.seek(0)
     return zip_buf.read()
+
+
+# ── Gemini AI 상세페이지 생성 ─────────────────────────────────────────
+
+def _gemini_headers() -> dict:
+    key = os.getenv("GEMINI_API_KEY", "")
+    return {"Content-Type": "application/json", "x-goog-api-key": key}
+
+
+async def analyze_product_image(image_url: str) -> dict:
+    """Gemini Vision으로 상품 이미지 분석 → 구조화된 상품정보 반환"""
+    try:
+        async with httpx.AsyncClient(headers=HEADERS, timeout=20, follow_redirects=True) as client:
+            r = await client.get(image_url)
+            r.raise_for_status()
+            img_b64 = base64.b64encode(r.content).decode()
+            ct = r.headers.get("content-type", "image/jpeg").split(";")[0]
+    except Exception as e:
+        return {"error": f"이미지 다운로드 실패: {e}"}
+
+    prompt = """상품 이미지를 분석하여 아래 JSON 형식으로만 출력하라. 코드블록 없이 JSON만.
+
+{
+  "product_name": "상품명",
+  "category": "카테고리",
+  "key_features": "• 특징1\n• 특징2\n• 특징3\n• 특징4",
+  "specs": "스펙 정보 (크기, 재질, 용량 등)",
+  "how_to_use": "1. 사용법1\n2. 사용법2\n3. 사용법3",
+  "target_customer": "타겟 고객 설명",
+  "main_color": "#XXXXXX (메인 브랜드 컬러 hex)",
+  "sub_color": "#XXXXXX (보조 컬러 hex)",
+  "background": "배경 스타일 설명 (예: 깔끔한 화이트, 그라데이션 등)",
+  "mood": "분위기 키워드 (예: 모던, 고급스러운, 신뢰감 있는)",
+  "font_style": "폰트 스타일 (예: 굵은 고딕체)"
+}"""
+
+    body = {
+        "contents": [{"parts": [
+            {"text": prompt},
+            {"inline_data": {"mime_type": ct, "data": img_b64}},
+        ]}],
+    }
+
+    url = f"{GEMINI_BASE}/{GEMINI_VISION_MODEL}:generateContent"
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(url, json=body, headers=_gemini_headers())
+            resp.raise_for_status()
+            data = resp.json()
+            text = data["candidates"][0]["content"]["parts"][0]["text"]
+            text = re.sub(r"```[a-z]*", "", text).strip("`\n ")
+            return json.loads(text)
+    except Exception as e:
+        return {"error": f"분석 실패: {e}", "product_name": ""}
+
+
+async def _generate_one_section(section: dict, product: dict, img_b64: str, mime: str) -> bytes:
+    """섹션 하나 Gemini 이미지 생성 → JPEG bytes"""
+    prompt = _section_prompt(section["key"], product)
+    body = {
+        "contents": [{"parts": [
+            {"text": prompt},
+            {"inline_data": {"mime_type": mime, "data": img_b64}},
+        ]}],
+        "generationConfig": {
+            "responseModalities": ["TEXT", "IMAGE"],
+            "imageConfig": {"aspectRatio": section["aspect"]},
+        },
+    }
+    url = f"{GEMINI_BASE}/{GEMINI_IMAGE_MODEL}:generateContent"
+    async with httpx.AsyncClient(timeout=120) as client:
+        resp = await client.post(url, json=body, headers=_gemini_headers())
+        resp.raise_for_status()
+        data = resp.json()
+        for part in data["candidates"][0]["content"]["parts"]:
+            if "inlineData" in part:
+                return base64.b64decode(part["inlineData"]["data"])
+    raise ValueError("이미지 데이터 없음")
+
+
+async def stream_ai_sections(
+    image_url: str,
+    product_data: dict,
+) -> AsyncGenerator[dict, None]:
+    """각 섹션 순서대로 생성 → {key, name, image_b64, error} dict yield"""
+    # 상품 이미지 다운로드 → base64
+    try:
+        async with httpx.AsyncClient(headers=HEADERS, timeout=20, follow_redirects=True) as client:
+            r = await client.get(image_url)
+            r.raise_for_status()
+            img_b64 = base64.b64encode(r.content).decode()
+            mime = r.headers.get("content-type", "image/jpeg").split(";")[0]
+    except Exception as e:
+        yield {"key": "error", "name": "오류", "error": str(e)}
+        return
+
+    for section in SECTIONS:
+        try:
+            img_bytes = await _generate_one_section(section, product_data, img_b64, mime)
+            yield {
+                "key":      section["key"],
+                "name":     section["name"],
+                "image_b64": base64.b64encode(img_bytes).decode(),
+            }
+        except Exception as e:
+            yield {
+                "key":   section["key"],
+                "name":  section["name"],
+                "error": str(e),
+            }
