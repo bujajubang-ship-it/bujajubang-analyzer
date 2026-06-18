@@ -24,6 +24,7 @@ from sourcing_data import SOURCING_CANDIDATES
 from coupang_api import CoupangPartnersAPI
 from coupang_analysis import analyze as coupang_analyze, get_recommendations as coupang_reco
 from coupang_opportunities import scan_opportunities
+from page_maker import scrape_images, build_processed_zip
 
 load_dotenv()
 
@@ -586,6 +587,48 @@ async def sms_send_proxy(request: Request):
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
     return JSONResponse(r.json())
+
+
+# ── 상세페이지 메이커 ──────────────────────────────────────────────────
+
+@app.post("/api/pagemaker/scrape")
+async def pagemaker_scrape(request: Request):
+    data = await request.json()
+    url = (data.get("url") or "").strip()
+    if not url:
+        return JSONResponse({"error": "URL이 필요합니다"}, status_code=400)
+    result = await scrape_images(url)
+    return JSONResponse(result)
+
+
+@app.post("/api/pagemaker/process")
+async def pagemaker_process(request: Request):
+    import base64
+    data = await request.json()
+    image_urls: list = data.get("images", [])
+    is_main: list = data.get("is_main", [False] * len(image_urls))
+    logo_b64: str = data.get("logo_b64", "")
+    logo_position: str = data.get("logo_position", "bottom-right")
+    logo_size_pct: float = float(data.get("logo_size_pct", 0.15))
+
+    if not image_urls:
+        return JSONResponse({"error": "이미지가 없습니다"}, status_code=400)
+
+    logo_bytes = base64.b64decode(logo_b64) if logo_b64 else None
+
+    zip_data = await build_processed_zip(
+        image_urls=image_urls,
+        logo_bytes=logo_bytes,
+        logo_position=logo_position,
+        logo_size_pct=logo_size_pct,
+        is_main=is_main,
+    )
+
+    return StreamingResponse(
+        iter([zip_data]),
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=detail_images.zip"},
+    )
 
 
 app.mount("/static", StaticFiles(directory="static"), name="static")

@@ -23,16 +23,19 @@ let activeFilters = {
 
 // ── Page switching ──────────────────────────────────────────────────
 function switchPage(page) {
-  const isSearch   = page === 'search';
-  const isSourcing = page === 'sourcing';
+  const isSearch    = page === 'search';
+  const isSourcing  = page === 'sourcing';
+  const isPagemaker = page === 'pagemaker';
 
   document.getElementById('nav-search').classList.toggle('active', isSearch);
   document.getElementById('nav-sourcing').classList.toggle('active', isSourcing);
+  document.getElementById('nav-pagemaker').classList.toggle('active', isPagemaker);
 
   document.getElementById('hero-section').classList.toggle('hidden', !isSearch || currentSection !== 'hero');
   document.getElementById('loading-section').classList.toggle('hidden', !isSearch || currentSection !== 'loading');
   document.getElementById('result-section').classList.toggle('hidden', !isSearch || currentSection !== 'result');
   document.getElementById('sourcing-page').classList.toggle('hidden', !isSourcing);
+  document.getElementById('pagemaker-page').classList.toggle('hidden', !isPagemaker);
   document.getElementById('header-search').style.display = isSearch && currentSection !== 'hero' ? 'flex' : 'none';
 
   if (isSourcing) {
@@ -1117,3 +1120,177 @@ function renderCpOpportunities(opps) {
 }
 
 
+// ── Page Maker ──────────────────────────────────────────────────────
+let _pmLogoB64 = '';
+let _pmLogoPos = 'bottom-right';
+let _pmScrapedImages = []; // [{url, selected, isMain}]
+
+function pmScrape() {
+  const url = document.getElementById('pm-url').value.trim();
+  if (!url) return;
+
+  const btn    = document.getElementById('pm-scrape-btn');
+  const status = document.getElementById('pm-scrape-status');
+  btn.disabled = true;
+  btn.textContent = '불러오는 중...';
+  status.textContent = '이미지 스캔 중...';
+  status.classList.remove('hidden', 'pm-status-err');
+
+  fetch('/api/pagemaker/scrape', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  })
+    .then(r => r.json())
+    .then(data => {
+      btn.disabled = false;
+      btn.textContent = '이미지 불러오기';
+
+      if (data.error) {
+        status.textContent = '오류: ' + data.error;
+        status.classList.add('pm-status-err');
+        return;
+      }
+      if (!data.images || data.images.length === 0) {
+        status.textContent = '이미지를 찾지 못했습니다. URL을 확인해주세요.';
+        status.classList.add('pm-status-err');
+        return;
+      }
+
+      status.textContent = data.images.length + '개 이미지 발견' + (data.title ? ' — ' + data.title : '');
+      _pmScrapedImages = data.images.map((u, i) => ({ url: u, selected: true, isMain: i === 0 }));
+      pmRenderImages();
+
+      document.getElementById('pm-images-card').classList.remove('hidden');
+      document.getElementById('pm-logo-card').classList.remove('hidden');
+      document.getElementById('pm-process-card').classList.remove('hidden');
+      pmUpdateSelCount();
+    })
+    .catch(e => {
+      btn.disabled = false;
+      btn.textContent = '이미지 불러오기';
+      status.textContent = '연결 오류: ' + e.message;
+      status.classList.add('pm-status-err');
+    });
+}
+
+function pmRenderImages() {
+  const grid = document.getElementById('pm-img-grid');
+  grid.innerHTML = _pmScrapedImages.map((item, i) => {
+    return '<div class="pm-img-card' + (item.selected ? '' : ' pm-img-desel') + '" id="pm-ic-' + i + '">'
+      + '<img src="' + item.url + '" alt="" onerror="this.parentNode.style.display=\'none\'" loading="lazy" />'
+      + '<div class="pm-img-controls">'
+      + '<label class="pm-chk-label">'
+      + '<input type="checkbox" ' + (item.selected ? 'checked' : '') + ' onchange="pmToggleSel(' + i + ',this.checked)" />'
+      + ' 선택</label>'
+      + '<div class="pm-type-toggle">'
+      + '<button class="pm-type-btn' + (item.isMain ? ' active' : '') + '" onclick="pmSetType(' + i + ',true)">메인</button>'
+      + '<button class="pm-type-btn' + (!item.isMain ? ' active' : '') + '" onclick="pmSetType(' + i + ',false)">상세</button>'
+      + '</div>'
+      + '</div>'
+      + '</div>';
+  }).join('');
+}
+
+function pmToggleSel(i, checked) {
+  _pmScrapedImages[i].selected = checked;
+  const card = document.getElementById('pm-ic-' + i);
+  if (card) card.classList.toggle('pm-img-desel', !checked);
+  pmUpdateSelCount();
+}
+
+function pmSetType(i, isMain) {
+  _pmScrapedImages[i].isMain = isMain;
+  // re-render just that card's buttons
+  const card = document.getElementById('pm-ic-' + i);
+  if (!card) return;
+  card.querySelectorAll('.pm-type-btn').forEach((btn, j) => {
+    btn.classList.toggle('active', j === (isMain ? 0 : 1));
+  });
+}
+
+function pmSelectAll(checked) {
+  _pmScrapedImages.forEach((item, i) => {
+    item.selected = checked;
+    const card = document.getElementById('pm-ic-' + i);
+    if (card) {
+      card.classList.toggle('pm-img-desel', !checked);
+      const cb = card.querySelector('input[type=checkbox]');
+      if (cb) cb.checked = checked;
+    }
+  });
+  pmUpdateSelCount();
+}
+
+function pmUpdateSelCount() {
+  const n = _pmScrapedImages.filter(x => x.selected).length;
+  document.getElementById('pm-sel-count').textContent = n + '개 선택됨';
+}
+
+function pmLogoChanged(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    _pmLogoB64 = e.target.result.split(',')[1];
+    document.getElementById('pm-logo-name').textContent = file.name;
+
+    // show small preview
+    const wrap = document.getElementById('pm-logo-preview-wrap');
+    wrap.innerHTML = '<img src="' + e.target.result + '" class="pm-logo-thumb" alt="logo" />'
+      + '<span class="pm-logo-fname">' + file.name + '</span>';
+  };
+  reader.readAsDataURL(file);
+}
+
+function pmSetPos(btn) {
+  document.querySelectorAll('.pm-pos-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  _pmLogoPos = btn.dataset.pos;
+}
+
+async function pmProcess() {
+  const selected = _pmScrapedImages.filter(x => x.selected);
+  if (selected.length === 0) {
+    alert('이미지를 최소 1개 선택하세요.');
+    return;
+  }
+
+  const btn = document.getElementById('pm-process-btn');
+  const dlArea = document.getElementById('pm-dl-area');
+  btn.disabled = true;
+  btn.textContent = '변환 중...';
+  dlArea.classList.add('hidden');
+
+  const sizePct = parseInt(document.getElementById('pm-size-range').value) / 100;
+
+  try {
+    const resp = await fetch('/api/pagemaker/process', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        images:       selected.map(x => x.url),
+        is_main:      selected.map(x => x.isMain),
+        logo_b64:     _pmLogoB64 || null,
+        logo_position: _pmLogoPos,
+        logo_size_pct: sizePct,
+      }),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.text();
+      throw new Error(err);
+    }
+
+    const blob = await resp.blob();
+    const objUrl = URL.createObjectURL(blob);
+    const link = document.getElementById('pm-dl-link');
+    link.href = objUrl;
+    dlArea.classList.remove('hidden');
+  } catch (e) {
+    alert('변환 오류: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🚀 변환 시작';
+  }
+}

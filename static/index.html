@@ -17,6 +17,7 @@
       <nav class="site-nav">
         <button class="nav-btn active" id="nav-search" onclick="switchPage('search')">🔍 키워드 분석</button>
         <button class="nav-btn" id="nav-sourcing" onclick="switchPage('sourcing')">📦 소싱 추천</button>
+        <button class="nav-btn" id="nav-pagemaker" onclick="switchPage('pagemaker')">🎨 페이지 메이커</button>
       </nav>
       <div class="search-wrap" id="header-search" style="display:none">
         <input type="text" id="header-keyword" placeholder="키워드 검색..." onkeydown="if(event.key==='Enter')doSearch()" />
@@ -297,6 +298,91 @@
     </div>
   </section>
 
+
+  <!-- ── Page Maker ── -->
+  <section id="pagemaker-page" class="hidden">
+    <div class="pm-container">
+
+      <div class="pm-hero">
+        <div class="pm-hero-title">🎨 페이지 메이커</div>
+        <div class="pm-hero-sub">상품 페이지 이미지를 가져와 로고를 삽입하고 쿠팡·네이버 규격으로 변환합니다</div>
+      </div>
+
+      <!-- Step 1: URL -->
+      <div class="pm-card">
+        <div class="pm-card-title">① 상품 페이지 URL</div>
+        <div class="pm-url-row">
+          <input type="text" id="pm-url" class="pm-url-input"
+            placeholder="https://yjstore.kr/goods/view?no=..."
+            onkeydown="if(event.key==='Enter')pmScrape()" />
+          <button class="pm-btn-primary" id="pm-scrape-btn" onclick="pmScrape()">이미지 불러오기</button>
+        </div>
+        <div id="pm-scrape-status" class="pm-scrape-status hidden"></div>
+      </div>
+
+      <!-- Step 2: Image selection -->
+      <div class="pm-card hidden" id="pm-images-card">
+        <div class="pm-card-title">
+          ② 이미지 선택
+          <span class="pm-card-hint">메인(정사각) / 상세(너비고정) 구분 후 선택하세요</span>
+        </div>
+        <div class="pm-img-actions">
+          <button class="pm-btn-sm" onclick="pmSelectAll(true)">전체 선택</button>
+          <button class="pm-btn-sm" onclick="pmSelectAll(false)">전체 해제</button>
+          <span id="pm-sel-count" class="pm-sel-count">0개 선택됨</span>
+        </div>
+        <div id="pm-img-grid" class="pm-img-grid"></div>
+      </div>
+
+      <!-- Step 3: Logo -->
+      <div class="pm-card hidden" id="pm-logo-card">
+        <div class="pm-card-title">③ 로고 설정</div>
+        <div class="pm-logo-row">
+          <div class="pm-logo-upload-area" onclick="document.getElementById('pm-logo-file').click()">
+            <div id="pm-logo-preview-wrap">
+              <span class="pm-upload-icon">📁</span>
+              <span id="pm-logo-name">PNG 로고 업로드</span>
+            </div>
+            <input type="file" id="pm-logo-file" accept=".png,.jpg,.jpeg,.webp"
+              onchange="pmLogoChanged(this)" style="display:none" />
+          </div>
+          <div class="pm-logo-options">
+            <div class="pm-opt-label">위치</div>
+            <div class="pm-pos-grid">
+              <button class="pm-pos-btn" data-pos="top-left" onclick="pmSetPos(this)">↖ 왼쪽 상단</button>
+              <button class="pm-pos-btn" data-pos="top-right" onclick="pmSetPos(this)">↗ 오른쪽 상단</button>
+              <button class="pm-pos-btn" data-pos="bottom-left" onclick="pmSetPos(this)">↙ 왼쪽 하단</button>
+              <button class="pm-pos-btn active" data-pos="bottom-right" onclick="pmSetPos(this)">↘ 오른쪽 하단</button>
+              <button class="pm-pos-btn pm-pos-center" data-pos="center" onclick="pmSetPos(this)">⊙ 가운데</button>
+            </div>
+            <div class="pm-opt-label" style="margin-top:12px">크기 <strong id="pm-size-val">15%</strong></div>
+            <input type="range" id="pm-size-range" class="pm-range"
+              min="5" max="40" value="15"
+              oninput="document.getElementById('pm-size-val').textContent=this.value+'%'" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 4: Process -->
+      <div class="pm-card hidden" id="pm-process-card">
+        <div class="pm-card-title">④ 변환 및 다운로드</div>
+        <div class="pm-process-row">
+          <button class="pm-btn-primary pm-btn-lg" id="pm-process-btn" onclick="pmProcess()">
+            🚀 변환 시작
+          </button>
+          <div class="pm-platform-info">
+            <span>📦 쿠팡: 메인 1000×1000 / 상세 1000px</span>
+            <span>🟢 네이버: 메인 1000×1000 / 상세 860px</span>
+          </div>
+        </div>
+        <div id="pm-dl-area" class="pm-dl-area hidden">
+          <a id="pm-dl-link" class="pm-dl-btn" download="page_maker.zip">📦 ZIP 다운로드</a>
+          <div class="pm-dl-hint">coupang/ · naver/ 폴더로 분리 — main_XX.jpg / detail_XX.jpg</div>
+        </div>
+      </div>
+
+    </div>
+  </section>
 
   <!-- ── Memo FAB + Panel ── -->
   <button class="memo-fab" id="memo-fab" onclick="toggleMemoPanel()">📝 내 메모</button>
