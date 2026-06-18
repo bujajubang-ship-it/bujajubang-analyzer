@@ -1277,32 +1277,36 @@ function pmToggleAi(checked) {
 
 // ── AI 분석 ────────────────────────────────────────────────────────
 async function pmAiAnalyze() {
-  const mainImg = _pmScrapedImages.find(x => x.selected && x.isMain)
-               || _pmScrapedImages.find(x => x.selected)
-               || _pmScrapedImages[0];
-  if (!mainImg) { alert('이미지를 선택하세요.'); return; }
-
-  _pmAiImageUrl = mainImg.url;
   const btn    = document.getElementById('pm-ai-analyze-btn');
   const status = document.getElementById('pm-ai-analyze-status');
   btn.disabled = true;
   btn.textContent = '분석 중...';
-  status.textContent = 'Gemini가 상품 이미지를 분석 중입니다... (10~20초)';
   status.classList.remove('hidden');
 
+  // 현재 입력된 상품 URL로 페이지 전체 분석
+  const productUrl = (document.getElementById('pm-url') || {}).value?.trim()
+                  || _pmAiImageUrl;
+
+  if (!productUrl) { alert('상품 URL을 먼저 입력하세요.'); btn.disabled = false; btn.textContent = '🔍 AI 분석 시작'; return; }
+
+  status.textContent = '📄 페이지 스크래핑 중... 상세이미지 + 텍스트 읽는 중 (20~40초)';
+
   try {
-    const resp = await fetch('/api/pagemaker/ai-analyze', {
+    const resp = await fetch('/api/pagemaker/analyze-url', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image_url: _pmAiImageUrl }),
+      body: JSON.stringify({ url: productUrl }),
     });
     const data = await resp.json();
     if (data.error && !data.product_name) throw new Error(data.error);
 
+    // 대표 이미지 URL 저장 (이미지 생성 시 시각 참조용)
+    if (data._rep_image) _pmAiImageUrl = data._rep_image;
+
     _pmAiProductData = data;
     pmFillAiFields(data);
     document.getElementById('pm-ai-step2').classList.remove('hidden');
-    status.textContent = '✅ 분석 완료! 내용을 확인하고 수정 후 생성을 시작하세요.';
+    status.textContent = '✅ 분석 완료! 내용을 확인·수정 후 생성을 시작하세요.';
   } catch (e) {
     status.textContent = '오류: ' + e.message;
   } finally {

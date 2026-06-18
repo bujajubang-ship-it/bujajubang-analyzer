@@ -146,8 +146,14 @@ LAYOUT (3:4 call to action):
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                  "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept-Language": "ko-KR,ko;q=0.9",
+                  "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Upgrade-Insecure-Requests": "1",
 }
 
 FONT_DIR    = Path(__file__).parent / "fonts"
@@ -1129,8 +1135,313 @@ def _gemini_headers() -> dict:
     return {"Content-Type": "application/json", "x-goog-api-key": key}
 
 
+def _extract_json_images(obj, out: list, depth: int = 0):
+    """JSON 트리에서 이미지 URL 재귀 추출"""
+    if depth > 12:
+        return
+    if isinstance(obj, str):
+        if obj.startswith("http") and any(x in obj for x in
+                ('.jpg', '.jpeg', '.png', '.webp', 'phinf', '/image', 'cdn', 'img')):
+            out.append(obj)
+    elif isinstance(obj, dict):
+        for v in obj.values():
+            _extract_json_images(v, out, depth + 1)
+    elif isinstance(obj, list):
+        for item in obj:
+            _extract_json_images(item, out, depth + 1)
+
+
+async def _run_gemini_analysis(title: str, page_text: str,
+                               images_to_send: list, rep_image: str) -> dict:
+    """제목 + 텍스트 + 이미지들 → Gemini 종합 분석 → 마케팅 카피 dict"""
+    prompt = f"""당신은 한국 이커머스 마케팅 전문가입니다.
+아래 상품 페이지 정보와 첨부된 이미지들을 종합 분석하여 고품질 상세페이지용 마케팅 카피를 개발해주세요.
+
+⚠️ 중요: 이미지 안에 적힌 모든 텍스트(마케팅 문구, 스펙, 특징 설명 등)를 꼼꼼히 읽고 활용하세요.
+
+페이지 제목: {title}
+페이지 텍스트: {page_text[:1500] if page_text else "(없음)"}
+
+아래 JSON 형식으로만 출력하라. 코드블록 없이 JSON만.
+실제 상품 정보를 바탕으로 구체적이고 설득력 있는 한국어 마케팅 카피를 작성할 것.
+key_features는 이미지에서 읽은 실제 특징과 장점을 마케팅 언어로 발전시켜 작성.
+
+{{
+  "product_name": "정확한 상품명",
+  "category": "카테고리",
+  "key_features": "• 특징1 (구체적 수치/소재 포함)\n• 특징2\n• 특징3\n• 특징4",
+  "specs": "항목: 값\n항목: 값\n항목: 값",
+  "how_to_use": "1. 사용법1\n2. 사용법2\n3. 사용법3\n4. 사용법4",
+  "target_customer": "타겟 고객 설명 (구체적으로)",
+  "main_color": "#XXXXXX",
+  "sub_color": "#XXXXXX",
+  "background": "배경 스타일",
+  "mood": "분위기 키워드",
+  "font_style": "폰트 스타일"
+}}"""
+
+    parts = [{"text": prompt}]
+    async with httpx.AsyncClient(headers=HEADERS, timeout=20, follow_redirects=True) as client:
+        for img_url in images_to_send:
+            try:
+                ir = await client.get(img_url)
+                if ir.status_code == 200 and len(ir.content) > 5000:
+                    ct = ir.headers.get("content-type", "image/jpeg").split(";")[0]
+                    if ct.startswith("image/"):
+                        parts.append({"inline_data": {
+                            "mime_type": ct,
+                            "data": base64.b64encode(ir.content).decode(),
+                        }})
+            except Exception:
+                continue
+
+    body = {"contents": [{"parts": parts}]}
+    api_url = f"{GEMINI_BASE}/{GEMINI_VISION_MODEL}:generateContent"
+    try:
+        async with httpx.AsyncClient(timeout=90) as client:
+            resp = await client.post(api_url, json=body, headers=_gemini_headers())
+            resp.raise_for_status()
+            data = resp.json()
+            text = data["candidates"][0]["content"]["parts"][0]["text"]
+            text = re.sub(r"```[a-z]*", "", text).strip("`\n ")
+            result = json.loads(text)
+            result["_rep_image"] = rep_image
+            return result
+    except Exception as e:
+        return {"error": f"분석 실패: {e}", "product_name": title, "_rep_image": rep_image}
+
+
+async def _fetch_smartstore_data(product_url: str) -> tuple:
+    """SmartStore URL → (title, page_text, main_imgs, detail_imgs) Naver API 우회"""
+    import re as _re
+    m = _re.search(r'/products/(\d+)', product_url)
+    product_no = m.group(1) if m else ""
+    store_m = _re.search(r'smartstore\.naver\.com/([^/]+)', product_url) or \
+              _re.search(r'brand\.naver\.com/([^/]+)', product_url)
+    store_id = store_m.group(1) if store_m else ""
+
+    title, page_text, main_imgs, detail_imgs = "", "", [], []
+
+    # Naver 상품 API (공개 엔드포인트)
+    api_urls = []
+    if product_no:
+        api_urls = [
+            f"https://smartstore.naver.com/i/v1/products/{product_no}",
+            f"https://shopping.naver.com/catalog/products/{product_no}/detail",
+        ]
+
+    naver_headers = {**HEADERS,
+                     "Referer": "https://smartstore.naver.com/",
+                     "Origin": "https://smartstore.naver.com"}
+
+    async with httpx.AsyncClient(headers=naver_headers, timeout=20, follow_redirects=True) as client:
+        for api_url in api_urls:
+            try:
+                r = await client.get(api_url)
+                if r.status_code == 200:
+                    d = r.json()
+                    _extract_json_images(d, detail_imgs)
+                    # 텍스트 추출
+                    def _collect_str(obj, acc, depth=0):
+                        if depth > 8: return
+                        if isinstance(obj, str) and len(obj) > 5:
+                            acc.append(obj)
+                        elif isinstance(obj, dict):
+                            for k, v in obj.items():
+                                if k in ('productName','name','description','detailContents','content'):
+                                    _collect_str(v, acc, depth+1)
+                        elif isinstance(obj, list):
+                            for x in obj[:5]:
+                                _collect_str(x, acc, depth+1)
+                    acc = []
+                    _collect_str(d, acc)
+                    page_text = " ".join(acc)[:2000]
+                    if acc:
+                        title = acc[0] if acc else ""
+                    break
+            except Exception:
+                continue
+
+    return title, page_text, main_imgs[:2], detail_imgs[:8]
+
+
+async def scrape_and_analyze_url(product_url: str) -> dict:
+    """상품 URL → 페이지 텍스트 + 이미지들 스크래핑 → Gemini 종합 분석"""
+
+    is_smartstore = any(d in product_url for d in ("smartstore.naver.com", "brand.naver.com"))
+
+    # ── 1. 페이지 스크래핑 ──────────────────────────────────────────
+    html = ""
+    if not is_smartstore:
+        try:
+            async with httpx.AsyncClient(headers=HEADERS, timeout=25, follow_redirects=True) as client:
+                r = await client.get(product_url)
+                r.raise_for_status()
+                html = r.text
+        except Exception as e:
+            return {"error": f"페이지 접근 실패: {e}"}
+
+    # ── SmartStore: API 우회 ────────────────────────────────────────
+    if is_smartstore:
+        ss_title, ss_text, ss_main, ss_detail = await _fetch_smartstore_data(product_url)
+        rep_image = ss_main[0] if ss_main else (ss_detail[0] if ss_detail else "")
+        images_to_send = (ss_main[:1] + ss_detail[:4])[:5]
+        title = ss_title
+        page_text = ss_text
+        # Gemini 분석으로 바로 이동
+        return await _run_gemini_analysis(title, page_text, images_to_send, rep_image)
+
+    soup = BeautifulSoup(html, "html.parser")
+    parsed = urlparse(product_url)
+    base = f"{parsed.scheme}://{parsed.netloc}"
+
+    # ── 2. 제목 추출 ────────────────────────────────────────────────
+    title = ""
+    og = soup.find("meta", property="og:title")
+    if og and og.get("content"):
+        title = og["content"].split(" - ")[0].strip()
+    if not title:
+        h1 = soup.find("h1")
+        if h1:
+            title = h1.get_text(strip=True)
+    if not title:
+        t = soup.find("title")
+        if t:
+            title = t.get_text(strip=True).split(" - ")[0].strip()
+
+    # ── 3. 페이지 설명 텍스트 추출 ──────────────────────────────────
+    page_text = ""
+    # SmartStore: __NEXT_DATA__ JSON 파싱
+    next_data_tag = soup.find("script", id="__NEXT_DATA__")
+    json_imgs = []
+    if next_data_tag:
+        try:
+            nd = json.loads(next_data_tag.string or "{}")
+            # 재귀적으로 이미지 URL 수집
+            _extract_json_images(nd, json_imgs)
+            # 텍스트 추출: productName, description 등
+            def _find_texts(obj, keys, depth=0):
+                if depth > 10 or not isinstance(obj, dict):
+                    return {}
+                result = {}
+                for k, v in obj.items():
+                    if k in keys and isinstance(v, str) and v:
+                        result[k] = v
+                    elif isinstance(v, (dict, list)):
+                        result.update(_find_texts(v if isinstance(v, dict) else
+                                                  {str(i): x for i, x in enumerate(v)},
+                                                  keys, depth + 1))
+                return result
+            found = _find_texts(nd, {"productName", "detailContents", "description",
+                                     "content", "productDescription"})
+            page_text = " ".join(str(v) for v in found.values())[:2000]
+        except Exception:
+            pass
+
+    # HTML 텍스트 (SmartStore 아니거나 텍스트 부족할 때)
+    if len(page_text) < 100:
+        for sel in ["#prdDetail", ".prdDetailArea", ".goods_description",
+                    "#goods_detail", ".detail_content", ".product_detail",
+                    ".se-main-container", "[class*='detail']", "article", "main"]:
+            el = soup.select_one(sel)
+            if el:
+                page_text = el.get_text(" ", strip=True)[:2000]
+                break
+
+    # ── 4. 이미지 수집 ──────────────────────────────────────────────
+    def _norm(src):
+        if not src or src.startswith("data:"):
+            return ""
+        if src.startswith("//"):
+            return "https:" + src
+        if src.startswith("/"):
+            return base + src
+        return src
+
+    main_imgs, detail_imgs, seen = [], [], set()
+
+    # og:image 가장 대표 이미지
+    og_img = soup.find("meta", property="og:image")
+    if og_img and og_img.get("content"):
+        u = _norm(og_img["content"])
+        if u:
+            main_imgs.append(u)
+            seen.add(u)
+
+    # SmartStore JSON에서 수집한 이미지
+    for u in json_imgs:
+        u = _norm(u)
+        if u and u not in seen and _is_content_image(u):
+            seen.add(u)
+            detail_imgs.append(u)
+
+    # ① 메인 이미지 영역 (cafe24 / 일반 쇼핑몰)
+    for sel in ["#mainImage", ".goods_img_wrap", ".keyImg", "#prdImgWrap",
+                ".thumb_wrap", ".thumbnail_wrap", ".goods_thumbnails"]:
+        el = soup.select_one(sel)
+        if el:
+            for img in el.find_all("img"):
+                u = _norm(_get_img_src(img, base, product_url))
+                if u and u not in seen and _is_content_image(u):
+                    seen.add(u)
+                    main_imgs.append(u)
+
+    # cafe24 /product/big/ 이미지
+    for img in soup.find_all("img"):
+        src = _get_img_src(img, base, product_url)
+        u = _norm(src)
+        if u and "/product/big/" in u and u not in seen:
+            seen.add(u)
+            main_imgs.append(u)
+
+    # ② 상세 이미지 영역
+    for sel in ["#prdDetail", ".prdDetailArea", ".goods_description",
+                "#goods_detail", ".detail_content", ".product_detail",
+                ".se-main-container", ".smartstore-detail"]:
+        el = soup.select_one(sel)
+        if el:
+            for img in el.find_all("img"):
+                u = _norm(_get_img_src(img, base, product_url))
+                if u and u not in seen and _is_content_image(u):
+                    seen.add(u)
+                    detail_imgs.append(u)
+            break
+
+    # ③ ec-data-src (cafe24)
+    for img in soup.find_all("img", attrs={"ec-data-src": True}):
+        u = _norm(_get_img_src(img, base, product_url))
+        if u and u not in seen and _is_content_image(u):
+            seen.add(u)
+            detail_imgs.append(u)
+
+    # ④ 폴백: 전체 스캔
+    if not main_imgs and not detail_imgs:
+        for img in soup.find_all("img"):
+            u = _norm(_get_img_src(img, base, product_url))
+            if not u or not _is_content_image(u) or u in seen:
+                continue
+            w = int(img.get("width") or 0)
+            h = int(img.get("height") or 0)
+            if (w and w < 100) or (h and h < 100):
+                continue
+            seen.add(u)
+            detail_imgs.append(u)
+
+    # 대표 이미지 (이미지 생성 시 시각 참조용)
+    rep_image = main_imgs[0] if main_imgs else (detail_imgs[0] if detail_imgs else "")
+
+    # ── 5. Gemini 종합 분석 ──────────────────────────────────────────
+    images_to_send = (main_imgs[:1] + detail_imgs[:4])[:5]
+    return await _run_gemini_analysis(title, page_text, images_to_send, rep_image)
+
+
 async def analyze_product_image(image_url: str) -> dict:
-    """Gemini Vision으로 상품 이미지 분석 → 구조화된 상품정보 반환"""
+    """단일 이미지 분석 (하위 호환용)"""
+    return await scrape_and_analyze_url(image_url) if not image_url.startswith("http") \
+        else await _analyze_single_image(image_url)
+
+
+async def _analyze_single_image(image_url: str) -> dict:
     try:
         async with httpx.AsyncClient(headers=HEADERS, timeout=20, follow_redirects=True) as client:
             r = await client.get(image_url)
@@ -1140,29 +1451,11 @@ async def analyze_product_image(image_url: str) -> dict:
     except Exception as e:
         return {"error": f"이미지 다운로드 실패: {e}"}
 
-    prompt = """상품 이미지를 분석하여 아래 JSON 형식으로만 출력하라. 코드블록 없이 JSON만.
+    prompt = """상품 이미지를 분석하여 아래 JSON만 출력하라 (코드블록 없이).
+{"product_name":"","category":"","key_features":"• \n• \n• \n• ","specs":"","how_to_use":"1. \n2. \n3. ","target_customer":"","main_color":"#2C5F8A","sub_color":"#F0F4F8","background":"깔끔한 화이트","mood":"모던, 신뢰감 있는","font_style":"굵은 고딕체"}"""
 
-{
-  "product_name": "상품명",
-  "category": "카테고리",
-  "key_features": "• 특징1\n• 특징2\n• 특징3\n• 특징4",
-  "specs": "스펙 정보 (크기, 재질, 용량 등)",
-  "how_to_use": "1. 사용법1\n2. 사용법2\n3. 사용법3",
-  "target_customer": "타겟 고객 설명",
-  "main_color": "#XXXXXX (메인 브랜드 컬러 hex)",
-  "sub_color": "#XXXXXX (보조 컬러 hex)",
-  "background": "배경 스타일 설명 (예: 깔끔한 화이트, 그라데이션 등)",
-  "mood": "분위기 키워드 (예: 모던, 고급스러운, 신뢰감 있는)",
-  "font_style": "폰트 스타일 (예: 굵은 고딕체)"
-}"""
-
-    body = {
-        "contents": [{"parts": [
-            {"text": prompt},
-            {"inline_data": {"mime_type": ct, "data": img_b64}},
-        ]}],
-    }
-
+    body = {"contents": [{"parts": [{"text": prompt},
+                                     {"inline_data": {"mime_type": ct, "data": img_b64}}]}]}
     url = f"{GEMINI_BASE}/{GEMINI_VISION_MODEL}:generateContent"
     try:
         async with httpx.AsyncClient(timeout=60) as client:

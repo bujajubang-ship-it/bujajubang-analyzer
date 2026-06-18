@@ -25,7 +25,7 @@ from sourcing_data import SOURCING_CANDIDATES
 from coupang_api import CoupangPartnersAPI
 from coupang_analysis import analyze as coupang_analyze, get_recommendations as coupang_reco
 from coupang_opportunities import scan_opportunities
-from page_maker import scrape_images, build_processed_zip, analyze_product_image, stream_ai_sections
+from page_maker import scrape_images, build_processed_zip, analyze_product_image, stream_ai_sections, scrape_and_analyze_url
 
 load_dotenv()
 
@@ -648,6 +648,17 @@ async def pm_ai_analyze(request: Request):
     if not image_url:
         return JSONResponse({"error": "image_url 필요"}, status_code=400)
     result = await analyze_product_image(image_url)
+    return JSONResponse(result)
+
+
+@app.post("/api/pagemaker/analyze-url")
+async def pm_analyze_url(request: Request):
+    """상품 URL → 페이지 전체 스크래핑 + Gemini 종합 분석 (텍스트+이미지)"""
+    data = await request.json()
+    product_url = (data.get("url") or "").strip()
+    if not product_url:
+        return JSONResponse({"error": "url 필요"}, status_code=400)
+    result = await scrape_and_analyze_url(product_url)
     return JSONResponse(result)
 
 
