@@ -31,89 +31,116 @@ SECTIONS = [
     {"key": "08_CTA",     "name": "구매 유도",  "aspect": "3:4"},
 ]
 
-def _section_prompt(section_key: str, p: dict) -> str:
-    name        = p.get("product_name", "상품")
-    category    = p.get("category", "")
-    features    = p.get("key_features", "")
-    f1 = (features.split("\n")[0] if features else "").strip("• 1.")
-    f2 = (features.split("\n")[1] if "\n" in features else f1).strip("• 2.")
-    f3 = (features.split("\n")[2] if features.count("\n") >= 2 else f1).strip("• 3.")
-    specs       = p.get("specs", "")
-    how_to_use  = p.get("how_to_use", "")
-    target      = p.get("target_customer", "")
-    main_color  = p.get("main_color", "#2C5F8A")
-    sub_color   = p.get("sub_color", "#F0F4F8")
-    background  = p.get("background", "깔끔한 화이트")
-    mood        = p.get("mood", "모던, 신뢰감 있는")
-    font_style  = p.get("font_style", "굵은 고딕체")
+def _hex_rgb(h: str, fallback=(44, 95, 138)) -> tuple:
+    try:
+        h = h.lstrip("#")
+        return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+    except Exception:
+        return fallback
 
-    base = f"""You are creating a section of a Korean e-commerce product detail page image (쿠팡/네이버 스타일).
-Product name: {name}
-Category: {category}
-Main color: {main_color} | Sub color: {sub_color}
-Background style: {background}
-Mood/atmosphere: {mood}
-Font style: {font_style}
-Reference image: the attached photo shows the actual product — use it visually.
-IMPORTANT: All text in the generated image MUST be in Korean (한국어). Make text bold and legible."""
+
+def _parse_features(raw: str) -> list:
+    return [l.lstrip("•·*-– 1234567890.\t").strip() for l in raw.split("\n") if l.strip()]
+
+
+def _parse_spec_rows(raw: str) -> list:
+    rows = []
+    for line in raw.split("\n"):
+        for sep in (":", "：", " - "):
+            if sep in line:
+                k, v = line.split(sep, 1)
+                rows.append((k.strip(), v.strip()))
+                break
+    return rows[:8]
+
+
+def _parse_steps(raw: str) -> list:
+    return [l.lstrip("1234567890. \t").strip() for l in raw.split("\n") if l.strip()][:4]
+
+
+def _section_prompt(section_key: str, p: dict) -> str:
+    name       = p.get("product_name", "product")
+    main_color = p.get("main_color", "#2C5F8A")
+    sub_color  = p.get("sub_color", "#F0F4F8")
+    background = p.get("background", "clean white")
+    mood       = p.get("mood", "modern, trustworthy")
+
+    base = f"""Create a VISUAL BACKGROUND IMAGE for a Korean e-commerce product detail page.
+⚠️ ABSOLUTE RULE: Do NOT include ANY text, letters, words, numbers, or writing anywhere in the image.
+Only generate: product photos, decorative icons/graphics, color blocks, gradients, shapes, layouts.
+Leave white/clean zones where Korean text will be overlaid later.
+
+Product: {name} | Accent color: {main_color} | Secondary: {sub_color}
+Background style: {background} | Mood: {mood}
+Use the attached product photo as visual reference."""
 
     if "01_헤더" in section_key:
-        return base + f"""
+        return base + """
 
-SECTION TYPE: Hero Header Banner
-Key feature to highlight: {f1}
-Design: Large bold Korean product name at top. Product image centered/prominent. Korean tagline below: short powerful phrase. Professional full-bleed banner design. Use {main_color} as accent/background. High visual impact."""
+LAYOUT (9:16 tall banner):
+- Full product photo centered, dramatic lighting
+- Top 28%: dark semi-transparent overlay zone — keep completely clean (for title text)
+- Bottom 18%: main accent color solid band — keep completely clean (for tagline)
+- Edges: main color gradient vignette"""
 
     if "02_특징요약" in section_key:
-        return base + f"""
+        return base + """
 
-SECTION TYPE: Key Features Overview
-All features: {features}
-Design: Show 3-4 features as icon+title+description cards in a clean grid. Each card has a Korean title (5 chars max) and brief Korean description. Background: white or {sub_color}. Accent color: {main_color}. Clean, trustworthy layout."""
+LAYOUT (3:4 feature grid):
+- Top 15%: pure white clean zone (for section title text)
+- Remaining 85%: 2×2 grid of rounded card shapes with main accent color backgrounds
+- Each card: simple relevant icon/symbol graphic ONLY (shield, ruler, lock, star) — absolutely no text
+- Clean white background behind grid"""
 
     if "03_특징1" in section_key:
-        return base + f"""
+        return base + """
 
-SECTION TYPE: Feature Deep Dive #1
-Feature to highlight: {f1}
-Design: Large Korean headline about this feature. Product shown in use/context related to this feature. 2-3 Korean bullet points explaining the benefit. High impact single-feature focus. Color: {main_color}."""
+LAYOUT (3:4 feature detail):
+- Top 15%: main accent color full-width solid band — completely clean (for title)
+- Center: product photo with clean backdrop, good lighting
+- Bottom 30%: white clean zone with very subtle horizontal lines (for bullet text)"""
 
     if "04_특징2" in section_key:
-        return base + f"""
+        return base + """
 
-SECTION TYPE: Feature Deep Dive #2
-Feature to highlight: {f2}
-Design: Large Korean headline about this feature. Product in relevant context. 2-3 Korean bullet points. Different layout angle from section 3. Color: {main_color}."""
+LAYOUT (3:4 feature detail):
+- Top 15%: main accent color full-width solid band — completely clean (for title)
+- Center: product shown from different angle
+- Bottom 30%: white clean zone (for bullet text)"""
 
     if "05_특징3" in section_key:
-        return base + f"""
+        return base + """
 
-SECTION TYPE: Feature Deep Dive #3
-Feature to highlight: {f3}
-Design: Large Korean headline about this feature. Product in relevant context. 2-3 Korean bullet points. Color: {main_color}."""
+LAYOUT (3:4 feature detail):
+- Top 15%: main accent color full-width solid band — completely clean (for title)
+- Center: product in lifestyle/use context
+- Bottom 30%: white clean zone (for bullet text)"""
 
     if "06_스펙" in section_key:
-        return base + f"""
+        return base + """
 
-SECTION TYPE: Product Specifications
-Specs: {specs if specs else features}
-Design: Clean info-graphic table or card layout. Korean labels and values. Product image on side. Use {main_color} for header row. Easy-to-scan grid. Trustworthy, informative feel."""
+LAYOUT (3:4 spec sheet):
+- Top 13%: main accent color header band — completely clean (for "제품 스펙" title)
+- Right 40%: product photo, clean shot
+- Left 55% bottom half: white clean zone with 6 horizontal divider lines equally spaced
+- Overall: clean, informational"""
 
     if "07_사용법" in section_key:
-        return base + f"""
+        return base + """
 
-SECTION TYPE: How To Use (사용 방법)
-Usage steps: {how_to_use if how_to_use else features}
-Target customer: {target}
-Design: Numbered step-by-step guide in Korean. Visual icon or small illustration per step. Product shown in use. Clean instructional layout. Color: {main_color}."""
+LAYOUT (3:4 usage steps):
+- Top 12%: white clean zone (for "사용 방법" title)
+- 4 equal quadrants: each with product-in-use scene illustration
+- Bottom of each quadrant: white clean strip (for step text)
+- Step number circles (①②③④) as decorative graphics only"""
 
     if "08_CTA" in section_key:
-        return base + f"""
+        return base + """
 
-SECTION TYPE: Call To Action / Purchase Footer
-Summary of benefits: {features[:200]}
-Target: {target}
-Design: Strong Korean purchase motivation headline. Top 3 benefit icons. "지금 구매하기" style CTA button graphic. Confidence-building elements (quality guarantee, fast shipping). Bold, action-oriented. Color: {main_color}."""
+LAYOUT (3:4 call to action):
+- Upper 38%: 3 circular icon graphics in a row (quality shield, gear, delivery truck) in main color — no text
+- Middle 32%: white clean zone (for CTA button and headline)
+- Bottom 30%: main accent color band (for benefit chips)"""
 
     return base
 
@@ -781,6 +808,322 @@ async def build_processed_zip(
 
 # ── Gemini AI 상세페이지 생성 ─────────────────────────────────────────
 
+def _ov_wrap(d, text, font, x, y, max_w, fill, line_gap=5):
+    """텍스트 줄바꿈 helper (overlay draw 전용)"""
+    cur = ""
+    for ch in text:
+        if _text_w(d, cur + ch, font) > max_w and cur:
+            d.text((x, y), cur, font=font, fill=fill)
+            y += _text_h(d, cur, font) + line_gap
+            cur = ch
+        else:
+            cur += ch
+    if cur:
+        d.text((x, y), cur, font=font, fill=fill)
+        y += _text_h(d, cur, font) + line_gap
+    return y
+
+
+def _ov_center(d, text, font, y, W, fill):
+    tw = _text_w(d, text, font)
+    d.text(((W - tw) // 2, y), text, font=font, fill=fill)
+    return y + _text_h(d, text, font)
+
+
+def _ov_header(img, W, H, p):
+    ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(ov)
+    mc = _hex_rgb(p.get("main_color", "#C85A2D"))
+    name = p.get("product_name", "상품명")
+    category = p.get("category", "")
+    feats = _parse_features(p.get("key_features", ""))
+    tagline = feats[0][:20] if feats else name[:20]
+
+    top_h = int(H * 0.28)
+    bot_h = int(H * 0.18)
+    pad = W // 18
+
+    d.rectangle([0, 0, W, top_h], fill=(10, 10, 10, 170))
+    d.rectangle([0, H - bot_h, W, H], fill=(*mc, 220))
+
+    fc = _font(W // 24)
+    d.text((pad, pad), category, font=fc, fill=(200, 200, 200, 255))
+
+    fn = _font(W // 10, bold=True)
+    y = pad + _text_h(d, category, fc) + pad // 2
+    _ov_wrap(d, name, fn, pad, y, W - pad * 2, fill=(255, 255, 255, 255), line_gap=6)
+
+    ft = _font(W // 14, bold=True)
+    tw = _text_w(d, tagline, ft)
+    ty = H - bot_h + (bot_h - _text_h(d, tagline, ft)) // 2
+    d.text(((W - tw) // 2 + 2, ty + 2), tagline, font=ft, fill=(0, 0, 0, 80))
+    d.text(((W - tw) // 2, ty), tagline, font=ft, fill=(255, 255, 255, 255))
+
+    return Image.alpha_composite(img, ov).convert("RGB")
+
+
+def _ov_features(img, W, H, p):
+    ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(ov)
+    mc = _hex_rgb(p.get("main_color", "#C85A2D"))
+    feats = _parse_features(p.get("key_features", ""))[:4]
+    while len(feats) < 4:
+        feats.append("특징")
+
+    title_h = int(H * 0.15)
+    pad = W // 25
+
+    d.rectangle([0, 0, W, title_h], fill=(255, 255, 255, 220))
+    d.rectangle([0, title_h - 4, W, title_h], fill=(*mc, 255))
+
+    ft = _font(W // 11, bold=True)
+    _ov_center(d, "핵심 특징", ft, (title_h - _text_h(d, "핵심 특징", ft)) // 2, W, (*mc, 255))
+
+    box_w = (W - pad * 3) // 2
+    box_h = (H - title_h - pad * 3) // 2
+    fb = _font(W // 17, bold=True)
+    fd = _font(W // 23)
+
+    for i, feat in enumerate(feats):
+        col = i % 2
+        row = i // 2
+        bx = pad + col * (box_w + pad)
+        by = title_h + pad + row * (box_h + pad)
+
+        d.rounded_rectangle([bx, by, bx + box_w, by + box_h], radius=14,
+                             fill=(255, 255, 255, 210))
+        d.rounded_rectangle([bx, by, bx + box_w, by + box_h], radius=14,
+                             outline=(*mc, 160), width=2)
+
+        words = feat.split()
+        title_part = " ".join(words[:3]) if len(words) >= 3 else feat[:14]
+        desc_part = " ".join(words[3:]) if len(words) > 3 else ""
+
+        ty = by + box_h // 3
+        ttw = _text_w(d, title_part, fb)
+        d.text((bx + (box_w - ttw) // 2, ty), title_part, font=fb, fill=(*mc, 255))
+
+        if desc_part:
+            ty2 = ty + _text_h(d, title_part, fb) + 8
+            _ov_wrap(d, desc_part, fd, bx + pad, ty2, box_w - pad * 2,
+                     fill=(60, 60, 60, 255))
+
+    return Image.alpha_composite(img, ov).convert("RGB")
+
+
+def _ov_feature_detail(img, W, H, p, idx):
+    ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(ov)
+    mc = _hex_rgb(p.get("main_color", "#C85A2D"))
+    feats = _parse_features(p.get("key_features", ""))
+    feat = feats[idx] if idx < len(feats) else "특징"
+    bullets = [f for j, f in enumerate(feats) if j != idx][:3]
+    if not bullets:
+        bullets = [feat]
+
+    title_h = int(H * 0.15)
+    bot_h = int(H * 0.30)
+    pad = W // 20
+
+    d.rectangle([0, 0, W, title_h], fill=(*mc, 230))
+
+    ft = _font(W // 12, bold=True)
+    words = feat.split()
+    title_text = " ".join(words[:5]) if len(words) > 5 else feat
+    ty = (title_h - _text_h(d, title_text, ft)) // 2
+    d.text((pad + 2, ty + 2), title_text, font=ft, fill=(0, 0, 0, 80))
+    d.text((pad, ty), title_text, font=ft, fill=(255, 255, 255, 255))
+
+    d.rectangle([0, H - bot_h, W, H], fill=(255, 255, 255, 225))
+
+    fd = _font(W // 22)
+    dot_r = W // 45
+    by = H - bot_h + pad
+
+    for bullet in bullets[:3]:
+        cy = by + dot_r
+        d.ellipse([pad, cy - dot_r, pad + dot_r * 2, cy + dot_r], fill=(*mc, 255))
+        bx = pad + dot_r * 2 + 10
+        by = _ov_wrap(d, bullet, fd, bx, by, W - bx - pad, fill=(40, 40, 40, 255))
+        by += pad // 3
+
+    return Image.alpha_composite(img, ov).convert("RGB")
+
+
+def _ov_specs(img, W, H, p):
+    ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(ov)
+    mc = _hex_rgb(p.get("main_color", "#C85A2D"))
+    rows = _parse_spec_rows(p.get("specs", ""))
+    if not rows:
+        rows = [(f"특징 {i+1}", f) for i, f in enumerate(_parse_features(p.get("key_features", ""))[:5])]
+
+    title_h = int(H * 0.13)
+    pad = W // 22
+
+    d.rectangle([0, 0, W, title_h], fill=(*mc, 230))
+    ft = _font(W // 12, bold=True)
+    _ov_center(d, "제품 스펙", ft, (title_h - _text_h(d, "제품 스펙", ft)) // 2, W, (255, 255, 255, 255))
+
+    table_y = int(H * 0.46)
+    table_x = pad
+    table_w = int(W * 0.88)
+
+    d.rectangle([table_x, table_y, table_x + table_w, H - pad], fill=(255, 255, 255, 215))
+
+    fk = _font(W // 20, bold=True)
+    fv = _font(W // 22)
+    n = min(len(rows), 6)
+    row_h = max((H - pad - table_y) // n, 44) if n else 44
+    key_col_w = int(table_w * 0.38)
+
+    for i, (k, v) in enumerate(rows[:6]):
+        ry = table_y + i * row_h
+        if i % 2 == 1:
+            d.rectangle([table_x, ry, table_x + table_w, ry + row_h], fill=(245, 245, 245, 180))
+        d.line([table_x, ry, table_x + table_w, ry], fill=(210, 210, 210, 200), width=1)
+        d.line([table_x + key_col_w, ry, table_x + key_col_w, ry + row_h],
+               fill=(210, 210, 210, 200), width=1)
+        vt = ry + (row_h - _text_h(d, k, fk)) // 2
+        d.text((table_x + pad // 2, vt), k[:12], font=fk, fill=(*mc, 255))
+        d.text((table_x + key_col_w + pad // 2, vt), v[:18], font=fv, fill=(50, 50, 50, 255))
+
+    return Image.alpha_composite(img, ov).convert("RGB")
+
+
+def _ov_usage(img, W, H, p):
+    ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(ov)
+    mc = _hex_rgb(p.get("main_color", "#C85A2D"))
+    steps = _parse_steps(p.get("how_to_use", ""))
+    if not steps:
+        steps = _parse_features(p.get("key_features", ""))[:4]
+
+    title_h = int(H * 0.12)
+    pad = W // 22
+
+    d.rectangle([0, 0, W, title_h], fill=(255, 255, 255, 225))
+    d.rectangle([0, title_h - 3, W, title_h], fill=(*mc, 255))
+    ft = _font(W // 11, bold=True)
+    _ov_center(d, "사용 방법", ft, (title_h - _text_h(d, "사용 방법", ft)) // 2, W, (*mc, 255))
+
+    cell_w = W // 2
+    cell_h = (H - title_h) // 2
+    fn = _font(W // 20, bold=True)
+    fstep = _font(W // 26)
+
+    for i, step in enumerate(steps[:4]):
+        col = i % 2
+        row = i // 2
+        cx = col * cell_w
+        cy = title_h + row * cell_h
+
+        r = W // 22
+        cmx = cx + cell_w // 2
+        cmy = cy + cell_h // 4
+        d.ellipse([cmx - r, cmy - r, cmx + r, cmy + r], fill=(*mc, 230))
+        num = str(i + 1)
+        nw = _text_w(d, num, fn)
+        nh = _text_h(d, num, fn)
+        d.text((cmx - nw // 2, cmy - nh // 2), num, font=fn, fill=(255, 255, 255, 255))
+
+        text_y = cy + cell_h * 2 // 3
+        d.rectangle([cx + 4, text_y, cx + cell_w - 4, cy + cell_h - 4],
+                    fill=(255, 255, 255, 210))
+
+        short = step[:22]
+        _ov_center(d, short, fstep, text_y + 6, cx + cell_w,
+                   (40, 40, 40, 255) if False else (40, 40, 40, 255))
+        # centered within cell
+        sw = _text_w(d, short, fstep)
+        d.text((cx + (cell_w - sw) // 2, text_y + 6), short, font=fstep, fill=(40, 40, 40, 255))
+
+    return Image.alpha_composite(img, ov).convert("RGB")
+
+
+def _ov_cta(img, W, H, p):
+    ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(ov)
+    mc = _hex_rgb(p.get("main_color", "#C85A2D"))
+    feats = _parse_features(p.get("key_features", ""))
+    name = p.get("product_name", "상품")
+
+    pad = W // 20
+    mid_h = int(H * 0.40)
+    cta_h = int(H * 0.70)
+
+    d.rectangle([0, mid_h, W, cta_h], fill=(255, 255, 255, 235))
+
+    fh = _font(W // 11, bold=True)
+    headline = "지금 바로 확인하세요!"
+    _ov_center(d, headline, fh, mid_h + pad, W, (30, 30, 30, 255))
+
+    fs = _font(W // 19)
+    sub = f"{name[:14]} — 품질 보장"
+    _ov_center(d, sub, fs, mid_h + pad + _text_h(d, headline, fh) + 12, W, (80, 80, 80, 255))
+
+    btn_w = int(W * 0.68)
+    btn_h = int(H * 0.09)
+    btn_x = (W - btn_w) // 2
+    btn_y = int(H * 0.56)
+    d.rounded_rectangle([btn_x, btn_y, btn_x + btn_w, btn_y + btn_h],
+                         radius=btn_h // 2, fill=(*mc, 255))
+    fb = _font(W // 13, bold=True)
+    btn_text = "지금 구매하기"
+    btw = _text_w(d, btn_text, fb)
+    bth = _text_h(d, btn_text, fb)
+    d.text((btn_x + (btn_w - btw) // 2, btn_y + (btn_h - bth) // 2),
+           btn_text, font=fb, fill=(255, 255, 255, 255))
+
+    d.rectangle([0, cta_h, W, H], fill=(*mc, 200))
+    fc2 = _font(W // 21, bold=True)
+    chip_h = int((H - cta_h) * 0.5)
+    chip_y = cta_h + (H - cta_h - chip_h) // 2
+    chips = [f[:8] for f in feats[:3]]
+    if chips:
+        chip_w = (W - pad * (len(chips) + 1)) // len(chips)
+        for i, chip in enumerate(chips):
+            chx = pad + i * (chip_w + pad)
+            d.rounded_rectangle([chx, chip_y, chx + chip_w, chip_y + chip_h],
+                                 radius=8, fill=(255, 255, 255, 60))
+            ctw = _text_w(d, chip, fc2)
+            d.text((chx + (chip_w - ctw) // 2,
+                    chip_y + (chip_h - _text_h(d, chip, fc2)) // 2),
+                   chip, font=fc2, fill=(255, 255, 255, 255))
+
+    return Image.alpha_composite(img, ov).convert("RGB")
+
+
+def _overlay_text_on_image(section: dict, img_bytes: bytes, product: dict) -> bytes:
+    """Gemini 생성 이미지 위에 정확한 한글 텍스트를 Pillow로 오버레이"""
+    img = Image.open(io.BytesIO(img_bytes)).convert("RGBA")
+    W, H = img.size
+    key = section["key"]
+
+    if "01_헤더" in key:
+        out = _ov_header(img, W, H, product)
+    elif "02_특징요약" in key:
+        out = _ov_features(img, W, H, product)
+    elif "03_특징1" in key:
+        out = _ov_feature_detail(img, W, H, product, 0)
+    elif "04_특징2" in key:
+        out = _ov_feature_detail(img, W, H, product, 1)
+    elif "05_특징3" in key:
+        out = _ov_feature_detail(img, W, H, product, 2)
+    elif "06_스펙" in key:
+        out = _ov_specs(img, W, H, product)
+    elif "07_사용법" in key:
+        out = _ov_usage(img, W, H, product)
+    elif "08_CTA" in key:
+        out = _ov_cta(img, W, H, product)
+    else:
+        out = img.convert("RGB")
+
+    buf = io.BytesIO()
+    out.save(buf, format="JPEG", quality=92)
+    return buf.getvalue()
+
+
 def _gemini_headers() -> dict:
     key = os.getenv("GEMINI_API_KEY", "")
     return {"Content-Type": "application/json", "x-goog-api-key": key}
@@ -853,7 +1196,8 @@ async def _generate_one_section(section: dict, product: dict, img_b64: str, mime
         data = resp.json()
         for part in data["candidates"][0]["content"]["parts"]:
             if "inlineData" in part:
-                return base64.b64decode(part["inlineData"]["data"])
+                raw = base64.b64decode(part["inlineData"]["data"])
+                return _overlay_text_on_image(section, raw, product)
     raise ValueError("이미지 데이터 없음")
 
 
