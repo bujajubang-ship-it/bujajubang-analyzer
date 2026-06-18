@@ -613,11 +613,13 @@ async def pagemaker_process(request: Request):
     use_ai: bool = bool(data.get("use_ai", False))
     product_title: str = data.get("product_title", "")
     product_desc: str = data.get("product_desc", "")
+    remove_logo_b64: str = data.get("remove_logo_b64", "")
 
     if not image_urls:
         return JSONResponse({"error": "이미지가 없습니다"}, status_code=400)
 
-    logo_bytes = base64.b64decode(logo_b64) if logo_b64 else None
+    logo_bytes        = base64.b64decode(logo_b64)        if logo_b64        else None
+    remove_logo_bytes = base64.b64decode(remove_logo_b64) if remove_logo_b64 else None
 
     zip_data = await build_processed_zip(
         image_urls=image_urls,
@@ -628,6 +630,7 @@ async def pagemaker_process(request: Request):
         use_ai=use_ai,
         product_title=product_title,
         product_desc=product_desc,
+        remove_logo_bytes=remove_logo_bytes,
     )
 
     return StreamingResponse(

@@ -1122,6 +1122,7 @@ function renderCpOpportunities(opps) {
 
 // ── Page Maker ──────────────────────────────────────────────────────
 let _pmLogoB64 = '';
+let _pmRemoveLogoB64 = '';
 let _pmLogoPos = 'bottom-right';
 let _pmScrapedImages = []; // [{url, selected, isMain}]
 
@@ -1229,6 +1230,19 @@ function pmUpdateSelCount() {
   document.getElementById('pm-sel-count').textContent = n + '개 선택됨';
 }
 
+function pmRemoveLogoChanged(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    _pmRemoveLogoB64 = e.target.result.split(',')[1];
+    const wrap = document.getElementById('pm-rl-preview-wrap');
+    wrap.innerHTML = '<img src="' + e.target.result + '" class="pm-logo-thumb" alt="remove-logo" />'
+      + '<span class="pm-logo-fname">' + file.name + '</span>';
+  };
+  reader.readAsDataURL(file);
+}
+
 function pmLogoChanged(input) {
   const file = input.files[0];
   if (!file) return;
@@ -1282,14 +1296,15 @@ async function pmProcess() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        images:        selected.map(x => x.url),
-        is_main:       selected.map(x => x.isMain),
-        logo_b64:      _pmLogoB64 || null,
-        logo_position: _pmLogoPos,
-        logo_size_pct: sizePct,
-        use_ai:        _pmUseAi,
-        product_title: productTitle,
-        product_desc:  productDesc,
+        images:           selected.map(x => x.url),
+        is_main:          selected.map(x => x.isMain),
+        logo_b64:         _pmLogoB64 || null,
+        logo_position:    _pmLogoPos,
+        logo_size_pct:    sizePct,
+        use_ai:           _pmUseAi,
+        product_title:    productTitle,
+        product_desc:     productDesc,
+        remove_logo_b64:  _pmRemoveLogoB64 || null,
       }),
     });
 

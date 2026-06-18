@@ -337,11 +337,28 @@
       <!-- Step 3: Logo -->
       <div class="pm-card hidden" id="pm-logo-card">
         <div class="pm-card-title">③ 로고 설정</div>
+
+        <!-- 로고 제거 영역 -->
+        <div class="pm-remove-logo-row">
+          <div class="pm-remove-logo-label">
+            <span class="pm-rl-title">🗑️ 상대방 로고 제거</span>
+            <span class="pm-rl-sub">YJ 로고를 캡처한 이미지를 올리면 상품 이미지에서 자동으로 찾아 우리 로고로 교체합니다</span>
+          </div>
+          <div class="pm-logo-upload-area pm-rl-upload" onclick="document.getElementById('pm-remove-logo-file').click()">
+            <div id="pm-rl-preview-wrap">
+              <span class="pm-upload-icon" style="font-size:20px">🔍</span>
+              <span id="pm-rl-name">YJ 로고 샘플 업로드</span>
+            </div>
+            <input type="file" id="pm-remove-logo-file" accept=".png,.jpg,.jpeg,.webp"
+              onchange="pmRemoveLogoChanged(this)" style="display:none" />
+          </div>
+        </div>
+
         <div class="pm-logo-row">
           <div class="pm-logo-upload-area" onclick="document.getElementById('pm-logo-file').click()">
             <div id="pm-logo-preview-wrap">
               <span class="pm-upload-icon">📁</span>
-              <span id="pm-logo-name">PNG 로고 업로드</span>
+              <span id="pm-logo-name">내 로고 PNG 업로드</span>
             </div>
             <input type="file" id="pm-logo-file" accept=".png,.jpg,.jpeg,.webp"
               onchange="pmLogoChanged(this)" style="display:none" />

@@ -11,6 +11,7 @@ from typing import Optional
 from urllib.parse import urljoin, urlparse
 
 import httpx
+import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from bs4 import BeautifulSoup
 
@@ -423,6 +424,124 @@ def _open_image(data: bytes) -> Optional[Image.Image]:
         return None
 
 
+# ── Logo detection & replacement ─────────────────────────────────────
+
+def _ncc_search(base: np.ndarray, tmpl: np.ndarray) -> tuple:
+    """Normalized cross-correlation — 스트라이드 기반 템플릿 매칭, (x, y, score) 반환"""
+    bh, bw = base.shape
+    th, tw = tmpl.shape
+    if th > bh or tw > bw:
+        return (0, 0, -1.0)
+
+    # 템플릿 정규화
+    t = tmpl.astype(np.float32) - tmpl.mean()
+    denom_t = np.sqrt((t ** 2).sum()) + 1e-8
+    t /= denom_t
+
+    stride = max(1, min(th, tw) // 8)
+    best_score, best_x, best_y = -1.0, 0, 0
+
+    for y in range(0, bh - th + 1, stride):
+        for x in range(0, bw - tw + 1, stride):
+            patch = base[y:y + th, x:x + tw].astype(np.float32)
+            p = patch - patch.mean()
+            denom_p = np.sqrt((p ** 2).sum()) + 1e-8
+            score = float((p / denom_p * t).sum())
+            if score > best_score:
+                best_score, best_x, best_y = score, x, y
+
+    # 정밀 탐색
+    if stride > 1:
+        for y in range(max(0, best_y - stride), min(bh - th + 1, best_y + stride + 1)):
+            for x in range(max(0, best_x - stride), min(bw - tw + 1, best_x + stride + 1)):
+                patch = base[y:y + th, x:x + tw].astype(np.float32)
+                p = patch - patch.mean()
+                denom_p = np.sqrt((p ** 2).sum()) + 1e-8
+                score = float((p / denom_p * t).sum())
+                if score > best_score:
+                    best_score, best_x, best_y = score, x, y
+
+    return (best_x, best_y, best_score)
+
+
+def find_logo_region(
+    base_img: Image.Image,
+    template_img: Image.Image,
+    threshold: float = 0.52,
+) -> Optional[tuple]:
+    """
+    base_img 에서 template_img 와 가장 비슷한 영역 탐색.
+    여러 스케일을 시도해 가장 높은 매칭 점수의 (x, y, w, h) 반환.
+    threshold 미만이면 None.
+    """
+    base_gray = np.array(base_img.convert("L"))
+    tmpl_orig = template_img.convert("L")
+    ow, oh = tmpl_orig.size
+
+    best_score, best_result = threshold, None
+
+    for scale in [0.6, 0.75, 0.9, 1.0, 1.15, 1.35]:
+        tw = max(12, int(ow * scale))
+        th = max(12, int(oh * scale))
+        tmpl = np.array(tmpl_orig.resize((tw, th), Image.LANCZOS))
+        x, y, score = _ncc_search(base_gray, tmpl)
+        if score > best_score:
+            best_score = score
+            best_result = (x, y, tw, th)
+
+    return best_result
+
+
+def _sample_bg_color(img: Image.Image, x: int, y: int, w: int, h: int) -> tuple:
+    """로고 영역 주변 픽셀의 평균 색상 추출"""
+    iw, ih = img.size
+    margin = max(6, min(w, h) // 4)
+    rgba = img.convert("RGBA")
+    samples = []
+
+    def sample(px, py):
+        if 0 <= px < iw and 0 <= py < ih:
+            samples.append(rgba.getpixel((px, py))[:3])
+
+    for px in range(max(0, x - margin), min(iw, x + w + margin)):
+        sample(px, y - margin)
+        sample(px, y + h + margin)
+    for py in range(max(0, y - margin), min(ih, y + h + margin)):
+        sample(x - margin, py)
+        sample(x + w + margin, py)
+
+    if not samples:
+        return (255, 255, 255, 255)
+    r = int(sum(s[0] for s in samples) / len(samples))
+    g = int(sum(s[1] for s in samples) / len(samples))
+    b = int(sum(s[2] for s in samples) / len(samples))
+    return (r, g, b, 255)
+
+
+def replace_logo(
+    base_img: Image.Image,
+    region: tuple,           # (x, y, w, h)
+    new_logo: Optional[Image.Image],
+    keep_position: bool = True,
+) -> Image.Image:
+    """
+    region 을 배경색으로 지우고, 같은 위치에 new_logo 배치.
+    new_logo=None 이면 지우기만.
+    """
+    img = base_img.copy().convert("RGBA")
+    x, y, w, h = region
+
+    bg = _sample_bg_color(img, x, y, w, h)
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([x, y, x + w, y + h], fill=bg)
+
+    if new_logo and keep_position:
+        logo_r = new_logo.convert("RGBA").resize((w, h), Image.LANCZOS)
+        img.paste(logo_r, (x, y), logo_r)
+
+    return img
+
+
 def _place_logo(base_img: Image.Image, logo: Image.Image,
                 position: str, size_pct: float) -> Image.Image:
     bw, bh = base_img.size
@@ -475,6 +594,7 @@ async def build_processed_zip(
     use_ai: bool = False,
     product_title: str = "",
     product_desc: str = "",
+    remove_logo_bytes: Optional[bytes] = None,
 ) -> bytes:
     """이미지 다운로드 → (AI 합성 or 로고) → 플랫폼별 리사이즈 → zip"""
 
@@ -498,6 +618,25 @@ async def build_processed_zip(
             except Exception:
                 pass
 
+    # 제거할 로고 템플릿
+    remove_tmpl = None
+    if remove_logo_bytes:
+        try:
+            remove_tmpl = Image.open(io.BytesIO(remove_logo_bytes)).convert("RGBA")
+        except Exception:
+            pass
+
+    def _process_img(img: Image.Image) -> Image.Image:
+        """로고 제거 → 우리 로고 삽입"""
+        if remove_tmpl:
+            region = find_logo_region(img, remove_tmpl)
+            if region:
+                img = replace_logo(img, region, logo)
+                return img  # 로고 제거 후 같은 위치에 삽입했으므로 추가 삽입 불필요
+        if logo:
+            img = _place_logo(img, logo, logo_position, logo_size_pct)
+        return img
+
     zip_buf = io.BytesIO()
     with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
 
@@ -505,41 +644,34 @@ async def build_processed_zip(
             # AI 카피 생성
             copy = await generate_product_copy(product_title, product_desc)
 
-            # 메인 이미지: 로고만 적용해서 정사각형
+            # 메인 이미지
             main_imgs = [img for img, im in downloaded if im]
             if not main_imgs:
                 main_imgs = [downloaded[0][0]]
 
             for i, img in enumerate(main_imgs):
-                base = img.copy()
-                if logo:
-                    base = _place_logo(base, logo, logo_position, logo_size_pct)
+                out = _process_img(img.copy())
                 fname = f"{i+1:02d}"
-                zf.writestr(f"coupang/main_{fname}.jpg", _to_bytes(_resize_square(base, COUPANG_MAIN)))
-                zf.writestr(f"naver/main_{fname}.jpg",   _to_bytes(_resize_square(base, NAVER_MAIN)))
+                zf.writestr(f"coupang/main_{fname}.jpg", _to_bytes(_resize_square(out, COUPANG_MAIN)))
+                zf.writestr(f"naver/main_{fname}.jpg",   _to_bytes(_resize_square(out, NAVER_MAIN)))
 
-            # 상세 이미지: AI 상세페이지 합성
-            detail_imgs = [img for img, im in downloaded if not im]
-            if not detail_imgs:
-                detail_imgs = [img for img, _ in downloaded]
-
+            # 상세 이미지: AI 합성
+            detail_imgs = [img for img, im in downloaded if not im] or [img for img, _ in downloaded]
             composed = compose_detail_page(detail_imgs, copy, logo)
-
             zf.writestr("coupang/detail_page.jpg", _to_bytes(_resize_width(composed, COUPANG_DETAIL)))
             zf.writestr("naver/detail_page.jpg",   _to_bytes(_resize_width(composed, NAVER_DETAIL)))
 
         else:
-            # 기본 모드: 로고만 삽입
+            # 기본 모드: 로고 제거(옵션) + 로고 삽입
             for idx, (img, im) in enumerate(downloaded):
-                if logo:
-                    img = _place_logo(img, logo, logo_position, logo_size_pct)
+                out = _process_img(img.copy())
                 fname = f"{idx+1:02d}"
                 if im:
-                    zf.writestr(f"coupang/main_{fname}.jpg",   _to_bytes(_resize_square(img, COUPANG_MAIN)))
-                    zf.writestr(f"naver/main_{fname}.jpg",     _to_bytes(_resize_square(img, NAVER_MAIN)))
+                    zf.writestr(f"coupang/main_{fname}.jpg",   _to_bytes(_resize_square(out, COUPANG_MAIN)))
+                    zf.writestr(f"naver/main_{fname}.jpg",     _to_bytes(_resize_square(out, NAVER_MAIN)))
                 else:
-                    zf.writestr(f"coupang/detail_{fname}.jpg", _to_bytes(_resize_width(img, COUPANG_DETAIL)))
-                    zf.writestr(f"naver/detail_{fname}.jpg",   _to_bytes(_resize_width(img, NAVER_DETAIL)))
+                    zf.writestr(f"coupang/detail_{fname}.jpg", _to_bytes(_resize_width(out, COUPANG_DETAIL)))
+                    zf.writestr(f"naver/detail_{fname}.jpg",   _to_bytes(_resize_width(out, NAVER_DETAIL)))
 
     zip_buf.seek(0)
     return zip_buf.read()

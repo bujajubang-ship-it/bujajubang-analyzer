@@ -6,3 +6,4 @@ pydantic
 Pillow
 beautifulsoup4
 anthropic
+numpy
