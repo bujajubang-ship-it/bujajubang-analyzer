@@ -610,6 +610,9 @@ async def pagemaker_process(request: Request):
     logo_b64: str = data.get("logo_b64", "")
     logo_position: str = data.get("logo_position", "bottom-right")
     logo_size_pct: float = float(data.get("logo_size_pct", 0.15))
+    use_ai: bool = bool(data.get("use_ai", False))
+    product_title: str = data.get("product_title", "")
+    product_desc: str = data.get("product_desc", "")
 
     if not image_urls:
         return JSONResponse({"error": "이미지가 없습니다"}, status_code=400)
@@ -622,6 +625,9 @@ async def pagemaker_process(request: Request):
         logo_position=logo_position,
         logo_size_pct=logo_size_pct,
         is_main=is_main,
+        use_ai=use_ai,
+        product_title=product_title,
+        product_desc=product_desc,
     )
 
     return StreamingResponse(

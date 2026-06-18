@@ -1158,6 +1158,8 @@ function pmScrape() {
       }
 
       status.textContent = data.images.length + '개 이미지 발견' + (data.title ? ' — ' + data.title : '');
+      status.dataset.title = data.title || '';
+      status.dataset.desc  = data.description || '';
       _pmScrapedImages = data.images.map((u, i) => ({ url: u, selected: true, isMain: i === 0 }));
       pmRenderImages();
 
@@ -1249,6 +1251,12 @@ function pmSetPos(btn) {
   _pmLogoPos = btn.dataset.pos;
 }
 
+let _pmUseAi = false;
+
+function pmToggleAi(checked) {
+  _pmUseAi = checked;
+}
+
 async function pmProcess() {
   const selected = _pmScrapedImages.filter(x => x.selected);
   if (selected.length === 0) {
@@ -1256,24 +1264,32 @@ async function pmProcess() {
     return;
   }
 
-  const btn = document.getElementById('pm-process-btn');
+  const btn    = document.getElementById('pm-process-btn');
   const dlArea = document.getElementById('pm-dl-area');
   btn.disabled = true;
-  btn.textContent = '변환 중...';
+  btn.textContent = _pmUseAi ? '✨ AI 분석 중... (10~20초)' : '변환 중...';
   dlArea.classList.add('hidden');
 
   const sizePct = parseInt(document.getElementById('pm-size-range').value) / 100;
+
+  // scrape 시 저장된 title/description 재사용
+  const titleEl = document.getElementById('pm-scrape-status');
+  const productTitle = titleEl ? (titleEl.dataset.title || '') : '';
+  const productDesc  = titleEl ? (titleEl.dataset.desc  || '') : '';
 
   try {
     const resp = await fetch('/api/pagemaker/process', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        images:       selected.map(x => x.url),
-        is_main:      selected.map(x => x.isMain),
-        logo_b64:     _pmLogoB64 || null,
+        images:        selected.map(x => x.url),
+        is_main:       selected.map(x => x.isMain),
+        logo_b64:      _pmLogoB64 || null,
         logo_position: _pmLogoPos,
         logo_size_pct: sizePct,
+        use_ai:        _pmUseAi,
+        product_title: productTitle,
+        product_desc:  productDesc,
       }),
     });
 
@@ -1282,10 +1298,10 @@ async function pmProcess() {
       throw new Error(err);
     }
 
-    const blob = await resp.blob();
+    const blob   = await resp.blob();
     const objUrl = URL.createObjectURL(blob);
-    const link = document.getElementById('pm-dl-link');
-    link.href = objUrl;
+    const link   = document.getElementById('pm-dl-link');
+    link.href    = objUrl;
     dlArea.classList.remove('hidden');
   } catch (e) {
     alert('변환 오류: ' + e.message);

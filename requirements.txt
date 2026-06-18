@@ -5,3 +5,4 @@ httpx
 pydantic
 Pillow
 beautifulsoup4
+anthropic

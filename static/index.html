@@ -366,6 +366,17 @@
       <!-- Step 4: Process -->
       <div class="pm-card hidden" id="pm-process-card">
         <div class="pm-card-title">④ 변환 및 다운로드</div>
+
+        <!-- AI 상세페이지 토글 -->
+        <label class="pm-ai-toggle">
+          <input type="checkbox" id="pm-ai-check" onchange="pmToggleAi(this.checked)" />
+          <span class="pm-ai-slider"></span>
+          <span class="pm-ai-label">
+            ✨ AI 상세페이지 생성
+            <span class="pm-ai-sub">Claude가 제품명 분석 → 마케팅 카피 + 레이아웃 자동 구성</span>
+          </span>
+        </label>
+
         <div class="pm-process-row">
           <button class="pm-btn-primary pm-btn-lg" id="pm-process-btn" onclick="pmProcess()">
             🚀 변환 시작
@@ -377,7 +388,7 @@
         </div>
         <div id="pm-dl-area" class="pm-dl-area hidden">
           <a id="pm-dl-link" class="pm-dl-btn" download="page_maker.zip">📦 ZIP 다운로드</a>
-          <div class="pm-dl-hint">coupang/ · naver/ 폴더로 분리 — main_XX.jpg / detail_XX.jpg</div>
+          <div class="pm-dl-hint">coupang/ · naver/ 폴더로 분리 — main_XX.jpg / detail_page.jpg</div>
         </div>
       </div>
 
