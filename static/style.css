@@ -1350,3 +1350,16 @@ body { font-family: -apple-system, 'Noto Sans KR', sans-serif; background: var(-
   .pm-ai-field-colors { flex-direction: column !important; }
   .pm-ai-preview-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+.pm-font-select { cursor: pointer; background-color: #fff; }
+.pm-font-preview {
+  margin-top: 6px;
+  padding: 10px 14px;
+  background: #f8f5ff;
+  border: 1.5px dashed #c4b5fd;
+  border-radius: 8px;
+  font-size: 15px;
+  color: #4b5563;
+  transition: font-family 0.2s;
+  min-height: 38px;
+}

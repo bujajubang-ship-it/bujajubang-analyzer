@@ -1341,6 +1341,46 @@ function pmFillAiFields(d) {
   document.getElementById('pai-sub-color').addEventListener('input', e => {
     document.getElementById('pai-sub-color-text').value = e.target.value;
   });
+
+  // 폰트 미리보기 업데이트
+  pmUpdateFontPreview();
+  document.getElementById('pai-font-family')?.addEventListener('change', pmUpdateFontPreview);
+}
+
+const FONT_CSS_MAP = {
+  '나눔고딕':   "'Nanum Gothic', sans-serif",
+  '나눔명조':   "'Nanum Myeongjo', serif",
+  '블랙한산스': "'Black Han Sans', sans-serif",
+  '도현':       "'Do Hyeon', sans-serif",
+  '주아':       "'Jua', sans-serif",
+};
+const FONT_GSTATIC = {
+  '나눔고딕':   'https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700&display=swap',
+  '나눔명조':   'https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@400;700&display=swap',
+  '블랙한산스': 'https://fonts.googleapis.com/css2?family=Black+Han+Sans&display=swap',
+  '도현':       'https://fonts.googleapis.com/css2?family=Do+Hyeon&display=swap',
+  '주아':       'https://fonts.googleapis.com/css2?family=Jua&display=swap',
+};
+
+function pmUpdateFontPreview() {
+  const sel = document.getElementById('pai-font-family');
+  const preview = document.getElementById('pai-font-preview');
+  if (!sel || !preview) return;
+  const val = sel.value;
+  if (!val) {
+    preview.style.fontFamily = '';
+    preview.textContent = '미리보기: 부자주방 위생용기 최고의 선택';
+    return;
+  }
+  // Google Fonts 동적 로드
+  if (FONT_GSTATIC[val] && !document.querySelector(`link[data-gfont="${val}"]`)) {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet'; link.href = FONT_GSTATIC[val];
+    link.setAttribute('data-gfont', val);
+    document.head.appendChild(link);
+  }
+  preview.style.fontFamily = FONT_CSS_MAP[val] || '';
+  preview.textContent = `미리보기 (${val}): 부자주방 위생용기 최고의 선택`;
 }
 
 function pmReadAiFields() {
@@ -1356,6 +1396,7 @@ function pmReadAiFields() {
     sub_color:       get('pai-sub-color-text')  || get('pai-sub-color'),
     background:      get('pai-background'),
     mood:            get('pai-mood'),
+    font_family:     get('pai-font-family'),
   };
 }
 

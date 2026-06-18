@@ -160,6 +160,15 @@ FONT_DIR    = Path(__file__).parent / "fonts"
 FONT_REG    = FONT_DIR / "NanumGothic.ttf"
 FONT_BOLD   = FONT_DIR / "NanumGothicBold.ttf"
 
+# 지원 폰트 목록 (key: UI 표시명, value: (regular_file, bold_file))
+FONT_CATALOG = {
+    "나눔고딕":   ("NanumGothic.ttf",      "NanumGothicBold.ttf"),
+    "나눔명조":   ("NanumMyeongjo.ttf",     "NanumMyeongjoBold.ttf"),
+    "블랙한산스": ("BlackHanSans.ttf",      "BlackHanSans.ttf"),   # bold 없어서 동일 파일
+    "도현":       ("DoHyeon.ttf",           "DoHyeon.ttf"),
+    "주아":       ("Jua.ttf",               "Jua.ttf"),
+}
+
 COUPANG_MAIN   = (1000, 1000)
 COUPANG_DETAIL = 1000
 NAVER_MAIN     = (1000, 1000)
@@ -175,8 +184,16 @@ COLOR_SCHEMES = {
 
 # ── Font helpers ─────────────────────────────────────────────────────
 
-def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
-    path = FONT_BOLD if bold else FONT_REG
+_active_font_family: str = ""   # 현재 섹션에 적용할 글씨체
+
+def _font(size: int, bold: bool = False, family: str = "") -> ImageFont.FreeTypeFont:
+    fam = family or _active_font_family
+    if fam and fam in FONT_CATALOG:
+        reg_f, bold_f = FONT_CATALOG[fam]
+        fname = bold_f if bold else reg_f
+        path = FONT_DIR / fname
+    else:
+        path = FONT_BOLD if bold else FONT_REG
     try:
         return ImageFont.truetype(str(path), size)
     except Exception:
@@ -1102,6 +1119,9 @@ def _ov_cta(img, W, H, p):
 
 def _overlay_text_on_image(section: dict, img_bytes: bytes, product: dict) -> bytes:
     """Gemini 생성 이미지 위에 정확한 한글 텍스트를 Pillow로 오버레이"""
+    global _active_font_family
+    _active_font_family = product.get("font_family", "")
+
     img = Image.open(io.BytesIO(img_bytes)).convert("RGBA")
     W, H = img.size
     key = section["key"]

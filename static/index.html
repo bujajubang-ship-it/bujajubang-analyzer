@@ -463,6 +463,18 @@
               <label>분위기 키워드</label>
               <input type="text" id="pai-mood" class="pm-ai-input" />
             </div>
+            <div class="pm-ai-field-row">
+              <label>글씨체 선택</label>
+              <select id="pai-font-family" class="pm-ai-input pm-font-select">
+                <option value="">자동 (AI 추천)</option>
+                <option value="나눔고딕">나눔고딕 — 깔끔한 현대적</option>
+                <option value="나눔명조">나눔명조 — 고급스러운 세리프</option>
+                <option value="블랙한산스">블랙한산스 — 굵고 임팩트 있는</option>
+                <option value="도현">도현 — 둥글고 트렌디</option>
+                <option value="주아">주아 — 친근하고 개성 있는</option>
+              </select>
+              <div id="pai-font-preview" class="pm-font-preview">미리보기: 부자주방 위생용기 최고의 선택</div>
+            </div>
           </div>
           <button class="pm-btn-gemini pm-btn-lg" id="pm-ai-gen-btn" onclick="pmAiGenerate()">
             ✨ AI 상세페이지 8장 생성
