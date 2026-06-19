@@ -1233,84 +1233,273 @@ key_features는 이미지에서 읽은 실제 특징과 장점을 마케팅 언�
 
 
 async def _fetch_smartstore_data(product_url: str) -> tuple:
-    """SmartStore URL → (title, page_text, main_imgs, detail_imgs) Naver API 우회"""
+    """SmartStore URL → (title, page_text, main_imgs, detail_imgs)
+    방법1: HTML + __NEXT_DATA__ 파싱 (우선)
+    방법2: Naver 내부 API 폴백
+    """
     import re as _re
-    m = _re.search(r'/products/(\d+)', product_url)
+    m = _re.search(r'/products?/(\d+)', product_url)
     product_no = m.group(1) if m else ""
-    store_m = _re.search(r'smartstore\.naver\.com/([^/]+)', product_url) or \
-              _re.search(r'brand\.naver\.com/([^/]+)', product_url)
-    store_id = store_m.group(1) if store_m else ""
 
     title, page_text, main_imgs, detail_imgs = "", "", [], []
 
-    # Naver 상품 API (공개 엔드포인트)
-    api_urls = []
-    if product_no:
+    naver_headers = {
+        **HEADERS,
+        "Referer": "https://smartstore.naver.com/",
+        "Origin": "https://smartstore.naver.com",
+    }
+
+    TEXT_KEYS = {
+        'productName', 'name', 'description', 'detailContents', 'content',
+        'htmlContent', 'imageAltText', 'representativeImageContent',
+        'productDescription', 'shortDescription', 'catchphrase',
+    }
+
+    def _collect_texts(obj, acc, depth=0):
+        if depth > 15: return
+        if isinstance(obj, str) and len(obj.strip()) > 5:
+            clean = re.sub(r'<[^>]+>', ' ', obj).strip()
+            if clean:
+                acc.append(clean)
+        elif isinstance(obj, dict):
+            for k, v in obj.items():
+                if k in TEXT_KEYS:
+                    _collect_texts(v, acc, depth + 1)
+                elif isinstance(v, (dict, list)):
+                    _collect_texts(v, acc, depth + 1)
+        elif isinstance(obj, list):
+            for x in obj[:20]:
+                _collect_texts(x, acc, depth + 1)
+
+    # ── 방법 1: HTML 직접 파싱 (__NEXT_DATA__) ───────────────────────
+    try:
+        async with httpx.AsyncClient(headers=naver_headers, timeout=25, follow_redirects=True) as client:
+            r = await client.get(product_url)
+            if r.status_code == 200:
+                soup = BeautifulSoup(r.text, "html.parser")
+
+                og_t = soup.find("meta", property="og:title")
+                if og_t and og_t.get("content"):
+                    title = og_t["content"].split(" : ")[0].strip()
+
+                og_img = soup.find("meta", property="og:image")
+                if og_img and og_img.get("content"):
+                    u = og_img["content"]
+                    if u.startswith("http"):
+                        main_imgs.append(u)
+
+                next_tag = soup.find("script", id="__NEXT_DATA__")
+                if next_tag:
+                    nd = json.loads(next_tag.string or "{}")
+                    tmp_imgs: list = []
+                    _extract_json_images(nd, tmp_imgs)
+                    for u in tmp_imgs:
+                        if _is_content_image(u) and u not in detail_imgs and u not in main_imgs:
+                            detail_imgs.append(u)
+
+                    acc: list = []
+                    _collect_texts(nd, acc)
+                    if acc:
+                        if not title:
+                            title = acc[0]
+                        page_text = " ".join(acc)[:2000]
+    except Exception:
+        pass
+
+    # ── 방법 2: Naver 내부 API 폴백 ──────────────────────────────────
+    if (not page_text or not detail_imgs) and product_no:
         api_urls = [
             f"https://smartstore.naver.com/i/v1/products/{product_no}",
-            f"https://shopping.naver.com/catalog/products/{product_no}/detail",
+            f"https://smartstore.naver.com/i/v2/products/{product_no}",
         ]
-
-    naver_headers = {**HEADERS,
-                     "Referer": "https://smartstore.naver.com/",
-                     "Origin": "https://smartstore.naver.com"}
-
-    async with httpx.AsyncClient(headers=naver_headers, timeout=20, follow_redirects=True) as client:
-        for api_url in api_urls:
-            try:
-                r = await client.get(api_url)
-                if r.status_code == 200:
-                    d = r.json()
-                    _extract_json_images(d, detail_imgs)
-                    # 텍스트 추출
-                    def _collect_str(obj, acc, depth=0):
-                        if depth > 8: return
-                        if isinstance(obj, str) and len(obj) > 5:
-                            acc.append(obj)
-                        elif isinstance(obj, dict):
-                            for k, v in obj.items():
-                                if k in ('productName','name','description','detailContents','content'):
-                                    _collect_str(v, acc, depth+1)
-                        elif isinstance(obj, list):
-                            for x in obj[:5]:
-                                _collect_str(x, acc, depth+1)
-                    acc = []
-                    _collect_str(d, acc)
-                    page_text = " ".join(acc)[:2000]
-                    if acc:
-                        title = acc[0] if acc else ""
-                    break
-            except Exception:
-                continue
+        async with httpx.AsyncClient(headers=naver_headers, timeout=20, follow_redirects=True) as client:
+            for api_url in api_urls:
+                try:
+                    r = await client.get(api_url)
+                    if r.status_code == 200:
+                        d = r.json()
+                        tmp_imgs2: list = []
+                        _extract_json_images(d, tmp_imgs2)
+                        for u in tmp_imgs2:
+                            if _is_content_image(u) and u not in detail_imgs and u not in main_imgs:
+                                detail_imgs.append(u)
+                        if not page_text:
+                            acc2: list = []
+                            _collect_texts(d, acc2)
+                            if acc2:
+                                if not title:
+                                    title = acc2[0]
+                                page_text = " ".join(acc2)[:2000]
+                        break
+                except Exception:
+                    continue
 
     return title, page_text, main_imgs[:2], detail_imgs[:8]
+
+
+async def _fetch_coupang_data(product_url: str) -> tuple:
+    """Coupang URL → (title, page_text, main_imgs, detail_imgs)
+    브라우저 헤더로 HTML 파싱 + script JSON 추출
+    """
+    title, page_text, main_imgs, detail_imgs = "", "", [], []
+
+    coupang_headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Cache-Control": "max-age=0",
+        "sec-ch-ua": '"Google Chrome";v="125", "Chromium";v="125", "Not.A/Brand";v="24"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"macOS"',
+    }
+
+    try:
+        async with httpx.AsyncClient(headers=coupang_headers, timeout=30, follow_redirects=True) as client:
+            r = await client.get(product_url)
+            if r.status_code != 200:
+                return title, page_text, main_imgs, detail_imgs
+
+            soup = BeautifulSoup(r.text, "html.parser")
+
+            # 제목 추출
+            for sel in ["h2.prod-buy-header__title", "#productTitle",
+                        ".prod-title", "h1.prod-buy-header__title", ".prod-buy-header__title"]:
+                el = soup.select_one(sel)
+                if el:
+                    title = el.get_text(strip=True)
+                    break
+            if not title:
+                og = soup.find("meta", property="og:title")
+                if og and og.get("content"):
+                    title = og["content"].split("|")[0].split(" - ")[0].strip()
+
+            # og:image
+            og_img = soup.find("meta", property="og:image")
+            if og_img and og_img.get("content"):
+                main_imgs.append(og_img["content"])
+
+            # script 태그에서 이미지 URL + 텍스트 추출
+            for script in soup.find_all("script"):
+                text = script.string or ""
+                if len(text) < 100:
+                    continue
+
+                # 이미지 URL 패턴
+                img_urls = re.findall(
+                    r'["\'](https?://[^\'"]+\.(?:jpg|jpeg|png|webp)(?:\?[^\'"]*)?)["\']', text
+                )
+                for u in img_urls:
+                    if not _is_content_image(u):
+                        continue
+                    if "coupangcdn" in u or "coupang" in u:
+                        if u not in main_imgs and u not in detail_imgs:
+                            if any(k in u for k in ("thumbnail", "itemimage", "medium", "large")):
+                                main_imgs.append(u)
+                            else:
+                                detail_imgs.append(u)
+
+                # 제품명
+                if not title:
+                    nm = re.search(r'"(?:productName|displayName|vendorItemName)"\s*:\s*"([^"]+)"', text)
+                    if nm:
+                        title = nm.group(1)
+
+                # 설명 텍스트
+                if not page_text:
+                    for pat in [
+                        r'"(?:description|htmlContent|detailContent|sellerSpecificContent)"\s*:\s*"([^"]{20,})"',
+                        r'"(?:content|vendorItemName)"\s*:\s*"([^"]{10,})"',
+                    ]:
+                        parts = re.findall(pat, text)
+                        if parts:
+                            clean = [re.sub(r'<[^>]+>', ' ', p).strip() for p in parts[:10]]
+                            page_text = " ".join(clean)[:2000]
+                            break
+
+            # HTML 메인 이미지
+            if len(main_imgs) < 3:
+                for sel in [".prod-image__detail img", ".thumbnail-image img",
+                            "#repImage img", ".item-img img",
+                            ".prod-image-container img", ".product-image-thumbnail img"]:
+                    for img in soup.select(sel):
+                        src = img.get("src") or img.get("data-src") or ""
+                        if not src or src.startswith("data:"):
+                            continue
+                        if src.startswith("//"):
+                            src = "https:" + src
+                        if src not in main_imgs and _is_content_image(src):
+                            main_imgs.append(src)
+
+            # HTML 상세 이미지
+            for sel in [".prod-description", "#productDescription",
+                        ".prod-seller-description", "[class*='description']"]:
+                el = soup.select_one(sel)
+                if not el:
+                    continue
+                for img in el.find_all("img"):
+                    src = img.get("src") or img.get("data-src") or ""
+                    if not src or src.startswith("data:"):
+                        continue
+                    if src.startswith("//"):
+                        src = "https:" + src
+                    if src not in detail_imgs and src not in main_imgs and _is_content_image(src):
+                        detail_imgs.append(src)
+
+            # 텍스트 폴백
+            if not page_text:
+                for sel in [".prod-description", ".prod-seller-description",
+                            ".product-description", "#itemDescription"]:
+                    el = soup.select_one(sel)
+                    if el:
+                        page_text = el.get_text(" ", strip=True)[:2000]
+                        break
+
+    except Exception:
+        pass
+
+    return title, page_text, main_imgs[:3], detail_imgs[:8]
 
 
 async def scrape_and_analyze_url(product_url: str) -> dict:
     """상품 URL → 페이지 텍스트 + 이미지들 스크래핑 → Gemini 종합 분석"""
 
     is_smartstore = any(d in product_url for d in ("smartstore.naver.com", "brand.naver.com"))
+    is_coupang    = "coupang.com" in product_url
 
-    # ── 1. 페이지 스크래핑 ──────────────────────────────────────────
-    html = ""
-    if not is_smartstore:
-        try:
-            async with httpx.AsyncClient(headers=HEADERS, timeout=25, follow_redirects=True) as client:
-                r = await client.get(product_url)
-                r.raise_for_status()
-                html = r.text
-        except Exception as e:
-            return {"error": f"페이지 접근 실패: {e}"}
-
-    # ── SmartStore: API 우회 ────────────────────────────────────────
+    # ── SmartStore ──────────────────────────────────────────────────
     if is_smartstore:
         ss_title, ss_text, ss_main, ss_detail = await _fetch_smartstore_data(product_url)
+        if not ss_title and not ss_text and not ss_main and not ss_detail:
+            return {"error": "스마트스토어 상품 정보를 가져오지 못했습니다. URL을 확인해주세요."}
         rep_image = ss_main[0] if ss_main else (ss_detail[0] if ss_detail else "")
         images_to_send = (ss_main[:1] + ss_detail[:4])[:5]
-        title = ss_title
-        page_text = ss_text
-        # Gemini 분석으로 바로 이동
-        return await _run_gemini_analysis(title, page_text, images_to_send, rep_image)
+        return await _run_gemini_analysis(ss_title, ss_text, images_to_send, rep_image)
+
+    # ── Coupang ─────────────────────────────────────────────────────
+    if is_coupang:
+        cp_title, cp_text, cp_main, cp_detail = await _fetch_coupang_data(product_url)
+        if not cp_title and not cp_text and not cp_main and not cp_detail:
+            return {"error": "쿠팡 상품 정보를 가져오지 못했습니다. URL을 확인해주세요."}
+        rep_image = cp_main[0] if cp_main else (cp_detail[0] if cp_detail else "")
+        images_to_send = (cp_main[:1] + cp_detail[:4])[:5]
+        return await _run_gemini_analysis(cp_title, cp_text, images_to_send, rep_image)
+
+    # ── 1. 일반 사이트 페이지 스크래핑 ────────────────────────────
+    html = ""
+    try:
+        async with httpx.AsyncClient(headers=HEADERS, timeout=25, follow_redirects=True) as client:
+            r = await client.get(product_url)
+            r.raise_for_status()
+            html = r.text
+    except Exception as e:
+        return {"error": f"페이지 접근 실패: {e}"}
 
     soup = BeautifulSoup(html, "html.parser")
     parsed = urlparse(product_url)
