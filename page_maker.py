@@ -1239,6 +1239,378 @@ def _ov_cta(img, W, H, p):
     return Image.alpha_composite(img, ov).convert("RGB")
 
 
+# ── 부자주방 스타일 (흰 배경 + Pillow 전체 렌더링) ──────────────────
+
+BJ_RED   = (232, 36, 40)
+BJ_BLACK = (26, 26, 26)
+BJ_GRAY  = (110, 110, 110)
+BJ_LGRAY = (245, 245, 245)
+BJ_WHITE = (255, 255, 255)
+
+
+def _bj_logo(d, W, y, size=46):
+    f  = _font(size, bold=True)
+    w1 = _text_w(d, "부자", f)
+    w2 = _text_w(d, "주방", f)
+    x  = (W - w1 - w2) // 2
+    d.text((x, y), "부자", font=f, fill=BJ_RED)
+    d.text((x + w1, y), "주방", font=f, fill=BJ_BLACK)
+    return y + _text_h(d, "부자", f)
+
+
+def _bj_red_box(d, W, y, text, font_size=40, pad_h=14, margin=40):
+    f  = _fit_font(d, text, W - margin * 2, font_size, bold=True, min_sz=20)
+    th = _text_h(d, text, f)
+    bh = th + pad_h * 2
+    d.rectangle([margin, y, W - margin, y + bh], fill=BJ_RED)
+    tw = _text_w(d, text, f)
+    d.text(((W - tw) // 2, y + pad_h), text, font=f, fill=BJ_WHITE)
+    return y + bh
+
+
+def _bj_place_img(canvas, img, x, y, max_w, max_h):
+    if not img or max_w <= 0 or max_h <= 0:
+        return 0, 0
+    thumb = img.copy().convert("RGB")
+    thumb.thumbnail((max_w, max_h), Image.LANCZOS)
+    ix = x + (max_w - thumb.width) // 2
+    iy = max(y, y + (max_h - thumb.height) // 2)
+    canvas.paste(thumb, (ix, iy))
+    return thumb.width, thumb.height
+
+
+def _bj_mixed_text(d, text, f, y, W, black_words=1):
+    words = text.split()
+    if not words:
+        return
+    if len(words) <= black_words:
+        tw = _text_w(d, text, f)
+        d.text(((W - tw) // 2, y), text, font=f, fill=BJ_BLACK)
+        return
+    bp = " ".join(words[:black_words])
+    rp = " ".join(words[black_words:])
+    full_tw = _text_w(d, text, f)
+    x = (W - full_tw) // 2
+    d.text((x, y), bp, font=f, fill=BJ_BLACK)
+    bw = _text_w(d, bp + " ", f)
+    d.text((x + bw, y), rp, font=f, fill=BJ_RED)
+
+
+def _bj_header(W, H, product, imgs):
+    canvas = Image.new("RGB", (W, H), BJ_WHITE)
+    d  = ImageDraw.Draw(canvas)
+    pad = 60
+    y   = pad
+
+    y = _bj_logo(d, W, y)
+    y += 60
+
+    cat = _clean(product.get("category", "")) or "주방 전문 업체"
+    fc  = _font(28)
+    d.text(((W - _text_w(d, cat, fc)) // 2, y), cat, font=fc, fill=BJ_BLACK)
+    y += _text_h(d, cat, fc) + 18
+
+    name  = _clean(product.get("product_name", "상품명"))
+    words = name.split()
+    if len(words) >= 3:
+        line1 = " ".join(words[:-1])
+        line2 = words[-1]
+    elif len(words) == 2:
+        line1, line2 = words[0], words[1]
+    else:
+        line1, line2 = name, ""
+
+    y = _bj_red_box(d, W, y, line1, font_size=40, pad_h=14, margin=80)
+    y += 8
+    y = _bj_red_box(d, W, y, line2 if line2 else name, font_size=72, pad_h=18, margin=28)
+    y += 50
+
+    if imgs:
+        _bj_place_img(canvas, imgs[0], 40, y, W - 80, H - y - pad)
+
+    return canvas
+
+
+def _bj_features(W, H, product, imgs):
+    canvas = Image.new("RGB", (W, H), BJ_WHITE)
+    d  = ImageDraw.Draw(canvas)
+    feats = [_clean(f) for f in _parse_features(product.get("key_features", ""))][:4]
+    pad = 60
+    y   = pad
+
+    f_title = _font(64, bold=True)
+    title = "핵심 특징"
+    d.text(((W - _text_w(d, title, f_title)) // 2, y), title, font=f_title, fill=BJ_BLACK)
+    y += _text_h(d, title, f_title) + 10
+    bw = 70
+    d.rectangle([(W - bw) // 2, y, (W + bw) // 2, y + 4], fill=BJ_RED)
+    y += 40
+
+    if imgs:
+        img_h = int((H - y - pad) * 0.34)
+        _bj_place_img(canvas, imgs[0], pad, y, W - pad * 2, img_h)
+        y += img_h + 28
+
+    n      = max(1, len(feats))
+    card_h = min(180, (H - y - pad) // n)
+
+    for i, feat in enumerate(feats):
+        bg = BJ_LGRAY if i % 2 == 0 else BJ_WHITE
+        d.rectangle([pad // 2, y, W - pad // 2, y + card_h - 6], fill=bg)
+        d.rectangle([pad // 2, y + 8, pad // 2 + 5, y + card_h - 14], fill=BJ_RED)
+
+        words     = feat.split()
+        first     = " ".join(words[:4]) if len(words) > 4 else feat
+        rest      = " ".join(words[4:]) if len(words) > 4 else ""
+        inner_w   = W - pad * 2 - 20
+
+        fb  = _fit_font(d, first, inner_w, 30, bold=True, min_sz=18)
+        ty0 = y + 16
+        d.text((pad + 22, ty0), first, font=fb, fill=BJ_BLACK)
+        ty0 += _text_h(d, first, fb) + 5
+
+        if rest:
+            fr = _fit_font(d, rest, inner_w, 22, min_sz=16)
+            _ov_wrap(d, rest, fr, pad + 22, ty0, inner_w,
+                     card_h - (ty0 - y) - 10, fill=BJ_GRAY, line_gap=3)
+        y += card_h
+
+    return canvas
+
+
+def _bj_feature_detail(W, H, product, imgs, idx):
+    canvas = Image.new("RGB", (W, H), BJ_WHITE)
+    d  = ImageDraw.Draw(canvas)
+    feats = [_clean(f) for f in _parse_features(product.get("key_features", ""))]
+    feat   = feats[idx] if idx < len(feats) else (feats[0] if feats else "핵심 특징")
+    others = [f for j, f in enumerate(feats) if j != idx][:3]
+    pad = 50
+    y   = pad
+
+    # POINT badge
+    f_pl = _font(18)
+    f_pn = _font(50, bold=True)
+    pt   = f"0{idx + 1}"
+    max_pw = max(_text_w(d, "POINT", f_pl), _text_w(d, pt, f_pn))
+    lx = (W - max_pw) // 2
+
+    d.text((lx + (max_pw - _text_w(d, "POINT", f_pl)) // 2, y), "POINT", font=f_pl, fill=BJ_GRAY)
+    y += _text_h(d, "POINT", f_pl) + 4
+    d.line([(W//2 - 12, y + 2), (W//2 + 12, y + 18)], fill=(180, 180, 180), width=2)
+    y += 24
+    d.text((lx + (max_pw - _text_w(d, pt, f_pn)) // 2, y), pt, font=f_pn, fill=BJ_BLACK)
+    y += _text_h(d, pt, f_pn) + 28
+
+    # Feature heading: "부제목\n굵은 제목" 구조
+    if ':' in feat:
+        headline, subtag = feat.split(':', 1)
+        headline = headline.strip()
+        subtag   = " ".join(subtag.strip().split()[:6])
+    elif ' - ' in feat:
+        parts    = feat.split(' - ', 1)
+        headline = parts[0].strip()
+        subtag   = " ".join(parts[1].strip().split()[:6]) if len(parts) > 1 else ""
+    else:
+        headline = feat
+        subtag   = ""
+
+    if subtag:
+        f_sub  = _fit_font(d, subtag, W - pad * 2, 26, min_sz=18)
+        d.text(((W - _text_w(d, subtag, f_sub)) // 2, y), subtag, font=f_sub, fill=(80, 80, 80))
+        y += _text_h(d, subtag, f_sub) + 10
+
+    f_head  = _fit_font(d, headline, W - pad * 2, 58, bold=True, min_sz=26)
+    words_h = headline.split()
+    bc      = 1 if len(words_h) <= 2 else min(2, len(words_h) - 1)
+    _bj_mixed_text(d, headline, f_head, y, W, bc)
+    y += _text_h(d, headline, f_head) + 30
+
+    # Product image
+    img_area_h = int(H * 0.40)
+    if imgs:
+        _bj_place_img(canvas, imgs[idx % len(imgs)], pad, y, W - pad * 2, img_area_h)
+    y += img_area_h + 28
+
+    # Bullet points
+    fd    = _font(22)
+    dot_r = 6
+    for bullet in others[:3]:
+        if y + 30 > H - pad:
+            break
+        cy = y + dot_r + 4
+        d.ellipse([pad, cy - dot_r, pad + dot_r * 2, cy + dot_r], fill=BJ_RED)
+        bx      = pad + dot_r * 2 + 14
+        avail_h = H - y - pad
+        if avail_h < 20:
+            break
+        y = _ov_wrap(d, bullet, fd, bx, y, W - bx - pad, avail_h, fill=BJ_BLACK, line_gap=4)
+        y += 10
+
+    return canvas
+
+
+def _bj_specs(W, H, product, imgs):
+    canvas = Image.new("RGB", (W, H), BJ_WHITE)
+    d  = ImageDraw.Draw(canvas)
+    rows = [(_clean(k), _clean(v)) for k, v in _parse_spec_rows(product.get("specs", ""))]
+    pad = 60
+    y   = pad
+
+    f_title = _font(72, bold=True)
+    title   = "제품 정보"
+    d.text(((W - _text_w(d, title, f_title)) // 2, y), title, font=f_title, fill=BJ_BLACK)
+    y += _text_h(d, title, f_title) + 10
+
+    f_sub = _font(22)
+    sub   = "이미지는 실제품과 다소 차이가 있을 수 있습니다."
+    d.text(((W - _text_w(d, sub, f_sub)) // 2, y), sub, font=f_sub, fill=BJ_GRAY)
+    y += _text_h(d, sub, f_sub) + 40
+
+    if imgs:
+        _bj_place_img(canvas, imgs[0], pad, y, W - pad * 2, 280)
+        y += 280 + 30
+
+    name = _clean(product.get("product_name", "상품명"))
+    y = _bj_red_box(d, W, y, name, font_size=34, pad_h=10, margin=100)
+    y += 18
+
+    if rows:
+        n      = min(len(rows), 8)
+        table_h = H - y - pad
+        row_h  = min(55, table_h // max(n, 1))
+        key_w  = int((W - pad * 2) * 0.36)
+        for i, (k, v) in enumerate(rows[:n]):
+            ry = y + i * row_h
+            if i % 2 == 1:
+                d.rectangle([pad, ry, W - pad, ry + row_h], fill=BJ_LGRAY)
+            d.line([pad, ry, W - pad, ry], fill=(215, 215, 215), width=1)
+            d.line([pad + key_w, ry, pad + key_w, ry + row_h], fill=(215, 215, 215), width=1)
+            fk_f = _fit_font(d, k, key_w - 20, 22, bold=True, min_sz=14)
+            fv_f = _fit_font(d, v, W - pad * 2 - key_w - 20, 21, min_sz=14)
+            kt   = ry + (row_h - _text_h(d, k, fk_f)) // 2
+            vt   = ry + (row_h - _text_h(d, v, fv_f)) // 2
+            d.text((pad + 14, kt), k, font=fk_f, fill=BJ_RED)
+            d.text((pad + key_w + 14, vt), v, font=fv_f, fill=BJ_BLACK)
+
+    return canvas
+
+
+def _bj_usage(W, H, product, imgs):
+    canvas = Image.new("RGB", (W, H), BJ_WHITE)
+    d  = ImageDraw.Draw(canvas)
+    steps = [_clean(s) for s in _parse_steps(product.get("how_to_use", ""))]
+    if not steps:
+        steps = [_clean(f) for f in _parse_features(product.get("key_features", ""))[:4]]
+    pad = 50
+    y   = pad
+
+    f_title = _font(58, bold=True)
+    title   = "사용 방법"
+    d.text(((W - _text_w(d, title, f_title)) // 2, y), title, font=f_title, fill=BJ_BLACK)
+    y += _text_h(d, title, f_title) + 8
+    bw = 60
+    d.rectangle([(W - bw) // 2, y, (W + bw) // 2, y + 4], fill=BJ_RED)
+    y += 36
+
+    if imgs:
+        img_idx = min(1, len(imgs) - 1)
+        _bj_place_img(canvas, imgs[img_idx], pad, y, W - pad * 2, int(H * 0.35))
+        y += int(H * 0.35) + 36
+
+    dot_r = 22
+    for i, step in enumerate(steps[:4]):
+        if y + dot_r * 2 + 10 > H - pad:
+            break
+        cx = pad + dot_r
+        cy = y + dot_r
+        d.ellipse([pad, y, pad + dot_r * 2, y + dot_r * 2], fill=BJ_RED)
+        fn = _font(20, bold=True)
+        nw = _text_w(d, str(i + 1), fn)
+        nh = _text_h(d, str(i + 1), fn)
+        d.text((cx - nw // 2, cy - nh // 2), str(i + 1), font=fn, fill=BJ_WHITE)
+        fs  = _fit_font(d, step, W - pad * 3 - dot_r * 2, 24, min_sz=16)
+        tx  = pad + dot_r * 2 + 18
+        th_s = _text_h(d, step, fs)
+        ty  = y + max(0, (dot_r * 2 - th_s) // 2)
+        _ov_wrap(d, step, fs, tx, ty, W - tx - pad, H - ty - pad, fill=BJ_BLACK, line_gap=4)
+        y += max(dot_r * 2, th_s) + 24
+
+    return canvas
+
+
+def _bj_cta(W, H, product, imgs):
+    if imgs:
+        bg = imgs[-1].copy().convert("RGBA").resize((W, H), Image.LANCZOS)
+        ov = Image.new("RGBA", (W, H), (0, 0, 0, 170))
+        canvas = Image.alpha_composite(bg, ov).convert("RGB")
+    else:
+        canvas = Image.new("RGB", (W, H), (20, 20, 20))
+    d  = ImageDraw.Draw(canvas)
+    tc  = BJ_WHITE
+    pad = 50
+
+    y = int(H * 0.10)
+    f_logo = _font(42, bold=True)
+    w1     = _text_w(d, "부자", f_logo)
+    w2     = _text_w(d, "주방", f_logo)
+    x      = (W - w1 - w2) // 2
+    d.text((x, y), "부자", font=f_logo, fill=BJ_RED)
+    d.text((x + w1, y), "주방", font=f_logo, fill=tc)
+    y += _text_h(d, "부자", f_logo) + 36
+
+    q  = "온라인 구매, 정말 안전할까요?"
+    fq = _fit_font(d, q, W - pad * 2, 38, min_sz=22)
+    d.text(((W - _text_w(d, q, fq)) // 2, y), q, font=fq, fill=tc)
+    y += _text_h(d, q, fq) + 18
+
+    ans = "물론입니다."
+    fa  = _font(60, bold=True)
+    d.text(((W - _text_w(d, ans, fa)) // 2, y), ans, font=fa, fill=tc)
+    y += _text_h(d, ans, fa) + 16
+
+    tag  = "말이 아니라 결과로 증명된 제품"
+    ft2  = _fit_font(d, tag, W - pad * 2, 26, min_sz=18)
+    d.text(((W - _text_w(d, tag, ft2)) // 2, y), tag, font=ft2, fill=tc)
+
+    btn_w = int(W * 0.64)
+    btn_h = 74
+    btn_x = (W - btn_w) // 2
+    btn_y = int(H * 0.65)
+    d.rounded_rectangle([btn_x, btn_y, btn_x + btn_w, btn_y + btn_h],
+                        radius=btn_h // 2, fill=BJ_RED)
+    f_btn = _font(32, bold=True)
+    bt    = "지금 바로 구매하기"
+    btw   = _text_w(d, bt, f_btn)
+    bth   = _text_h(d, bt, f_btn)
+    d.text((btn_x + (btn_w - btw) // 2, btn_y + (btn_h - bth) // 2),
+           bt, font=f_btn, fill=BJ_WHITE)
+
+    return canvas
+
+
+def _generate_bj_section(key: str, product: dict, imgs: list) -> Image.Image:
+    """부자주방 스타일 섹션 — Pillow 전용 (Gemini 배경 불필요)"""
+    W = 1000
+    if "01_헤더" in key:
+        return _bj_header(W, 1778, product, imgs)
+    H = 1333
+    if "02_특징요약" in key:
+        return _bj_features(W, H, product, imgs)
+    if "03_특징1" in key:
+        return _bj_feature_detail(W, H, product, imgs, 0)
+    if "04_특징2" in key:
+        return _bj_feature_detail(W, H, product, imgs, 1)
+    if "05_특징3" in key:
+        return _bj_feature_detail(W, H, product, imgs, 2)
+    if "06_스펙" in key:
+        return _bj_specs(W, H, product, imgs)
+    if "07_사용법" in key:
+        return _bj_usage(W, H, product, imgs)
+    if "08_CTA" in key:
+        return _bj_cta(W, H, product, imgs)
+    return Image.new("RGB", (W, H), BJ_WHITE)
+
+
 def _overlay_text_on_image(section: dict, img_bytes: bytes, product: dict) -> bytes:
     """Gemini 생성 이미지 위에 정확한 한글 텍스트를 Pillow로 오버레이"""
     global _active_font_family
@@ -1348,9 +1720,11 @@ key_features는 이미지에서 읽은 실제 특징과 장점을 마케팅 언�
             text = re.sub(r"```[a-z]*", "", text).strip("`\n ")
             result = json.loads(text)
             result["_rep_image"] = rep_image
+            result["_images"]    = images_to_send
             return result
     except Exception as e:
-        return {"error": f"분석 실패: {e}", "product_name": title, "_rep_image": rep_image}
+        return {"error": f"분석 실패: {e}", "product_name": title,
+                "_rep_image": rep_image, "_images": images_to_send}
 
 
 async def _fetch_smartstore_data(product_url: str) -> tuple:
@@ -1829,25 +2203,35 @@ async def stream_ai_sections(
     image_url: str,
     product_data: dict,
 ) -> AsyncGenerator[dict, None]:
-    """각 섹션 순서대로 생성 → {key, name, image_b64, error} dict yield"""
-    # 상품 이미지 다운로드 → base64
-    try:
-        async with httpx.AsyncClient(headers=HEADERS, timeout=20, follow_redirects=True) as client:
-            r = await client.get(image_url)
-            r.raise_for_status()
-            img_b64 = base64.b64encode(r.content).decode()
-            mime = r.headers.get("content-type", "image/jpeg").split(";")[0]
-    except Exception as e:
-        yield {"key": "error", "name": "오류", "error": str(e)}
-        return
+    """부자주방 스타일 — Pillow 전용 섹션 생성 (Gemini 배경 불필요)"""
+    # 제품 이미지 수집 (대표 + 분석에 사용된 이미지들)
+    img_urls: list[str] = []
+    if image_url:
+        img_urls.append(image_url)
+    for u in product_data.get("_images", []):
+        if u and u not in img_urls:
+            img_urls.append(u)
+
+    imgs: list[Image.Image] = []
+    async with httpx.AsyncClient(headers=HEADERS, timeout=20, follow_redirects=True) as client:
+        for url in img_urls[:6]:
+            try:
+                r = await client.get(url)
+                if r.status_code == 200:
+                    pil = Image.open(io.BytesIO(r.content)).convert("RGB")
+                    imgs.append(pil)
+            except Exception:
+                pass
 
     for section in SECTIONS:
         try:
-            img_bytes = await _generate_one_section(section, product_data, img_b64, mime)
+            pil_img = _generate_bj_section(section["key"], product_data, imgs)
+            buf = io.BytesIO()
+            pil_img.save(buf, format="JPEG", quality=92)
             yield {
-                "key":      section["key"],
-                "name":     section["name"],
-                "image_b64": base64.b64encode(img_bytes).decode(),
+                "key":       section["key"],
+                "name":      section["name"],
+                "image_b64": base64.b64encode(buf.getvalue()).decode(),
             }
         except Exception as e:
             yield {
