@@ -1348,6 +1348,7 @@ function pmFillAiFields(d) {
 }
 
 const FONT_CSS_MAP = {
+  'Pretendard': "'Pretendard', sans-serif",
   '나눔고딕':   "'Nanum Gothic', sans-serif",
   '나눔명조':   "'Nanum Myeongjo', serif",
   '블랙한산스': "'Black Han Sans', sans-serif",
@@ -1355,6 +1356,7 @@ const FONT_CSS_MAP = {
   '주아':       "'Jua', sans-serif",
 };
 const FONT_GSTATIC = {
+  'Pretendard': 'https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css',
   '나눔고딕':   'https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700&display=swap',
   '나눔명조':   'https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@400;700&display=swap',
   '블랙한산스': 'https://fonts.googleapis.com/css2?family=Black+Han+Sans&display=swap',

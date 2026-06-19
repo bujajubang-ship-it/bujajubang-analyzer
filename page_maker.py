@@ -162,9 +162,10 @@ FONT_BOLD   = FONT_DIR / "NanumGothicBold.ttf"
 
 # 지원 폰트 목록 (key: UI 표시명, value: (regular_file, bold_file))
 FONT_CATALOG = {
+    "Pretendard": ("Pretendard.ttf",       "PretendardBold.ttf"),
     "나눔고딕":   ("NanumGothic.ttf",      "NanumGothicBold.ttf"),
     "나눔명조":   ("NanumMyeongjo.ttf",     "NanumMyeongjoBold.ttf"),
-    "블랙한산스": ("BlackHanSans.ttf",      "BlackHanSans.ttf"),   # bold 없어서 동일 파일
+    "블랙한산스": ("BlackHanSans.ttf",      "BlackHanSans.ttf"),
     "도현":       ("DoHyeon.ttf",           "DoHyeon.ttf"),
     "주아":       ("Jua.ttf",               "Jua.ttf"),
 }
