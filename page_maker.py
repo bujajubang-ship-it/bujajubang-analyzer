@@ -832,6 +832,25 @@ async def build_processed_zip(
 
 # ── Gemini AI 상세페이지 생성 ─────────────────────────────────────────
 
+def _clean(text: str) -> str:
+    """마크다운 기호(**, ##, *) 및 불필요한 특수문자 제거"""
+    text = re.sub(r'\*+', '', text)
+    text = re.sub(r'#+\s*', '', text)
+    return text.strip(" :—-")
+
+
+def _chip_label(feat: str) -> str:
+    """CTA 칩용 짧은 레이블 — 콜론/대시 앞 첫 4단어"""
+    clean = _clean(feat)
+    # 콜론이나 대시 앞까지 자르기
+    for sep in (':', '—', ' - ', ': '):
+        if sep in clean:
+            clean = clean.split(sep)[0].strip()
+            break
+    words = clean.split()
+    return " ".join(words[:4]) if words else clean[:12]
+
+
 def _fit_font(d, text: str, max_w: int, start: int, bold: bool = False, min_sz: int = 16):
     """텍스트가 max_w 안에 들어오도록 폰트 크기 자동 축소"""
     sz = start
@@ -872,10 +891,10 @@ def _ov_header(img, W, H, p):
     ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(ov)
     mc = _hex_rgb(p.get("main_color", "#2C5F8A"))
-    name = p.get("product_name", "상품명")
-    category = p.get("category", "")
-    feats = _parse_features(p.get("key_features", ""))
-    tagline = feats[0] if feats else name
+    name = _clean(p.get("product_name", "상품명"))
+    category = _clean(p.get("category", ""))
+    feats = [_clean(f) for f in _parse_features(p.get("key_features", ""))]
+    tagline = _chip_label(feats[0]) if feats else name
 
     top_h = int(H * 0.26)
     bot_h = int(H * 0.16)
@@ -912,7 +931,8 @@ def _ov_features(img, W, H, p):
     ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(ov)
     mc = _hex_rgb(p.get("main_color", "#2C5F8A"))
-    feats = _parse_features(p.get("key_features", ""))[:4]
+    raw_feats = _parse_features(p.get("key_features", ""))[:4]
+    feats = [_clean(f) for f in raw_feats]
     while len(feats) < 4:
         feats.append("특징")
 
@@ -970,14 +990,14 @@ def _ov_feature_detail(img, W, H, p, idx):
     ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(ov)
     mc = _hex_rgb(p.get("main_color", "#2C5F8A"))
-    feats = _parse_features(p.get("key_features", ""))
+    feats = [_clean(f) for f in _parse_features(p.get("key_features", ""))]
     feat = feats[idx] if idx < len(feats) else "특징"
     bullets = [f for j, f in enumerate(feats) if j != idx][:3]
     if not bullets:
         bullets = [feat]
 
     title_h = int(H * 0.14)
-    bot_h   = int(H * 0.32)
+    bot_h   = int(H * 0.40)   # 패널 더 크게
     pad     = W // 18
 
     # 상단 색상 바 — 제목
@@ -1017,9 +1037,10 @@ def _ov_specs(img, W, H, p):
     ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(ov)
     mc = _hex_rgb(p.get("main_color", "#2C5F8A"))
-    rows = _parse_spec_rows(p.get("specs", ""))
+    rows = [(_clean(k), _clean(v)) for k, v in _parse_spec_rows(p.get("specs", ""))]
     if not rows:
-        rows = [(f"특징 {i+1}", f) for i, f in enumerate(_parse_features(p.get("key_features", ""))[:6])]
+        rows = [(f"특징 {i+1}", _clean(f)) for i, f in
+                enumerate(_parse_features(p.get("key_features", ""))[:6])]
 
     title_h = int(H * 0.12)
     pad     = W // 20
@@ -1077,9 +1098,9 @@ def _ov_usage(img, W, H, p):
     ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(ov)
     mc = _hex_rgb(p.get("main_color", "#2C5F8A"))
-    steps = _parse_steps(p.get("how_to_use", ""))
+    steps = [_clean(s) for s in _parse_steps(p.get("how_to_use", ""))]
     if not steps:
-        steps = _parse_features(p.get("key_features", ""))[:4]
+        steps = [_clean(f) for f in _parse_features(p.get("key_features", ""))[:4]]
 
     title_h = int(H * 0.11)
     pad     = W // 20
@@ -1138,7 +1159,7 @@ def _ov_cta(img, W, H, p):
     d = ImageDraw.Draw(ov)
     mc = _hex_rgb(p.get("main_color", "#2C5F8A"))
     feats = _parse_features(p.get("key_features", ""))
-    name  = p.get("product_name", "상품")
+    name  = _clean(p.get("product_name", "상품"))
 
     pad    = W // 18
     mid_h  = int(H * 0.38)
@@ -1174,45 +1195,45 @@ def _ov_cta(img, W, H, p):
     # 하단 색상 밴드 — 특징 칩 (가독성 위주로 개선)
     d.rectangle([0, cta_h, W, H], fill=(*mc, 210))
     chip_area_h = H - cta_h
-    n_chips = min(len(feats), 3)
+    # 칩 레이블: 콜론/대시 앞 첫 4단어만 추출
+    chip_labels = [_chip_label(f) for f in feats[:3]]
+    n_chips = len(chip_labels)
     if n_chips == 0:
         return Image.alpha_composite(img, ov).convert("RGB")
 
-    chip_h   = int(chip_area_h * 0.65)
+    chip_h   = int(chip_area_h * 0.68)
     chip_y   = cta_h + (chip_area_h - chip_h) // 2
     chip_gap = pad // 2
     chip_w   = (W - chip_gap * (n_chips + 1)) // n_chips
 
-    for i, feat in enumerate(feats[:n_chips]):
+    for i, label in enumerate(chip_labels):
         chx = chip_gap + i * (chip_w + chip_gap)
         d.rounded_rectangle([chx, chip_y, chx + chip_w, chip_y + chip_h],
                             radius=8, fill=(255, 255, 255, 55))
 
-        # 칩 안에 들어오는 최대 텍스트
         inner_w = chip_w - pad // 2
-        fc2 = _fit_font(d, feat, inner_w, W // 19, bold=True, min_sz=W // 30)
-        # 한 줄에 안 들어오면 줄바꿈 (최대 2줄)
-        if _text_w(d, feat, fc2) <= inner_w:
-            tw_c = _text_w(d, feat, fc2)
-            th_c = _text_h(d, feat, fc2)
+        fc2 = _fit_font(d, label, inner_w, W // 18, bold=True, min_sz=W // 28)
+        tw_c = _text_w(d, label, fc2)
+        th_c = _text_h(d, label, fc2)
+
+        if tw_c <= inner_w:
             d.text((chx + (chip_w - tw_c) // 2,
                     chip_y + (chip_h - th_c) // 2),
-                   feat, font=fc2, fill=(255, 255, 255, 255))
+                   label, font=fc2, fill=(255, 255, 255, 255))
         else:
             # 단어 경계로 2줄 분할
-            words = feat.split()
+            words = label.split()
             mid   = max(1, len(words) // 2)
             line1 = " ".join(words[:mid])
             line2 = " ".join(words[mid:])
-            fl1 = _fit_font(d, line1, inner_w, W // 20, bold=True, min_sz=W // 30)
-            fl2 = _fit_font(d, line2, inner_w, W // 20, bold=True, min_sz=W // 30)
-            lh1 = _text_h(d, line1, fl1)
-            lh2 = _text_h(d, line2, fl2)
-            total_h = lh1 + 4 + lh2
-            ty_start = chip_y + (chip_h - total_h) // 2
-            d.text((chx + (chip_w - _text_w(d, line1, fl1)) // 2, ty_start),
+            fl1   = _fit_font(d, line1, inner_w, W // 19, bold=True, min_sz=W // 28)
+            fl2   = _fit_font(d, line2, inner_w, W // 19, bold=True, min_sz=W // 28)
+            lh1   = _text_h(d, line1, fl1)
+            lh2   = _text_h(d, line2, fl2)
+            ty0   = chip_y + (chip_h - lh1 - 4 - lh2) // 2
+            d.text((chx + (chip_w - _text_w(d, line1, fl1)) // 2, ty0),
                    line1, font=fl1, fill=(255, 255, 255, 255))
-            d.text((chx + (chip_w - _text_w(d, line2, fl2)) // 2, ty_start + lh1 + 4),
+            d.text((chx + (chip_w - _text_w(d, line2, fl2)) // 2, ty0 + lh1 + 4),
                    line2, font=fl2, fill=(255, 255, 255, 255))
 
     return Image.alpha_composite(img, ov).convert("RGB")
