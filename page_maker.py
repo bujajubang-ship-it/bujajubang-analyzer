@@ -832,20 +832,34 @@ async def build_processed_zip(
 
 # ── Gemini AI 상세페이지 생성 ─────────────────────────────────────────
 
-def _ov_wrap(d, text, font, x, y, max_w, fill, line_gap=5):
-    """텍스트 줄바꿈 helper (overlay draw 전용)"""
-    cur = ""
+def _fit_font(d, text: str, max_w: int, start: int, bold: bool = False, min_sz: int = 16):
+    """텍스트가 max_w 안에 들어오도록 폰트 크기 자동 축소"""
+    sz = start
+    while sz >= min_sz:
+        f = _font(sz, bold)
+        if _text_w(d, text, f) <= max_w:
+            return f
+        sz -= 2
+    return _font(min_sz, bold)
+
+
+def _ov_wrap(d, text, font, x, y, max_w, max_h, fill, line_gap=4):
+    """줄바꿈 + 박스 높이 초과 시 클립"""
+    line_h = _text_h(d, "가", font) + line_gap
+    cur, used = "", 0
     for ch in text:
         if _text_w(d, cur + ch, font) > max_w and cur:
-            d.text((x, y), cur, font=font, fill=fill)
-            y += _text_h(d, cur, font) + line_gap
+            if used + line_h > max_h:
+                break
+            d.text((x, y + used), cur, font=font, fill=fill)
+            used += line_h
             cur = ch
         else:
             cur += ch
-    if cur:
-        d.text((x, y), cur, font=font, fill=fill)
-        y += _text_h(d, cur, font) + line_gap
-    return y
+    if cur and used + line_h <= max_h:
+        d.text((x, y + used), cur, font=font, fill=fill)
+        used += line_h
+    return y + used
 
 
 def _ov_center(d, text, font, y, W, fill):
@@ -857,31 +871,39 @@ def _ov_center(d, text, font, y, W, fill):
 def _ov_header(img, W, H, p):
     ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(ov)
-    mc = _hex_rgb(p.get("main_color", "#C85A2D"))
+    mc = _hex_rgb(p.get("main_color", "#2C5F8A"))
     name = p.get("product_name", "상품명")
     category = p.get("category", "")
     feats = _parse_features(p.get("key_features", ""))
-    tagline = feats[0][:20] if feats else name[:20]
+    tagline = feats[0] if feats else name
 
-    top_h = int(H * 0.28)
-    bot_h = int(H * 0.18)
-    pad = W // 18
+    top_h = int(H * 0.26)
+    bot_h = int(H * 0.16)
+    pad = W // 16
 
-    d.rectangle([0, 0, W, top_h], fill=(10, 10, 10, 170))
-    d.rectangle([0, H - bot_h, W, H], fill=(*mc, 220))
+    # 상단 어두운 오버레이 (제목 영역)
+    d.rectangle([0, 0, W, top_h], fill=(8, 8, 8, 175))
+    # 하단 색상 밴드 (태그라인 영역)
+    d.rectangle([0, H - bot_h, W, H], fill=(*mc, 225))
 
-    fc = _font(W // 24)
-    d.text((pad, pad), category, font=fc, fill=(200, 200, 200, 255))
+    # 카테고리
+    fc = _font(W // 26)
+    d.text((pad, pad), category[:20], font=fc, fill=(200, 200, 200, 220))
 
-    fn = _font(W // 10, bold=True)
-    y = pad + _text_h(d, category, fc) + pad // 2
-    _ov_wrap(d, name, fn, pad, y, W - pad * 2, fill=(255, 255, 255, 255), line_gap=6)
+    # 상품명 (폰트 자동 축소 + 줄바꿈)
+    fn_size = W // 9
+    fn = _fit_font(d, name, W - pad * 2, fn_size, bold=True, min_sz=W // 16)
+    y0 = pad + _text_h(d, "가", fc) + pad // 2
+    _ov_wrap(d, name, fn, pad, y0, W - pad * 2, top_h - y0 - pad // 2,
+             fill=(255, 255, 255, 255), line_gap=6)
 
-    ft = _font(W // 14, bold=True)
-    tw = _text_w(d, tagline, ft)
-    ty = H - bot_h + (bot_h - _text_h(d, tagline, ft)) // 2
-    d.text(((W - tw) // 2 + 2, ty + 2), tagline, font=ft, fill=(0, 0, 0, 80))
-    d.text(((W - tw) // 2, ty), tagline, font=ft, fill=(255, 255, 255, 255))
+    # 태그라인
+    tl = tagline[:24]
+    ft = _fit_font(d, tl, W - pad * 2, W // 13, bold=True, min_sz=W // 18)
+    tw = _text_w(d, tl, ft)
+    ty = H - bot_h + (bot_h - _text_h(d, tl, ft)) // 2
+    d.text(((W - tw) // 2 + 2, ty + 2), tl, font=ft, fill=(0, 0, 0, 70))
+    d.text(((W - tw) // 2, ty), tl, font=ft, fill=(255, 255, 255, 255))
 
     return Image.alpha_composite(img, ov).convert("RGB")
 
@@ -889,48 +911,57 @@ def _ov_header(img, W, H, p):
 def _ov_features(img, W, H, p):
     ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(ov)
-    mc = _hex_rgb(p.get("main_color", "#C85A2D"))
+    mc = _hex_rgb(p.get("main_color", "#2C5F8A"))
     feats = _parse_features(p.get("key_features", ""))[:4]
     while len(feats) < 4:
         feats.append("특징")
 
-    title_h = int(H * 0.15)
-    pad = W // 25
+    title_h = int(H * 0.13)
+    pad = W // 22
 
-    d.rectangle([0, 0, W, title_h], fill=(255, 255, 255, 220))
-    d.rectangle([0, title_h - 4, W, title_h], fill=(*mc, 255))
+    # 타이틀 바
+    d.rectangle([0, 0, W, title_h], fill=(*mc, 240))
+    ft = _fit_font(d, "핵심 특징", W - pad * 2, W // 10, bold=True)
+    _ov_center(d, "핵심 특징", ft, (title_h - _text_h(d, "핵심 특징", ft)) // 2, W, (255, 255, 255, 255))
 
-    ft = _font(W // 11, bold=True)
-    _ov_center(d, "핵심 특징", ft, (title_h - _text_h(d, "핵심 특징", ft)) // 2, W, (*mc, 255))
-
-    box_w = (W - pad * 3) // 2
-    box_h = (H - title_h - pad * 3) // 2
-    fb = _font(W // 17, bold=True)
-    fd = _font(W // 23)
+    # 2x2 카드 그리드
+    gap = pad
+    box_w = (W - gap * 3) // 2
+    box_h = (H - title_h - gap * 3) // 2
 
     for i, feat in enumerate(feats):
-        col = i % 2
-        row = i // 2
-        bx = pad + col * (box_w + pad)
-        by = title_h + pad + row * (box_h + pad)
+        col, row = i % 2, i // 2
+        bx = gap + col * (box_w + gap)
+        by = title_h + gap + row * (box_h + gap)
 
-        d.rounded_rectangle([bx, by, bx + box_w, by + box_h], radius=14,
-                             fill=(255, 255, 255, 210))
-        d.rounded_rectangle([bx, by, bx + box_w, by + box_h], radius=14,
-                             outline=(*mc, 160), width=2)
+        # 카드 배경
+        d.rounded_rectangle([bx, by, bx + box_w, by + box_h],
+                             radius=12, fill=(255, 255, 255, 215))
+        d.rounded_rectangle([bx, by, bx + box_w, by + box_h],
+                             radius=12, outline=(*mc, 140), width=2)
 
+        # 제목 라인 (카드 상단 25% 영역)
+        title_zone_h = int(box_h * 0.42)
+        text_pad = pad // 2
+        inner_w = box_w - text_pad * 2
+
+        # 첫 줄을 굵게, 나머지는 보통으로
         words = feat.split()
-        title_part = " ".join(words[:3]) if len(words) >= 3 else feat[:14]
-        desc_part = " ".join(words[3:]) if len(words) > 3 else ""
+        first_line = " ".join(words[:4]) if len(words) >= 4 else feat
+        rest_line  = " ".join(words[4:]) if len(words) > 4 else ""
 
-        ty = by + box_h // 3
-        ttw = _text_w(d, title_part, fb)
-        d.text((bx + (box_w - ttw) // 2, ty), title_part, font=fb, fill=(*mc, 255))
+        fb = _fit_font(d, first_line, inner_w, W // 16, bold=True, min_sz=W // 24)
+        ty0 = by + text_pad + int(box_h * 0.12)
+        lh  = _text_h(d, first_line, fb)
+        flx = bx + (box_w - _text_w(d, first_line, fb)) // 2
+        d.text((flx, ty0), first_line, font=fb, fill=(*mc, 255))
 
-        if desc_part:
-            ty2 = ty + _text_h(d, title_part, fb) + 8
-            _ov_wrap(d, desc_part, fd, bx + pad, ty2, box_w - pad * 2,
-                     fill=(60, 60, 60, 255))
+        if rest_line:
+            fd = _fit_font(d, rest_line, inner_w, W // 20, min_sz=W // 28)
+            ty1 = ty0 + lh + 6
+            max_rest_h = by + box_h - ty1 - text_pad
+            _ov_wrap(d, rest_line, fd, bx + text_pad, ty1,
+                     inner_w, max_rest_h, fill=(55, 55, 55, 230), line_gap=4)
 
     return Image.alpha_composite(img, ov).convert("RGB")
 
@@ -938,38 +969,46 @@ def _ov_features(img, W, H, p):
 def _ov_feature_detail(img, W, H, p, idx):
     ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(ov)
-    mc = _hex_rgb(p.get("main_color", "#C85A2D"))
+    mc = _hex_rgb(p.get("main_color", "#2C5F8A"))
     feats = _parse_features(p.get("key_features", ""))
     feat = feats[idx] if idx < len(feats) else "특징"
     bullets = [f for j, f in enumerate(feats) if j != idx][:3]
     if not bullets:
         bullets = [feat]
 
-    title_h = int(H * 0.15)
-    bot_h = int(H * 0.30)
-    pad = W // 20
+    title_h = int(H * 0.14)
+    bot_h   = int(H * 0.32)
+    pad     = W // 18
 
-    d.rectangle([0, 0, W, title_h], fill=(*mc, 230))
-
-    ft = _font(W // 12, bold=True)
-    words = feat.split()
-    title_text = " ".join(words[:5]) if len(words) > 5 else feat
+    # 상단 색상 바 — 제목
+    d.rectangle([0, 0, W, title_h], fill=(*mc, 235))
+    # 제목 최대 두 단어로 제한, 자동 축소
+    title_words = feat.split()
+    title_text = " ".join(title_words[:6]) if len(title_words) > 6 else feat
+    ft = _fit_font(d, title_text, W - pad * 2, W // 11, bold=True, min_sz=W // 18)
     ty = (title_h - _text_h(d, title_text, ft)) // 2
-    d.text((pad + 2, ty + 2), title_text, font=ft, fill=(0, 0, 0, 80))
+    shadow_color = (0, 0, 0, 70)
+    d.text((pad + 2, ty + 2), title_text, font=ft, fill=shadow_color)
     d.text((pad, ty), title_text, font=ft, fill=(255, 255, 255, 255))
 
-    d.rectangle([0, H - bot_h, W, H], fill=(255, 255, 255, 225))
+    # 하단 흰색 패널 — 불릿
+    d.rectangle([0, H - bot_h, W, H], fill=(255, 255, 255, 230))
 
-    fd = _font(W // 22)
-    dot_r = W // 45
-    by = H - bot_h + pad
+    fd   = _font(W // 21)
+    dot_r = max(6, W // 42)
+    by   = H - bot_h + pad
+    lh   = _text_h(d, "가", fd) + 5
 
     for bullet in bullets[:3]:
+        if by + lh > H - pad // 2:
+            break
         cy = by + dot_r
         d.ellipse([pad, cy - dot_r, pad + dot_r * 2, cy + dot_r], fill=(*mc, 255))
-        bx = pad + dot_r * 2 + 10
-        by = _ov_wrap(d, bullet, fd, bx, by, W - bx - pad, fill=(40, 40, 40, 255))
-        by += pad // 3
+        bx  = pad + dot_r * 2 + 10
+        avail_h = H - pad // 2 - by
+        by = _ov_wrap(d, bullet, fd, bx, by, W - bx - pad,
+                      avail_h, fill=(35, 35, 35, 240), line_gap=4)
+        by += pad // 4
 
     return Image.alpha_composite(img, ov).convert("RGB")
 
@@ -977,40 +1016,59 @@ def _ov_feature_detail(img, W, H, p, idx):
 def _ov_specs(img, W, H, p):
     ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(ov)
-    mc = _hex_rgb(p.get("main_color", "#C85A2D"))
+    mc = _hex_rgb(p.get("main_color", "#2C5F8A"))
     rows = _parse_spec_rows(p.get("specs", ""))
     if not rows:
-        rows = [(f"특징 {i+1}", f) for i, f in enumerate(_parse_features(p.get("key_features", ""))[:5])]
+        rows = [(f"특징 {i+1}", f) for i, f in enumerate(_parse_features(p.get("key_features", ""))[:6])]
 
-    title_h = int(H * 0.13)
-    pad = W // 22
+    title_h = int(H * 0.12)
+    pad     = W // 20
 
-    d.rectangle([0, 0, W, title_h], fill=(*mc, 230))
-    ft = _font(W // 12, bold=True)
-    _ov_center(d, "제품 스펙", ft, (title_h - _text_h(d, "제품 스펙", ft)) // 2, W, (255, 255, 255, 255))
+    # 타이틀 바
+    d.rectangle([0, 0, W, title_h], fill=(*mc, 235))
+    ft = _fit_font(d, "제품 스펙", W - pad * 2, W // 10, bold=True)
+    _ov_center(d, "제품 스펙", ft, (title_h - _text_h(d, "제품 스펙", ft)) // 2,
+               W, (255, 255, 255, 255))
 
-    table_y = int(H * 0.46)
-    table_x = pad
-    table_w = int(W * 0.88)
+    # 테이블
+    table_y  = int(H * 0.44)
+    table_x  = pad
+    table_w  = W - pad * 2
+    table_h  = H - table_y - pad
 
-    d.rectangle([table_x, table_y, table_x + table_w, H - pad], fill=(255, 255, 255, 215))
+    d.rounded_rectangle([table_x, table_y, table_x + table_w, H - pad],
+                        radius=10, fill=(255, 255, 255, 220))
 
-    fk = _font(W // 20, bold=True)
-    fv = _font(W // 22)
-    n = min(len(rows), 6)
-    row_h = max((H - pad - table_y) // n, 44) if n else 44
-    key_col_w = int(table_w * 0.38)
+    n = min(len(rows), 7)
+    if n == 0:
+        return Image.alpha_composite(img, ov).convert("RGB")
 
-    for i, (k, v) in enumerate(rows[:6]):
+    row_h    = max(table_h // n, 40)
+    key_w    = int(table_w * 0.36)
+    val_w    = table_w - key_w
+
+    fk = _font(W // 22, bold=True)
+    fv = _font(W // 23)
+
+    for i, (k, v) in enumerate(rows[:n]):
         ry = table_y + i * row_h
         if i % 2 == 1:
-            d.rectangle([table_x, ry, table_x + table_w, ry + row_h], fill=(245, 245, 245, 180))
-        d.line([table_x, ry, table_x + table_w, ry], fill=(210, 210, 210, 200), width=1)
-        d.line([table_x + key_col_w, ry, table_x + key_col_w, ry + row_h],
-               fill=(210, 210, 210, 200), width=1)
-        vt = ry + (row_h - _text_h(d, k, fk)) // 2
-        d.text((table_x + pad // 2, vt), k[:12], font=fk, fill=(*mc, 255))
-        d.text((table_x + key_col_w + pad // 2, vt), v[:18], font=fv, fill=(50, 50, 50, 255))
+            d.rectangle([table_x, ry, table_x + table_w, ry + row_h],
+                        fill=(245, 247, 250, 150))
+        d.line([table_x + 4, ry, table_x + table_w - 4, ry],
+               fill=(210, 215, 220, 180), width=1)
+        d.line([table_x + key_w, ry, table_x + key_w, ry + row_h],
+               fill=(210, 215, 220, 180), width=1)
+
+        # 키 — 자동 축소
+        fk_fit = _fit_font(d, k, key_w - pad, W // 22, bold=True, min_sz=W // 30)
+        vt = ry + (row_h - _text_h(d, k, fk_fit)) // 2
+        d.text((table_x + pad // 2, vt), k, font=fk_fit, fill=(*mc, 240))
+
+        # 값 — 자동 축소
+        fv_fit = _fit_font(d, v, val_w - pad, W // 23, min_sz=W // 30)
+        vt2 = ry + (row_h - _text_h(d, v, fv_fit)) // 2
+        d.text((table_x + key_w + pad // 2, vt2), v, font=fv_fit, fill=(45, 45, 45, 240))
 
     return Image.alpha_composite(img, ov).convert("RGB")
 
@@ -1018,49 +1076,59 @@ def _ov_specs(img, W, H, p):
 def _ov_usage(img, W, H, p):
     ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(ov)
-    mc = _hex_rgb(p.get("main_color", "#C85A2D"))
+    mc = _hex_rgb(p.get("main_color", "#2C5F8A"))
     steps = _parse_steps(p.get("how_to_use", ""))
     if not steps:
         steps = _parse_features(p.get("key_features", ""))[:4]
 
-    title_h = int(H * 0.12)
-    pad = W // 22
+    title_h = int(H * 0.11)
+    pad     = W // 20
 
-    d.rectangle([0, 0, W, title_h], fill=(255, 255, 255, 225))
+    # 타이틀 바
+    d.rectangle([0, 0, W, title_h], fill=(255, 255, 255, 230))
     d.rectangle([0, title_h - 3, W, title_h], fill=(*mc, 255))
-    ft = _font(W // 11, bold=True)
-    _ov_center(d, "사용 방법", ft, (title_h - _text_h(d, "사용 방법", ft)) // 2, W, (*mc, 255))
+    ft = _fit_font(d, "사용 방법", W - pad * 2, W // 10, bold=True)
+    _ov_center(d, "사용 방법", ft, (title_h - _text_h(d, "사용 방법", ft)) // 2,
+               W, (*mc, 255))
 
+    # 2x2 셀 그리드
     cell_w = W // 2
     cell_h = (H - title_h) // 2
-    fn = _font(W // 20, bold=True)
-    fstep = _font(W // 26)
+    circ_r = W // 20
+    fn = _font(W // 18, bold=True)
 
     for i, step in enumerate(steps[:4]):
-        col = i % 2
-        row = i // 2
-        cx = col * cell_w
-        cy = title_h + row * cell_h
+        col, row = i % 2, i // 2
+        cx0 = col * cell_w      # 셀 좌측 x
+        cy0 = title_h + row * cell_h   # 셀 상단 y
 
-        r = W // 22
-        cmx = cx + cell_w // 2
-        cmy = cy + cell_h // 4
-        d.ellipse([cmx - r, cmy - r, cmx + r, cmy + r], fill=(*mc, 230))
+        # 원 + 숫자
+        cmx = cx0 + cell_w // 2
+        cmy = cy0 + int(cell_h * 0.28)
+        d.ellipse([cmx - circ_r, cmy - circ_r, cmx + circ_r, cmy + circ_r],
+                  fill=(*mc, 235))
         num = str(i + 1)
-        nw = _text_w(d, num, fn)
-        nh = _text_h(d, num, fn)
-        d.text((cmx - nw // 2, cmy - nh // 2), num, font=fn, fill=(255, 255, 255, 255))
+        nw  = _text_w(d, num, fn)
+        nh  = _text_h(d, num, fn)
+        d.text((cmx - nw // 2, cmy - nh // 2), num, font=fn,
+               fill=(255, 255, 255, 255))
 
-        text_y = cy + cell_h * 2 // 3
-        d.rectangle([cx + 4, text_y, cx + cell_w - 4, cy + cell_h - 4],
-                    fill=(255, 255, 255, 210))
+        # 텍스트 박스
+        tb_margin = pad // 2
+        tx0  = cx0 + tb_margin
+        tx1  = cx0 + cell_w - tb_margin
+        ty0  = cy0 + int(cell_h * 0.54)
+        ty1  = cy0 + cell_h - tb_margin
+        box_w_inner = tx1 - tx0
+        box_h_inner = ty1 - ty0
 
-        short = step[:22]
-        _ov_center(d, short, fstep, text_y + 6, cx + cell_w,
-                   (40, 40, 40, 255) if False else (40, 40, 40, 255))
-        # centered within cell
-        sw = _text_w(d, short, fstep)
-        d.text((cx + (cell_w - sw) // 2, text_y + 6), short, font=fstep, fill=(40, 40, 40, 255))
+        d.rounded_rectangle([tx0, ty0, tx1, ty1],
+                            radius=8, fill=(255, 255, 255, 215))
+
+        fs = _fit_font(d, step, box_w_inner - pad // 2, W // 24, min_sz=W // 32)
+        _ov_wrap(d, step, fs, tx0 + pad // 4, ty0 + pad // 4,
+                 box_w_inner - pad // 2, box_h_inner - pad // 2,
+                 fill=(35, 35, 35, 240), line_gap=3)
 
     return Image.alpha_composite(img, ov).convert("RGB")
 
@@ -1068,52 +1136,84 @@ def _ov_usage(img, W, H, p):
 def _ov_cta(img, W, H, p):
     ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(ov)
-    mc = _hex_rgb(p.get("main_color", "#C85A2D"))
+    mc = _hex_rgb(p.get("main_color", "#2C5F8A"))
     feats = _parse_features(p.get("key_features", ""))
-    name = p.get("product_name", "상품")
+    name  = p.get("product_name", "상품")
 
-    pad = W // 20
-    mid_h = int(H * 0.40)
-    cta_h = int(H * 0.70)
+    pad    = W // 18
+    mid_h  = int(H * 0.38)
+    cta_h  = int(H * 0.72)
 
-    d.rectangle([0, mid_h, W, cta_h], fill=(255, 255, 255, 235))
+    # 흰 패널 (헤드라인 + 버튼 영역)
+    d.rectangle([0, mid_h, W, cta_h], fill=(255, 255, 255, 240))
 
-    fh = _font(W // 11, bold=True)
+    # 헤드라인
     headline = "지금 바로 확인하세요!"
-    _ov_center(d, headline, fh, mid_h + pad, W, (30, 30, 30, 255))
+    fh = _fit_font(d, headline, W - pad * 2, W // 10, bold=True)
+    _ov_center(d, headline, fh, mid_h + pad, W, (25, 25, 25, 255))
 
-    fs = _font(W // 19)
-    sub = f"{name[:14]} — 품질 보장"
-    _ov_center(d, sub, fs, mid_h + pad + _text_h(d, headline, fh) + 12, W, (80, 80, 80, 255))
+    # 서브텍스트 (상품명)
+    sub = name[:20] if len(name) <= 20 else name[:18] + "…"
+    fs_sub = _fit_font(d, sub, W - pad * 2, W // 17, min_sz=W // 24)
+    sub_y  = mid_h + pad + _text_h(d, headline, fh) + 10
+    _ov_center(d, sub, fs_sub, sub_y, W, (75, 75, 75, 240))
 
-    btn_w = int(W * 0.68)
-    btn_h = int(H * 0.09)
+    # 구매 버튼
+    btn_w = int(W * 0.70)
+    btn_h = int(H * 0.085)
     btn_x = (W - btn_w) // 2
-    btn_y = int(H * 0.56)
+    btn_y = int(H * 0.565)
     d.rounded_rectangle([btn_x, btn_y, btn_x + btn_w, btn_y + btn_h],
-                         radius=btn_h // 2, fill=(*mc, 255))
-    fb = _font(W // 13, bold=True)
-    btn_text = "지금 구매하기"
-    btw = _text_w(d, btn_text, fb)
-    bth = _text_h(d, btn_text, fb)
+                        radius=btn_h // 2, fill=(*mc, 255))
+    fb = _fit_font(d, "지금 구매하기", btn_w - pad, W // 12, bold=True)
+    btw = _text_w(d, "지금 구매하기", fb)
+    bth = _text_h(d, "지금 구매하기", fb)
     d.text((btn_x + (btn_w - btw) // 2, btn_y + (btn_h - bth) // 2),
-           btn_text, font=fb, fill=(255, 255, 255, 255))
+           "지금 구매하기", font=fb, fill=(255, 255, 255, 255))
 
-    d.rectangle([0, cta_h, W, H], fill=(*mc, 200))
-    fc2 = _font(W // 21, bold=True)
-    chip_h = int((H - cta_h) * 0.5)
-    chip_y = cta_h + (H - cta_h - chip_h) // 2
-    chips = [f[:8] for f in feats[:3]]
-    if chips:
-        chip_w = (W - pad * (len(chips) + 1)) // len(chips)
-        for i, chip in enumerate(chips):
-            chx = pad + i * (chip_w + pad)
-            d.rounded_rectangle([chx, chip_y, chx + chip_w, chip_y + chip_h],
-                                 radius=8, fill=(255, 255, 255, 60))
-            ctw = _text_w(d, chip, fc2)
-            d.text((chx + (chip_w - ctw) // 2,
-                    chip_y + (chip_h - _text_h(d, chip, fc2)) // 2),
-                   chip, font=fc2, fill=(255, 255, 255, 255))
+    # 하단 색상 밴드 — 특징 칩 (가독성 위주로 개선)
+    d.rectangle([0, cta_h, W, H], fill=(*mc, 210))
+    chip_area_h = H - cta_h
+    n_chips = min(len(feats), 3)
+    if n_chips == 0:
+        return Image.alpha_composite(img, ov).convert("RGB")
+
+    chip_h   = int(chip_area_h * 0.65)
+    chip_y   = cta_h + (chip_area_h - chip_h) // 2
+    chip_gap = pad // 2
+    chip_w   = (W - chip_gap * (n_chips + 1)) // n_chips
+
+    for i, feat in enumerate(feats[:n_chips]):
+        chx = chip_gap + i * (chip_w + chip_gap)
+        d.rounded_rectangle([chx, chip_y, chx + chip_w, chip_y + chip_h],
+                            radius=8, fill=(255, 255, 255, 55))
+
+        # 칩 안에 들어오는 최대 텍스트
+        inner_w = chip_w - pad // 2
+        fc2 = _fit_font(d, feat, inner_w, W // 19, bold=True, min_sz=W // 30)
+        # 한 줄에 안 들어오면 줄바꿈 (최대 2줄)
+        if _text_w(d, feat, fc2) <= inner_w:
+            tw_c = _text_w(d, feat, fc2)
+            th_c = _text_h(d, feat, fc2)
+            d.text((chx + (chip_w - tw_c) // 2,
+                    chip_y + (chip_h - th_c) // 2),
+                   feat, font=fc2, fill=(255, 255, 255, 255))
+        else:
+            # 단어 경계로 2줄 분할
+            words = feat.split()
+            mid   = max(1, len(words) // 2)
+            line1 = " ".join(words[:mid])
+            line2 = " ".join(words[mid:])
+            fl1 = _fit_font(d, line1, inner_w, W // 20, bold=True, min_sz=W // 30)
+            fl2 = _fit_font(d, line2, inner_w, W // 20, bold=True, min_sz=W // 30)
+            lh1 = _text_h(d, line1, fl1)
+            lh2 = _text_h(d, line2, fl2)
+            total_h = lh1 + 4 + lh2
+            ty_start = chip_y + (chip_h - total_h) // 2
+            d.text((chx + (chip_w - _text_w(d, line1, fl1)) // 2, ty_start),
+                   line1, font=fl1, fill=(255, 255, 255, 255))
+            d.text((chx + (chip_w - _text_w(d, line2, fl2)) // 2, ty_start + lh1 + 4),
+                   line2, font=fl2, fill=(255, 255, 255, 255))
 
     return Image.alpha_composite(img, ov).convert("RGB")
 
