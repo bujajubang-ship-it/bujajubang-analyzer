@@ -23,14 +23,19 @@ let activeFilters = {
 
 // ── Page switching ──────────────────────────────────────────────────
 function switchPage(page) {
+  const isTracker   = page === 'tracker';
   const isSearch    = page === 'search';
   const isSourcing  = page === 'sourcing';
   const isPagemaker = page === 'pagemaker';
 
+  const navTracker = document.getElementById('nav-tracker');
+  if (navTracker) navTracker.classList.toggle('active', isTracker);
   document.getElementById('nav-search').classList.toggle('active', isSearch);
   document.getElementById('nav-sourcing').classList.toggle('active', isSourcing);
   document.getElementById('nav-pagemaker').classList.toggle('active', isPagemaker);
 
+  const _trk = document.getElementById('tracker-section');
+  if (_trk) _trk.classList.toggle('hidden', !isTracker);
   document.getElementById('hero-section').classList.toggle('hidden', !isSearch || currentSection !== 'hero');
   document.getElementById('loading-section').classList.toggle('hidden', !isSearch || currentSection !== 'loading');
   document.getElementById('result-section').classList.toggle('hidden', !isSearch || currentSection !== 'result');
@@ -38,6 +43,7 @@ function switchPage(page) {
   document.getElementById('pagemaker-page').classList.toggle('hidden', !isPagemaker);
   document.getElementById('header-search').style.display = isSearch && currentSection !== 'hero' ? 'flex' : 'none';
 
+  if (isTracker) loadTracker();
   if (isSourcing) {
     syncMemosFromServer().then(() => loadSourcing(currentSrcPage));
     _initCoupangPage();
@@ -1559,3 +1565,176 @@ async function pmProcess() {
     btn.textContent = '🚀 변환 시작';
   }
 }
+
+
+/* ============================================================
+   📋 품목 진행상황 트래커 (메인 최상단) — 단계별·품목별 추적
+   - tracker.json 서버 저장 (GET/POST/PUT/DELETE /api/tracker)
+   - 각 품목 = 가로 8단계 스테퍼 (점 클릭으로 단계 이동)
+   ============================================================ */
+const TRACK_STAGES = [
+  { key: 'keyword',  label: '키워드 발굴', emoji: '🔍', color: '#6366f1', bg: '#eef2ff' },
+  { key: 'analysis', label: '시장성 분석', emoji: '📊', color: '#8b5cf6', bg: '#f5f3ff' },
+  { key: 'sourcing', label: '소싱',       emoji: '🏭', color: '#ec4899', bg: '#fdf2f8' },
+  { key: 'sample',   label: '샘플·견적',  emoji: '📦', color: '#f97316', bg: '#fff7ed' },
+  { key: 'order',    label: '발주',       emoji: '🧾', color: '#eab308', bg: '#fefce8' },
+  { key: 'detail',   label: '상세페이지', emoji: '🎨', color: '#06b6d4', bg: '#ecfeff' },
+  { key: 'listing',  label: '등록',       emoji: '⬆️', color: '#3b82f6', bg: '#eff6ff' },
+  { key: 'selling',  label: '판매중',     emoji: '🟢', color: '#22c55e', bg: '#f0fdf4' },
+];
+
+let trackerItems = {};        // { id: {name, stage, memo} }
+let trackerMemoEdit = null;   // 현재 메모 편집 중인 id
+
+function _trkEsc(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+async function loadTracker() {
+  try {
+    const res = await fetch('/api/tracker');
+    trackerItems = await res.json();
+  } catch (e) { trackerItems = {}; }
+  renderTracker();
+}
+
+async function addTrackerItem() {
+  const name = prompt('추가할 품목 이름을 입력하세요 (예: 업소용 냉장고 1100L)');
+  if (!name || !name.trim()) return;
+  await fetch('/api/tracker', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: name.trim(), stage: 'keyword' }),
+  });
+  loadTracker();
+}
+
+async function setTrackerStage(id, idx) {
+  if (idx < 0 || idx >= TRACK_STAGES.length) return;
+  await fetch(`/api/tracker/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ stage: TRACK_STAGES[idx].key }),
+  });
+  loadTracker();
+}
+
+async function moveTrackerStage(id, dir) {
+  const it = trackerItems[id];
+  if (!it) return;
+  const idx = TRACK_STAGES.findIndex(s => s.key === it.stage);
+  await setTrackerStage(id, idx + dir);
+}
+
+async function deleteTrackerItem(id) {
+  if (!confirm('이 품목을 목록에서 삭제할까요?')) return;
+  await fetch(`/api/tracker/${id}`, { method: 'DELETE' });
+  loadTracker();
+}
+
+function editTrackerMemo(id) {
+  trackerMemoEdit = id;
+  renderTracker();
+}
+function cancelTrackerMemo() {
+  trackerMemoEdit = null;
+  renderTracker();
+}
+async function saveTrackerMemo(id) {
+  const ta = document.getElementById(`trk-memo-ta-${id}`);
+  const memo = ta ? ta.value.trim() : '';
+  await fetch(`/api/tracker/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ memo }),
+  });
+  trackerMemoEdit = null;
+  loadTracker();
+}
+
+function toggleTrackerSection() {
+  const list = document.getElementById('tracker-list');
+  const btn  = document.getElementById('tracker-collapse-btn');
+  if (!list) return;
+  const collapsed = list.style.display === 'none';
+  list.style.display = collapsed ? '' : 'none';
+  if (btn) btn.textContent = collapsed ? '접기 ▲' : '펼치기 ▼';
+}
+
+function trackerRow(id, it) {
+  let curIdx = TRACK_STAGES.findIndex(s => s.key === it.stage);
+  if (curIdx < 0) curIdx = 0;
+  const cur = TRACK_STAGES[curIdx];
+  const editing = trackerMemoEdit === id;
+
+  const stepper = TRACK_STAGES.map((s, i) => {
+    const done = i < curIdx;
+    const active = i === curIdx;
+    const dotStyle = active
+      ? `background:${s.color};border-color:${s.color};color:#fff;box-shadow:0 0 0 4px ${s.color}40,0 4px 14px ${s.color}70`
+      : done
+        ? `background:${s.color}22;border-color:${s.color};color:${s.color}`
+        : 'background:#f3f4f6;border-color:#d1d5db;color:#9ca3af';
+    const labelStyle = active ? `color:${s.color};font-weight:800` : done ? `color:${s.color}` : 'color:#9ca3af';
+    const lineStyle = (done || active) ? `background:${s.color}` : 'background:#e5e7eb';
+    const dot = done ? '✓' : s.emoji;
+    return `
+      <div class="trk-step-wrap">
+        <button class="trk-step-dot" style="${dotStyle}" onclick="setTrackerStage('${id}',${i})" title="${s.label} 단계로 이동">${dot}</button>
+        <div class="trk-step-label" style="${labelStyle}">${s.label}</div>
+      </div>
+      ${i < TRACK_STAGES.length - 1 ? `<div class="trk-step-line" style="${lineStyle}"></div>` : ''}`;
+  }).join('');
+
+  const memoBlock = editing
+    ? `<div class="trk-memo-edit">
+         <textarea id="trk-memo-ta-${id}" rows="2" placeholder="메모 (공급처 링크, 단가, 특이사항 등)...">${_trkEsc(it.memo)}</textarea>
+         <div class="trk-memo-btns">
+           <button class="trk-btn-save" onclick="saveTrackerMemo('${id}')">저장</button>
+           <button class="trk-btn-cancel" onclick="cancelTrackerMemo()">취소</button>
+         </div>
+       </div>`
+    : (it.memo
+        ? `<div class="trk-memo" onclick="editTrackerMemo('${id}')">📝 ${_trkEsc(it.memo)}</div>`
+        : '');
+
+  return `
+  <div class="trk-row">
+    <div class="trk-row-head">
+      <div class="trk-row-left">
+        <span class="trk-cur-badge" style="color:${cur.color};background:${cur.bg}">${cur.emoji} ${cur.label}</span>
+        <span class="trk-name">${_trkEsc(it.name)}</span>
+      </div>
+      <div class="trk-row-actions">
+        <button class="trk-arrow" onclick="moveTrackerStage('${id}',-1)" ${curIdx > 0 ? '' : 'disabled'}>←</button>
+        <button class="trk-arrow" onclick="moveTrackerStage('${id}',1)" ${curIdx < TRACK_STAGES.length - 1 ? '' : 'disabled'}>→</button>
+        <button class="trk-memo-btn" onclick="editTrackerMemo('${id}')">✏️ 메모</button>
+        <button class="trk-del" onclick="deleteTrackerItem('${id}')" title="삭제">🗑</button>
+      </div>
+    </div>
+    <div class="trk-stepper">${stepper}</div>
+    ${memoBlock}
+  </div>`;
+}
+
+function renderTracker() {
+  const el = document.getElementById('tracker-list');
+  if (!el) return;
+  const ids = Object.keys(trackerItems).sort((a, b) => Number(a) - Number(b));
+  const sumEl = document.getElementById('tracker-summary');
+
+  if (sumEl) {
+    if (!ids.length) {
+      sumEl.textContent = '';
+    } else {
+      const selling = ids.filter(id => trackerItems[id].stage === 'selling').length;
+      sumEl.textContent = `총 ${ids.length}품목 · 판매중 ${selling}`;
+    }
+  }
+
+  if (!ids.length) {
+    el.innerHTML = '<div class="trk-empty">아직 추적 중인 품목이 없습니다.<br>우측 상단 <strong>+ 품목 추가</strong>를 눌러 시작하세요.</div>';
+    return;
+  }
+  el.innerHTML = ids.map(id => trackerRow(id, trackerItems[id])).join('');
+}
+
+// 초기 로드 — 메인 진입 시 '쿠팡 품목 진행상황'을 기본 페이지로 (app.js는 body 끝 로드라 DOM 준비됨)
+switchPage('tracker');

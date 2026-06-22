@@ -512,6 +512,57 @@ async def delete_memo(memo_id: str):
     return {"ok": True}
 
 
+# ── 품목 진행상황 트래커 ─────────────────────────────────────────────
+TRACKER_FILE = Path("tracker.json")
+
+def _load_tracker() -> dict:
+    try:
+        return json.loads(TRACKER_FILE.read_text(encoding="utf-8")) if TRACKER_FILE.exists() else {}
+    except Exception:
+        return {}
+
+def _save_tracker(data: dict):
+    TRACKER_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+@app.get("/api/tracker")
+async def get_tracker():
+    return _load_tracker()
+
+
+@app.post("/api/tracker")
+async def create_tracker(request: Request):
+    data = await request.json()
+    items = _load_tracker()
+    new_id = str(max([int(k) for k in items.keys() if k.isdigit()] or [0]) + 1)
+    items[new_id] = {
+        "name": data.get("name", ""),
+        "stage": data.get("stage", "keyword"),
+        "memo": data.get("memo", ""),
+    }
+    _save_tracker(items)
+    return {"ok": True, "id": new_id}
+
+
+@app.put("/api/tracker/{item_id}")
+async def update_tracker(item_id: str, request: Request):
+    data = await request.json()
+    items = _load_tracker()
+    if item_id not in items:
+        return {"ok": False}
+    items[item_id].update({k: v for k, v in data.items() if k in ("name", "stage", "memo")})
+    _save_tracker(items)
+    return {"ok": True}
+
+
+@app.delete("/api/tracker/{item_id}")
+async def delete_tracker(item_id: str):
+    items = _load_tracker()
+    items.pop(item_id, None)
+    _save_tracker(items)
+    return {"ok": True}
+
+
 # ── 메모 이메일 발송 ─────────────────────────────────────────────────
 MEMO_TO = "tjdrjs0007@naver.com"
 

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>쇼핑 키워드 분석기</title>
-  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="/static/style.css?v=20260622b" />
 </head>
 <body>
   <header class="site-header">
@@ -15,8 +15,9 @@
         <span class="logo-badge">네이버 쇼핑</span>
       </div>
       <nav class="site-nav">
-        <button class="nav-btn active" id="nav-search" onclick="switchPage('search')">🔍 키워드 분석</button>
+        <button class="nav-btn active" id="nav-tracker" onclick="switchPage('tracker')">📋 쿠팡 품목 진행상황</button>
         <button class="nav-btn" id="nav-sourcing" onclick="switchPage('sourcing')">📦 소싱 추천</button>
+        <button class="nav-btn" id="nav-search" onclick="switchPage('search')">🔍 키워드 분석</button>
         <button class="nav-btn" id="nav-pagemaker" onclick="switchPage('pagemaker')">🎨 페이지 메이커</button>
       </nav>
       <div class="search-wrap" id="header-search" style="display:none">
@@ -25,6 +26,19 @@
       </div>
     </div>
   </header>
+
+  <!-- ===== 📋 품목 진행상황 트래커 (메인 최상단) ===== -->
+  <section id="tracker-section" class="tracker-section">
+    <div class="tracker-head">
+      <div class="tracker-title">📋 쿠팡 품목 진행상황 <span class="tracker-sub">단계별 추적</span></div>
+      <div class="tracker-head-actions">
+        <span class="tracker-summary" id="tracker-summary"></span>
+        <button class="tracker-add-btn" onclick="addTrackerItem()">+ 품목 추가</button>
+        <button class="tracker-collapse-btn" id="tracker-collapse-btn" onclick="toggleTrackerSection()">접기 ▲</button>
+      </div>
+    </div>
+    <div id="tracker-list" class="tracker-list"></div>
+  </section>
 
   <section id="hero-section" class="hero">
     <h1>키워드 하나로<br/>시장 경쟁 분석</h1>
@@ -512,6 +526,6 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=20260622b"></script>
 </body>
 </html>
