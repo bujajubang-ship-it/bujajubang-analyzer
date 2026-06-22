@@ -1444,3 +1444,76 @@ body { font-family: -apple-system, 'Noto Sans KR', sans-serif; background: var(-
 .trk-memo-btns { display: flex; gap: 6px; margin-top: 6px; }
 .trk-btn-save { padding: 6px 14px; background: #111827; color: #fff; border: none; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; }
 .trk-btn-cancel { padding: 6px 14px; background: #fff; color: #6b7280; border: 1.5px solid #d1d5db; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; }
+
+/* ── 📌 쿠팡 소싱 마스터 가이드 (접이식 공지 보드) ── */
+.guide-board {
+  border: 1.5px solid #ddd6fe; background: #faf9ff;
+  border-radius: 14px; margin-bottom: 16px; overflow: hidden;
+}
+.guide-board-head {
+  width: 100%; display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 14px 18px; background: #f3f0ff; border: none;
+  cursor: pointer; font-family: inherit; text-align: left;
+}
+.guide-board-head:hover { background: #ede9fe; }
+.guide-board-title { font-size: 15px; font-weight: 800; color: #6d28d9; }
+.guide-board-arrow { font-size: 13px; color: #7c3aed; transition: transform .2s; }
+.guide-board.collapsed .guide-board-arrow { transform: rotate(-90deg); }
+.guide-board-body { padding: 18px; border-top: 1px solid #ede9fe; }
+.guide-board.collapsed .guide-board-body { display: none; }
+.guide-board-empty { color: #9ca3af; font-size: 13px; text-align: center; padding: 10px; }
+
+/* ── 가이드 보드 내부 아코디언 ── */
+.gacc { border: 1px solid #ede9fe; border-radius: 10px; overflow: hidden; background: #fff; }
+.gacc + .gacc { margin-top: 8px; }
+.gacc-head {
+  width: 100%; display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 11px 14px; background: #faf9ff; border: none;
+  cursor: pointer; font-family: inherit; text-align: left;
+}
+.gacc-head:hover { background: #f3f0ff; }
+.gacc-title { font-size: 14px; font-weight: 800; color: #5b21b6; }
+.gacc-arrow { font-size: 12px; color: #7c3aed; transition: transform .2s; flex-shrink: 0; }
+.gacc:not(.open) .gacc-arrow { transform: rotate(-90deg); }
+.gacc-body { padding: 12px 16px 14px; border-top: 1px solid #f1edff; font-size: 13px; color: #374151; line-height: 1.65; }
+.gacc:not(.open) .gacc-body { display: none; }
+.gacc-body ul { list-style: none; padding: 0; margin: 0; }
+.gacc-body li { position: relative; padding-left: 18px; margin: 5px 0; }
+.gacc-body > ul > li::before { content: '✓'; position: absolute; left: 0; color: #7c3aed; font-weight: 800; }
+.gacc-body ul ul { margin: 4px 0 6px 6px; }
+.gacc-body ul ul li::before { content: '–'; position: absolute; left: 0; color: #a78bfa; font-weight: 800; }
+.gacc-sub { font-weight: 800; color: #6d28d9; margin: 11px 0 4px; font-size: 13px; }
+.gacc-sub:first-child { margin-top: 0; }
+.gacc-body b { color: #111827; }
+.gacc-body .warn { color: #b91c1c; font-weight: 700; }
+.gacc-body .good { color: #15803d; font-weight: 700; }
+
+/* ── 🧮 마진 / ROAS 계산기 위젯 ── */
+.calc-zone { margin-bottom: 14px; }
+.calc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 760px) { .calc-grid { grid-template-columns: 1fr; } }
+.calc-card { border: 1.5px solid #ddd6fe; background: #fff; border-radius: 12px; padding: 14px 16px; }
+.calc-card-title { font-size: 14px; font-weight: 800; color: #5b21b6; margin-bottom: 12px; }
+.calc-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 12px; }
+.calc-field { display: flex; flex-direction: column; gap: 4px; }
+.calc-field-label { font-size: 12px; font-weight: 700; color: #6b7280; }
+.calc-input-wrap { position: relative; display: flex; align-items: center; }
+.calc-input-wrap input, .calc-input-wrap select {
+  width: 100%; box-sizing: border-box; border: 1.5px solid #e5e7eb; border-radius: 8px;
+  padding: 7px 9px; font-size: 13px; font-family: inherit; background: #fff;
+}
+.calc-input-wrap input:focus, .calc-input-wrap select:focus { outline: none; border-color: #8b5cf6; }
+.calc-input-wrap input { text-align: right; padding-right: 30px; }
+.calc-suffix { position: absolute; right: 9px; font-size: 12px; color: #9ca3af; pointer-events: none; }
+.calc-results { margin-top: 12px; border-top: 1px solid #f1edff; padding-top: 10px; }
+.calc-row { display: flex; justify-content: space-between; align-items: center; font-size: 13px; padding: 4px 0; color: #6b7280; }
+.calc-row-val { font-weight: 700; color: #374151; }
+.calc-row.strong { font-size: 14px; }
+.calc-row.strong span:first-child { font-weight: 800; color: #111827; }
+.calc-row.strong .calc-row-val { font-weight: 800; color: #5b21b6; }
+.calc-signal { display: flex; align-items: center; gap: 8px; border: 1.5px solid; border-radius: 8px; padding: 8px 10px; margin: 6px 0 10px; }
+.calc-signal-dot { font-size: 14px; }
+.calc-signal-text { font-size: 12.5px; font-weight: 700; line-height: 1.4; }
+.calc-legend { margin-top: 14px; background: #faf9ff; border: 1px solid #ede9fe; border-radius: 10px; padding: 12px 14px; }
+.calc-legend-row { font-size: 12.5px; color: #4b5563; margin: 3px 0; }
+.calc-note { margin-top: 9px; padding-top: 9px; border-top: 1px dashed #ddd6fe; font-size: 11.5px; color: #9ca3af; line-height: 1.55; }

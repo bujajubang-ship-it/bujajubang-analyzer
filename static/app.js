@@ -1579,8 +1579,10 @@ const TRACK_STAGES = [
   { key: 'sample',   label: '샘플·견적',  emoji: '📦', color: '#f97316', bg: '#fff7ed' },
   { key: 'order',    label: '발주',       emoji: '🧾', color: '#eab308', bg: '#fefce8' },
   { key: 'detail',   label: '상세페이지', emoji: '🎨', color: '#06b6d4', bg: '#ecfeff' },
+  { key: 'kwset',    label: '키워드 세팅', emoji: '🏷️', color: '#14b8a6', bg: '#f0fdfa' },
   { key: 'listing',  label: '등록',       emoji: '⬆️', color: '#3b82f6', bg: '#eff6ff' },
   { key: 'selling',  label: '판매중',     emoji: '🟢', color: '#22c55e', bg: '#f0fdf4' },
+  { key: 'defense',  label: '최적화·방어', emoji: '🛡️', color: '#8b5cf6', bg: '#f5f3ff' },
 ];
 
 let trackerItems = {};        // { id: {name, stage, memo} }
@@ -1656,6 +1658,18 @@ function toggleTrackerSection() {
   const collapsed = list.style.display === 'none';
   list.style.display = collapsed ? '' : 'none';
   if (btn) btn.textContent = collapsed ? '접기 ▲' : '펼치기 ▼';
+}
+
+// 📌 쿠팡 소싱 마스터 가이드 — 접이식 공지 보드 (localStorage 미사용, 기본 접힘)
+function toggleGuideBoard() {
+  const b = document.getElementById('guide-board');
+  if (b) b.classList.toggle('collapsed');
+}
+
+// 가이드 보드 내부 아코디언 — 각 섹션 독립 토글 (여러 개 동시 열림 허용, localStorage 미사용)
+function toggleAcc(btn) {
+  const acc = btn.closest('.gacc');
+  if (acc) acc.classList.toggle('open');
 }
 
 function trackerRow(id, it) {

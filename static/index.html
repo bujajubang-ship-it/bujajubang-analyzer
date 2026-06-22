@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>쇼핑 키워드 분석기</title>
-  <link rel="stylesheet" href="/static/style.css?v=20260622b" />
+  <link rel="stylesheet" href="/static/style.css?v=20260622e" />
 </head>
 <body>
   <header class="site-header">
@@ -29,6 +29,239 @@
 
   <!-- ===== 📋 품목 진행상황 트래커 (메인 최상단) ===== -->
   <section id="tracker-section" class="tracker-section">
+    <!-- 접이식 공지 보드 (기본 접힘) -->
+    <div class="guide-board collapsed" id="guide-board">
+      <button class="guide-board-head" type="button" onclick="toggleGuideBoard()">
+        <span class="guide-board-title">📌 쿠팡 소싱 마스터 가이드</span>
+        <span class="guide-board-arrow" id="guide-board-arrow">▼</span>
+      </button>
+      <div class="guide-board-body" id="guide-board-body">
+
+        <!-- 🧮 마진/ROAS 계산기 (React 위젯, 항상 표시) -->
+        <div class="calc-zone"><div id="calc-root"></div></div>
+
+        <!-- 0단계: 대원칙 (기본 펼침) -->
+        <div class="gacc open">
+          <button class="gacc-head" type="button" onclick="toggleAcc(this)">
+            <span class="gacc-title">⭐ 0. 시작 전 대원칙 (가장 중요)</span>
+            <span class="gacc-arrow">▼</span>
+          </button>
+          <div class="gacc-body">
+            <ul>
+              <li><b>내 취향으로 고르지 마라.</b> 데이터·숫자로만 골라라. (내 눈에 예쁜 건 그냥 내 장바구니)</li>
+              <li>잘 팔릴지는 <b>소비자가 판단</b>한다. 여러 개 올려보고 팔리는 걸 키운다.</li>
+              <li><b>검증 먼저, 사입은 나중.</b> 위탁/소량 테스트로 팔리는 걸 확인한 뒤 돈을 넣는다.</li>
+              <li><b>판매량 = 노출수 × 클릭률 × 전환율</b> (셋 중 하나라도 0이면 0)
+                <ul>
+                  <li>노출수 = 시장·경쟁이 결정(통제 불가) → <b>"들어갈 시장" 고르는 게 전부</b></li>
+                  <li>클릭률·전환율 = 내 실력으로 올린다(썸네일·상세·쿠폰·리뷰)</li>
+                </ul>
+              </li>
+              <li><b>데이터 해석력이 경쟁력.</b> 비즈니스 인사이트는 모두에게 공개된 데이터 — 먼저 익히는 사람이 이긴다.</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- 1단계 -->
+        <div class="gacc">
+          <button class="gacc-head" type="button" onclick="toggleAcc(this)">
+            <span class="gacc-title">🔍 1. 키워드 발굴</span>
+            <span class="gacc-arrow">▼</span>
+          </button>
+          <div class="gacc-body">
+            <ul>
+              <li><b>아이템스카우트</b> → 3차 카테고리까지 파고들어 키워드 하나씩 훑기</li>
+              <li>경쟁강도 지표는 <span class="warn">무시</span>(프로그램 등록으로 왜곡됨) → <b>검색수 + 실제 셀러 수준</b>을 봐라</li>
+              <li><b>셀러라이프</b> 키워드 검색으로 네이버·쿠팡 연관 키워드 함께 수집</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- 2단계 -->
+        <div class="gacc">
+          <button class="gacc-head" type="button" onclick="toggleAcc(this)">
+            <span class="gacc-title">📊 2. 시장성 분석</span>
+            <span class="gacc-arrow">▼</span>
+          </button>
+          <div class="gacc-body">
+            <ul>
+              <li><b>1페이지 직접 확인</b> (쿠팡에 키워드 입력)
+                <ul>
+                  <li>1~10위 전부 로켓 → <span class="warn">포기</span> (못 뚫음)</li>
+                  <li>일반 판매자(윙) 3명 이상 → <span class="good">진입 가능</span></li>
+                </ul>
+              </li>
+              <li><b>순위 변동 그래프</b>
+                <ul>
+                  <li>상위권 고정 → 벽 단단함, <span class="warn">포기</span></li>
+                  <li>순위가 왔다갔다 → 후발주자에게 <span class="good">기회</span></li>
+                </ul>
+              </li>
+              <li><b>비즈니스 인사이트 → 카테고리 분석</b>
+                <ul>
+                  <li>광고 비중 70% 시장 피하고 <b>20% 이하</b> 노려라</li>
+                  <li>노출 큰데 광고 비중 낮은 카테고리 = <span class="good">보물</span></li>
+                  <li>고객/검색 증가율 &gt; 상품 증가율 = 수요 &gt; 공급, <span class="good">돈 버는 시장</span></li>
+                </ul>
+              </li>
+              <li>탑20 검색어 × 평균가로 예상매출 계산 (전환율 보수적 <b>3%</b> 기준)</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- 3단계 -->
+        <div class="gacc">
+          <button class="gacc-head" type="button" onclick="toggleAcc(this)">
+            <span class="gacc-title">🏭 3. 소싱</span>
+            <span class="gacc-arrow">▼</span>
+          </button>
+          <div class="gacc-body">
+            <ul>
+              <li><b>판매가는 시장이 정한다.</b> 시장가에 맞출 수 있는 원가의 제품을 찾는다(못 맞추면 포기)</li>
+              <li>순서: <b>도매꾹 단가 확인 → 1688에서 같은 제품 비교</b></li>
+              <li>원가 환산: <b>한국 원가 = 위안화 × 350원</b> (환율+수수료+세금+통관 어림값)</li>
+              <li>도매꾹 vs 1688
+                <ul>
+                  <li>처음엔 <b>도매꾹 위탁</b>으로 테스트(재고 리스크 0)</li>
+                  <li>꾸준히 팔리면 <b>1688 사입</b> 전환(가격 컨트롤, 마진↑)</li>
+                  <li>도매꾹 한 곳만 믿지 마라 → 1688 루트 미리 확보</li>
+                </ul>
+              </li>
+              <li>1688 좋은 판매자: 일반 &lt; 황소 &lt; <b>보라색 슈퍼팩토리</b>(공장실사). 카테고리 전문 판매자를 골라라</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- 4단계 -->
+        <div class="gacc">
+          <button class="gacc-head" type="button" onclick="toggleAcc(this)">
+            <span class="gacc-title">📦 4. 샘플·견적</span>
+            <span class="gacc-arrow">▼</span>
+          </button>
+          <div class="gacc-body">
+            <ul>
+              <li><b>1688 알리왕왕</b>으로 판매자에게 직접 가격 협의(파파고 한국어→복붙)</li>
+              <li>여러 판매자에게 동시에 같은 질문 → 응답 빠르고 이력 좋은 곳 선택</li>
+              <li>처음엔 <b>10% 깎고</b>, "100개 단위면 얼마?" 대량 단가도 미리 확인(마진 시뮬레이션)</li>
+              <li>배대지 선택 4기준: <b>소통 / 환율 / 운임 / 숨은 추가요금</b> — 2~3곳 운영(리스크 분산)</li>
+              <li>공장 가까운 배대지로 보내면 더 빠르고 싸다</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- 5단계 -->
+        <div class="gacc">
+          <button class="gacc-head" type="button" onclick="toggleAcc(this)">
+            <span class="gacc-title">🧾 5. 발주</span>
+            <span class="gacc-arrow">▼</span>
+          </button>
+          <div class="gacc-body">
+            <ul>
+              <li>수입 방식: <b>20kg 미만 특송</b> / <b>20kg 이상 LCL</b> / <b>대량 FCL</b>(통관 가장 빠름)</li>
+              <li><b>기본 검수 신청 필수</b> → 도착 사진 확인 후 출고 요청</li>
+              <li>매입 증빙 보관: <b>수입신고필증 + 배대지 세금계산서</b> (부가세·종소세에 필수)</li>
+              <li>의류는 초보 비추(컬러·사이즈 재고관리 어려움). 사이즈 비율은 1등 리뷰 분석</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- 6단계 -->
+        <div class="gacc">
+          <button class="gacc-head" type="button" onclick="toggleAcc(this)">
+            <span class="gacc-title">🎨 6. 상세페이지</span>
+            <span class="gacc-arrow">▼</span>
+          </button>
+          <div class="gacc-body">
+            <ul>
+              <li>테스트 단계: <b>도매꾹 + 1688 이미지 섞어서</b> 올리기(그대로 쓰면 아이템위너로 묶임)</li>
+              <li>대표 이미지 = 시선 끄는 자극적인 컷. 추가 이미지 <b>9개 다 채우기</b></li>
+              <li>사입·정식 단계: <b>차별화 포인트</b>(우리 제품만의 장점)를 스토리로 녹이기</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- 7단계 -->
+        <div class="gacc">
+          <button class="gacc-head" type="button" onclick="toggleAcc(this)">
+            <span class="gacc-title">🏷️ 7. 키워드 세팅</span>
+            <span class="gacc-arrow">▼</span>
+          </button>
+          <div class="gacc-body">
+            <ul>
+              <li>상품명 <b>맨 앞에 브랜드명</b>(아이템위너 방어 + 상표권 소명)</li>
+              <li>노출 = 상품명 + 검색어 태그 조합. 쿠팡은 정확히 일치 안 해도 "살 것 같은 사람"에게 자동 노출</li>
+              <li>연관 키워드를 검색어에 <b>최대 20개</b> 채우기(아이템스카우트·셀러라이프)</li>
+              <li>옵션명도 살짝 변형(번들 키워드 포함) → 아이템위너 매칭 회피</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- 8단계 -->
+        <div class="gacc">
+          <button class="gacc-head" type="button" onclick="toggleAcc(this)">
+            <span class="gacc-title">⬆️ 8. 등록</span>
+            <span class="gacc-arrow">▼</span>
+          </button>
+          <div class="gacc-body">
+            <ul>
+              <li>카테고리: <b>1등 판매자가 쓰는 카테고리 따라가기</b>(쿠팡 개편 잦음, 유연하게)</li>
+              <li><b>무료배송 필수</b> — 배송비를 판매가에 녹여라(상위 노출 가산점)</li>
+              <li>출고소요일 짧게 — 초기엔 <b>당일출고</b>(상위 노출 점수)</li>
+              <li>재고수량 <b>9개</b> — '품절 임박'으로 조바심 유발</li>
+              <li><b>즉시 할인쿠폰</b> — 정상가 높이고 할인 적용(빨간 딱지, 전환율↑) [프로모션 → 할인쿠폰 관리]</li>
+              <li><b>자동 가격 조정 ON</b> — 아이템위너 방어용 최저가 미리 설정</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- 9단계 -->
+        <div class="gacc">
+          <button class="gacc-head" type="button" onclick="toggleAcc(this)">
+            <span class="gacc-title">🟢 9. 판매중 · 🛡️ 최적화·방어 (사후관리)</span>
+            <span class="gacc-arrow">▼</span>
+          </button>
+          <div class="gacc-body">
+            <div class="gacc-sub">📣 광고 운영</div>
+            <ul>
+              <li><b>매출최적화 광고 + 자동 운영</b>으로 시작(초보는 AI 스마트 광고 켜고 등록에 집중)</li>
+              <li>캠페인 이름 = <b>날짜 + 윙/로켓 + 상품명 + 최소ROAS%</b></li>
+              <li><b>최소 ROAS = (판매가 ÷ 마진) × 1.1.</b> 이 아래면 광고할수록 손해</li>
+              <li>목표 ROAS 낮게 = 넓게 노출 / 높게 = 좁게. 쿠팡 기본 추천 <b>350%</b></li>
+              <li>세팅·변경 후 <b>최소 1주일은 건드리지 마라</b>(AI 학습 시간)</li>
+              <li>광고비 소진 알림 메일 설정 — <b>피크타임</b>(점심직후·퇴근후·취침전)에 살아있어야</li>
+              <li>ROAS 높다고 많이 버는 거 아님 — <b>500%×50개 &gt; 1000%×10개</b></li>
+            </ul>
+            <div class="gacc-sub">♟️ 시장 역학 (고수의 영역)</div>
+            <ul>
+              <li>광고는 혼자 하는 게임 아님. 안 바꿨는데 수익률 변동 = <b>경쟁자가 조정한 것</b></li>
+              <li>수익률 갑자기↑ = 경쟁자 공격 진입 가능 → 줄이지 말고 <b>더 투자해 싹을 잘라라</b></li>
+              <li>광고비 잘 소진 + 판매↑ = 누가 빠진 것 → 역시 더 투자</li>
+              <li>광고를 올렸다 내렸다 흔들어 경쟁자 반응 유도(비즈니스 인사이트 시간별 랭킹으로 확인)</li>
+            </ul>
+            <div class="gacc-sub">📈 전환율 관리</div>
+            <ul>
+              <li>10위권 진입 + 리뷰 확보인데 전환율 10% 미만 = <span class="warn">안 되는 상품</span>. 시장 평균과 비교 필수</li>
+            </ul>
+            <div class="gacc-sub">🛡️ 아이템위너 방어</div>
+            <ul>
+              <li>묶이면: ① 문의에 상품ID·판매자코드 첨부해 분리요청, 또는 ② 상품정보에서 브랜드·제조사 변경(즉시 풀림). 해제 후 <b>원인(겹친 이미지) 반드시 변경</b></li>
+              <li>처음부터 <b>상표권 등록 브랜드명</b>을 상품명 앞에 = 최선의 방어</li>
+            </ul>
+            <div class="gacc-sub">🚀 로켓그로스 전환</div>
+            <ul>
+              <li>검증 끝난 상품 → 로켓그로스(쿠팡 배송·CS 전담 + 로켓배지로 판매↑). 품목당 <b>10개 소량 입고</b>, 60일 무료보관. 바코드·동봉문서·박스문서 빠짐없이</li>
+            </ul>
+            <div class="gacc-sub">💰 사입 타이밍 / 마진 기준</div>
+            <ul>
+              <li>하루 3개씩 2~3일 꾸준히 팔리면 <b>즉시 사입</b>(망설이면 늦음). 사입 후 썸네일·상세·리뷰 세팅해 상단 진입</li>
+              <li>위탁 마진율 <b>20% 이상</b> OK / 사입 마진율 <b>50% 이상</b> 목표</li>
+            </ul>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
     <div class="tracker-head">
       <div class="tracker-title">📋 쿠팡 품목 진행상황 <span class="tracker-sub">단계별 추적</span></div>
       <div class="tracker-head-actions">
@@ -526,6 +759,11 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-  <script src="/static/app.js?v=20260622b"></script>
+  <script src="/static/app.js?v=20260622e"></script>
+  <!-- 마진/ROAS 계산기 (React 18 + htm, 빌드 없음) -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/htm@3.1.1/dist/htm.umd.js"></script>
+  <script src="/static/calculators.js?v=20260622e"></script>
 </body>
 </html>
