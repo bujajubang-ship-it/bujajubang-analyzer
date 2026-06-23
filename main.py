@@ -530,16 +530,25 @@ async def get_tracker():
     return _load_tracker()
 
 
+TRACKER_FIELDS = (
+    "name", "pipeline", "stage",
+    "link1688", "orderOption", "unitPrice", "orderQty",
+    "coupangLink", "initialPrice", "expectedRevenue", "memo",
+)
+
+
 @app.post("/api/tracker")
 async def create_tracker(request: Request):
     data = await request.json()
     items = _load_tracker()
     new_id = str(max([int(k) for k in items.keys() if k.isdigit()] or [0]) + 1)
-    items[new_id] = {
-        "name": data.get("name", ""),
-        "stage": data.get("stage", "keyword"),
-        "memo": data.get("memo", ""),
-    }
+    item = {k: "" for k in TRACKER_FIELDS}
+    item["pipeline"] = data.get("pipeline", "sourcing")
+    item["stage"] = data.get("stage", "keyword")
+    for k in TRACKER_FIELDS:
+        if k in data:
+            item[k] = data[k]
+    items[new_id] = item
     _save_tracker(items)
     return {"ok": True, "id": new_id}
 
@@ -550,7 +559,7 @@ async def update_tracker(item_id: str, request: Request):
     items = _load_tracker()
     if item_id not in items:
         return {"ok": False}
-    items[item_id].update({k: v for k, v in data.items() if k in ("name", "stage", "memo")})
+    items[item_id].update({k: v for k, v in data.items() if k in TRACKER_FIELDS})
     _save_tracker(items)
     return {"ok": True}
 

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>쇼핑 키워드 분석기</title>
-  <link rel="stylesheet" href="/static/style.css?v=20260622e" />
+  <link rel="stylesheet" href="/static/style.css?v=20260623b" />
 </head>
 <body>
   <header class="site-header">
@@ -263,10 +263,11 @@
     </div>
 
     <div class="tracker-head">
-      <div class="tracker-title">📋 쿠팡 품목 진행상황 <span class="tracker-sub">단계별 추적</span></div>
+      <div class="tracker-head-left">
+        <div class="tracker-title">📋 쿠팡 품목 진행상황</div>
+        <div class="pipe-toggles" id="pipe-toggles"></div>
+      </div>
       <div class="tracker-head-actions">
-        <span class="tracker-summary" id="tracker-summary"></span>
-        <button class="tracker-add-btn" onclick="addTrackerItem()">+ 품목 추가</button>
         <button class="tracker-collapse-btn" id="tracker-collapse-btn" onclick="toggleTrackerSection()">접기 ▲</button>
       </div>
     </div>
@@ -759,11 +760,11 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-  <script src="/static/app.js?v=20260622e"></script>
+  <script src="/static/app.js?v=20260623b"></script>
   <!-- 마진/ROAS 계산기 (React 18 + htm, 빌드 없음) -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/htm@3.1.1/dist/htm.umd.js"></script>
-  <script src="/static/calculators.js?v=20260622e"></script>
+  <script src="/static/calculators.js?v=20260623b"></script>
 </body>
 </html>

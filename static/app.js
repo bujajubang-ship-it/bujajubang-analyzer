@@ -1572,24 +1572,79 @@ async function pmProcess() {
    - tracker.json 서버 저장 (GET/POST/PUT/DELETE /api/tracker)
    - 각 품목 = 가로 8단계 스테퍼 (점 클릭으로 단계 이동)
    ============================================================ */
-const TRACK_STAGES = [
+// ── 파이프라인 정의: 소싱 / 로켓 ──
+const SOURCING_STAGES = [
   { key: 'keyword',  label: '키워드 발굴', emoji: '🔍', color: '#6366f1', bg: '#eef2ff' },
   { key: 'analysis', label: '시장성 분석', emoji: '📊', color: '#8b5cf6', bg: '#f5f3ff' },
-  { key: 'sourcing', label: '소싱',       emoji: '🏭', color: '#ec4899', bg: '#fdf2f8' },
-  { key: 'sample',   label: '샘플·견적',  emoji: '📦', color: '#f97316', bg: '#fff7ed' },
-  { key: 'order',    label: '발주',       emoji: '🧾', color: '#eab308', bg: '#fefce8' },
-  { key: 'detail',   label: '상세페이지', emoji: '🎨', color: '#06b6d4', bg: '#ecfeff' },
-  { key: 'kwset',    label: '키워드 세팅', emoji: '🏷️', color: '#14b8a6', bg: '#f0fdfa' },
-  { key: 'listing',  label: '등록',       emoji: '⬆️', color: '#3b82f6', bg: '#eff6ff' },
-  { key: 'selling',  label: '판매중',     emoji: '🟢', color: '#22c55e', bg: '#f0fdf4' },
-  { key: 'defense',  label: '최적화·방어', emoji: '🛡️', color: '#8b5cf6', bg: '#f5f3ff' },
+  { key: 'research', label: '소싱처 조사', emoji: '🏭', color: '#ec4899', bg: '#fdf2f8' },
+  { key: 'confirm',  label: '소싱 확정',   emoji: '🎯', color: '#f97316', bg: '#fff7ed' },
+];
+const ROCKET_STAGES = [
+  { key: 'item',         label: '아이템선정', emoji: '🎯', color: '#6366f1', bg: '#eef2ff' },
+  { key: 'sample_order', label: '샘플주문',   emoji: '🛒', color: '#8b5cf6', bg: '#f5f3ff' },
+  { key: 'sample_check', label: '샘플검수',   emoji: '🔬', color: '#a855f7', bg: '#faf5ff' },
+  { key: 'upload',       label: '업로드',     emoji: '⬆️', color: '#ec4899', bg: '#fdf2f8' },
+  { key: 'order',        label: '발주',       emoji: '🧾', color: '#f97316', bg: '#fff7ed' },
+  { key: 'detail',       label: '상세페이지', emoji: '🎨', color: '#eab308', bg: '#fefce8' },
+  { key: 'kwset',        label: '키워드세팅', emoji: '🏷️', color: '#14b8a6', bg: '#f0fdfa' },
+  { key: 'stock_in',     label: '쿠팡입고',   emoji: '📦', color: '#06b6d4', bg: '#ecfeff' },
+  { key: 'selling',      label: '판매중',     emoji: '🟢', color: '#22c55e', bg: '#f0fdf4' },
+  { key: 'defense',      label: '최적화·방어', emoji: '🛡️', color: '#8b5cf6', bg: '#f5f3ff' },
+];
+const PIPELINES = {
+  sourcing: { key: 'sourcing', title: '🧭 소싱 파이프라인', sub: '키워드 발굴 → 소싱 확정', stages: SOURCING_STAGES },
+  rocket:   { key: 'rocket',   title: '🚀 로켓 파이프라인', sub: '아이템선정 → 최적화·방어', stages: ROCKET_STAGES },
+};
+const PIPELINE_ORDER = ['sourcing', 'rocket'];
+
+// 개별 입력 필드 (8가지)
+const ITEM_FIELDS = [
+  { key: 'link1688',        label: '1688 링크',  type: 'url',      ph: 'https://...' },
+  { key: 'orderOption',     label: '주문옵션',   type: 'text',     ph: '예: 베이지-8팩' },
+  { key: 'unitPrice',       label: '단가',       type: 'text',     ph: '예: 3.35위안' },
+  { key: 'orderQty',        label: '발주량',     type: 'number',   ph: '예: 30' },
+  { key: 'coupangLink',     label: '쿠팡 링크',  type: 'url',      ph: 'https://...' },
+  { key: 'initialPrice',    label: '최초판매가', type: 'number',   ph: '원' },
+  { key: 'expectedRevenue', label: '기대매출',   type: 'number',   ph: '원' },
+  { key: 'memo',            label: '메모',       type: 'textarea', ph: '특이사항' },
 ];
 
-let trackerItems = {};        // { id: {name, stage, memo} }
-let trackerMemoEdit = null;   // 현재 메모 편집 중인 id
+// 구버전(단일 트래커) 데이터 → 파이프라인 마이그레이션 매핑
+const LEGACY_STAGE_MAP = {
+  keyword:  { pipeline: 'sourcing', stage: 'keyword' },
+  analysis: { pipeline: 'sourcing', stage: 'analysis' },
+  sourcing: { pipeline: 'sourcing', stage: 'research' },
+  sample:   { pipeline: 'rocket',   stage: 'sample_order' },
+  order:    { pipeline: 'rocket',   stage: 'order' },
+  detail:   { pipeline: 'rocket',   stage: 'detail' },
+  kwset:    { pipeline: 'rocket',   stage: 'kwset' },
+  listing:  { pipeline: 'rocket',   stage: 'upload' },
+  selling:  { pipeline: 'rocket',   stage: 'selling' },
+  defense:  { pipeline: 'rocket',   stage: 'defense' },
+};
+
+let trackerItems = {};   // { id: {name, pipeline, stage, ...8필드} }
+let trackerEdit = null;  // 펼쳐서 편집 중인 id
+let pipeSort = { sourcing: { key: 'name', asc: true }, rocket: { key: 'name', asc: true } };
+let pipeSearch = { sourcing: '', rocket: '' };
+let pipeActive = { sourcing: true, rocket: true };  // 파이프라인 활성/비활성 (제목 옆 토글)
 
 function _trkEsc(s) {
   return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function _trkAttr(s) { return _trkEsc(s).replace(/"/g, '&quot;'); }
+function _trkNum(v) { const n = parseFloat(String(v == null ? '' : v).replace(/[^0-9.-]/g, '')); return isFinite(n) ? n : 0; }
+function _trkWon(v) { return (v === '' || v == null) ? '' : _trkNum(v).toLocaleString('ko-KR') + '원'; }
+function pipeStages(p) { return (PIPELINES[p] || PIPELINES.sourcing).stages; }
+
+// 로드 시 구버전 데이터 정규화 (서버는 편집 전까지 원본 유지)
+function normalizeItem(it) {
+  if (!it.pipeline) {
+    const m = LEGACY_STAGE_MAP[it.stage] || { pipeline: 'sourcing', stage: it.stage };
+    it.pipeline = m.pipeline;
+    it.stage = m.stage;
+  }
+  return it;
 }
 
 async function loadTracker() {
@@ -1597,24 +1652,28 @@ async function loadTracker() {
     const res = await fetch('/api/tracker');
     trackerItems = await res.json();
   } catch (e) { trackerItems = {}; }
+  Object.values(trackerItems).forEach(normalizeItem);
   renderTracker();
 }
 
-async function addTrackerItem() {
-  const name = prompt('추가할 품목 이름을 입력하세요 (예: 업소용 냉장고 1100L)');
+async function addTrackerItem(pipeline) {
+  const name = prompt('추가할 품목 이름을 입력하세요');
   if (!name || !name.trim()) return;
   await fetch('/api/tracker', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: name.trim(), stage: 'keyword' }),
+    body: JSON.stringify({ name: name.trim(), pipeline, stage: pipeStages(pipeline)[0].key }),
   });
   loadTracker();
 }
 
 async function setTrackerStage(id, idx) {
-  if (idx < 0 || idx >= TRACK_STAGES.length) return;
+  const it = trackerItems[id];
+  if (!it) return;
+  const stages = pipeStages(it.pipeline);
+  if (idx < 0 || idx >= stages.length) return;
   await fetch(`/api/tracker/${id}`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ stage: TRACK_STAGES[idx].key }),
+    body: JSON.stringify({ pipeline: it.pipeline, stage: stages[idx].key }),
   });
   loadTracker();
 }
@@ -1622,7 +1681,7 @@ async function setTrackerStage(id, idx) {
 async function moveTrackerStage(id, dir) {
   const it = trackerItems[id];
   if (!it) return;
-  const idx = TRACK_STAGES.findIndex(s => s.key === it.stage);
+  const idx = pipeStages(it.pipeline).findIndex(s => s.key === it.stage);
   await setTrackerStage(id, idx + dir);
 }
 
@@ -1632,23 +1691,47 @@ async function deleteTrackerItem(id) {
   loadTracker();
 }
 
-function editTrackerMemo(id) {
-  trackerMemoEdit = id;
-  renderTracker();
-}
-function cancelTrackerMemo() {
-  trackerMemoEdit = null;
-  renderTracker();
-}
-async function saveTrackerMemo(id) {
-  const ta = document.getElementById(`trk-memo-ta-${id}`);
-  const memo = ta ? ta.value.trim() : '';
+function editTrackerItem(id) { trackerEdit = id; renderTracker(); }
+function cancelTrackerEdit() { trackerEdit = null; renderTracker(); }
+
+async function saveTrackerItem(id) {
+  const it = trackerItems[id] || {};
+  const payload = { pipeline: it.pipeline, stage: it.stage };
+  ITEM_FIELDS.forEach(f => {
+    const el = document.getElementById(`trk-f-${f.key}-${id}`);
+    if (el) payload[f.key] = el.value;
+  });
   await fetch(`/api/tracker/${id}`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ memo }),
+    body: JSON.stringify(payload),
   });
-  trackerMemoEdit = null;
+  trackerEdit = null;
   loadTracker();
+}
+
+// 정렬 / 검색
+function sortPipe(p, key) {
+  const s = pipeSort[p];
+  if (s.key === key) s.asc = !s.asc; else { s.key = key; s.asc = true; }
+  renderTracker();
+}
+function onPipeSearch(p, val) {
+  pipeSearch[p] = val;
+  renderPipeList(p);  // 리스트만 갱신 → 검색창 포커스 유지
+}
+
+// 파이프라인 활성/비활성 토글 (제목 옆)
+function togglePipeActive(p) {
+  pipeActive[p] = !pipeActive[p];
+  renderPipeToggles();
+  renderTracker();
+}
+function renderPipeToggles() {
+  const el = document.getElementById('pipe-toggles');
+  if (!el) return;
+  el.innerHTML = PIPELINE_ORDER.map(p =>
+    `<button class="pipe-tab${pipeActive[p] ? ' active' : ''}" onclick="togglePipeActive('${p}')">${PIPELINES[p].title}</button>`
+  ).join('');
 }
 
 function toggleTrackerSection() {
@@ -1672,42 +1755,58 @@ function toggleAcc(btn) {
   if (acc) acc.classList.toggle('open');
 }
 
-function trackerRow(id, it) {
-  let curIdx = TRACK_STAGES.findIndex(s => s.key === it.stage);
-  if (curIdx < 0) curIdx = 0;
-  const cur = TRACK_STAGES[curIdx];
-  const editing = trackerMemoEdit === id;
+function fieldSummary(it) {
+  const chips = [];
+  if (it.unitPrice)       chips.push(`<span class="trk-chip">단가 ${_trkEsc(it.unitPrice)}</span>`);
+  if (it.orderQty)        chips.push(`<span class="trk-chip">발주 ${_trkEsc(it.orderQty)}개</span>`);
+  if (it.initialPrice)    chips.push(`<span class="trk-chip">판매가 ${_trkWon(it.initialPrice)}</span>`);
+  if (it.expectedRevenue) chips.push(`<span class="trk-chip strong">기대매출 ${_trkWon(it.expectedRevenue)}</span>`);
+  const links = [];
+  if (it.link1688)   links.push(`<a class="trk-link" href="${_trkAttr(it.link1688)}" target="_blank" rel="noopener">🔗 1688</a>`);
+  if (it.coupangLink) links.push(`<a class="trk-link cp" href="${_trkAttr(it.coupangLink)}" target="_blank" rel="noopener">🛒 쿠팡</a>`);
+  if (it.memo) chips.push(`<span class="trk-chip memo">📝 ${_trkEsc(it.memo)}</span>`);
+  return (chips.length || links.length) ? `<div class="trk-summary">${links.join('')}${chips.join('')}</div>` : '';
+}
 
-  const stepper = TRACK_STAGES.map((s, i) => {
-    const done = i < curIdx;
-    const active = i === curIdx;
+function editForm(id, it) {
+  const fields = ITEM_FIELDS.map(f => {
+    const input = f.type === 'textarea'
+      ? `<textarea id="trk-f-${f.key}-${id}" rows="2" placeholder="${f.ph}">${_trkEsc(it[f.key])}</textarea>`
+      : `<input id="trk-f-${f.key}-${id}" type="${f.type === 'number' ? 'number' : 'text'}" value="${_trkAttr(it[f.key])}" placeholder="${f.ph}" />`;
+    return `<label class="trk-f${f.type === 'textarea' ? ' full' : ''}"><span>${f.label}</span>${input}</label>`;
+  }).join('');
+  return `<div class="trk-edit">
+    <div class="trk-edit-grid">${fields}</div>
+    <div class="trk-edit-btns">
+      <button class="trk-btn-save" onclick="saveTrackerItem('${id}')">저장</button>
+      <button class="trk-btn-cancel" onclick="cancelTrackerEdit()">취소</button>
+    </div>
+  </div>`;
+}
+
+function trackerRow(id, it) {
+  const stages = pipeStages(it.pipeline);
+  let curIdx = stages.findIndex(s => s.key === it.stage);
+  if (curIdx < 0) curIdx = 0;
+  const cur = stages[curIdx];
+  const editing = trackerEdit === id;
+
+  const stepper = stages.map((s, i) => {
+    const done = i < curIdx, active = i === curIdx;
     const dotStyle = active
       ? `background:${s.color};border-color:${s.color};color:#fff;box-shadow:0 0 0 4px ${s.color}40,0 4px 14px ${s.color}70`
-      : done
-        ? `background:${s.color}22;border-color:${s.color};color:${s.color}`
-        : 'background:#f3f4f6;border-color:#d1d5db;color:#9ca3af';
+      : done ? `background:${s.color}22;border-color:${s.color};color:${s.color}`
+             : 'background:#f3f4f6;border-color:#d1d5db;color:#9ca3af';
     const labelStyle = active ? `color:${s.color};font-weight:800` : done ? `color:${s.color}` : 'color:#9ca3af';
     const lineStyle = (done || active) ? `background:${s.color}` : 'background:#e5e7eb';
     const dot = done ? '✓' : s.emoji;
     return `
       <div class="trk-step-wrap">
-        <button class="trk-step-dot" style="${dotStyle}" onclick="setTrackerStage('${id}',${i})" title="${s.label} 단계로 이동">${dot}</button>
+        <button class="trk-step-dot" style="${dotStyle}" onclick="setTrackerStage('${id}',${i})" title="${s.label}">${dot}</button>
         <div class="trk-step-label" style="${labelStyle}">${s.label}</div>
       </div>
-      ${i < TRACK_STAGES.length - 1 ? `<div class="trk-step-line" style="${lineStyle}"></div>` : ''}`;
+      ${i < stages.length - 1 ? `<div class="trk-step-line" style="${lineStyle}"></div>` : ''}`;
   }).join('');
-
-  const memoBlock = editing
-    ? `<div class="trk-memo-edit">
-         <textarea id="trk-memo-ta-${id}" rows="2" placeholder="메모 (공급처 링크, 단가, 특이사항 등)...">${_trkEsc(it.memo)}</textarea>
-         <div class="trk-memo-btns">
-           <button class="trk-btn-save" onclick="saveTrackerMemo('${id}')">저장</button>
-           <button class="trk-btn-cancel" onclick="cancelTrackerMemo()">취소</button>
-         </div>
-       </div>`
-    : (it.memo
-        ? `<div class="trk-memo" onclick="editTrackerMemo('${id}')">📝 ${_trkEsc(it.memo)}</div>`
-        : '');
 
   return `
   <div class="trk-row">
@@ -1718,36 +1817,79 @@ function trackerRow(id, it) {
       </div>
       <div class="trk-row-actions">
         <button class="trk-arrow" onclick="moveTrackerStage('${id}',-1)" ${curIdx > 0 ? '' : 'disabled'}>←</button>
-        <button class="trk-arrow" onclick="moveTrackerStage('${id}',1)" ${curIdx < TRACK_STAGES.length - 1 ? '' : 'disabled'}>→</button>
-        <button class="trk-memo-btn" onclick="editTrackerMemo('${id}')">✏️ 메모</button>
+        <button class="trk-arrow" onclick="moveTrackerStage('${id}',1)" ${curIdx < stages.length - 1 ? '' : 'disabled'}>→</button>
+        <button class="trk-memo-btn" onclick="${editing ? 'cancelTrackerEdit()' : `editTrackerItem('${id}')`}">${editing ? '닫기' : '✏️ 입력'}</button>
         <button class="trk-del" onclick="deleteTrackerItem('${id}')" title="삭제">🗑</button>
       </div>
     </div>
     <div class="trk-stepper">${stepper}</div>
-    ${memoBlock}
+    ${fieldSummary(it)}
+    ${editing ? editForm(id, it) : ''}
   </div>`;
 }
 
-function renderTracker() {
-  const el = document.getElementById('tracker-list');
+function pipeItemsSorted(p) {
+  const s = pipeSort[p];
+  const q = (pipeSearch[p] || '').trim().toLowerCase();
+  let ids = Object.keys(trackerItems).filter(id => (trackerItems[id].pipeline || 'sourcing') === p);
+  if (q) ids = ids.filter(id => String(trackerItems[id].name || '').toLowerCase().includes(q));
+  ids.sort((a, b) => {
+    const A = trackerItems[a], B = trackerItems[b];
+    const r = s.key === 'name'
+      ? String(A.name || '').localeCompare(String(B.name || ''), 'ko')
+      : _trkNum(A[s.key]) - _trkNum(B[s.key]);
+    return s.asc ? r : -r;
+  });
+  return ids;
+}
+
+function renderPipeList(p) {
+  const el = document.getElementById(`pipe-list-${p}`);
   if (!el) return;
-  const ids = Object.keys(trackerItems).sort((a, b) => Number(a) - Number(b));
-  const sumEl = document.getElementById('tracker-summary');
-
-  if (sumEl) {
-    if (!ids.length) {
-      sumEl.textContent = '';
-    } else {
-      const selling = ids.filter(id => trackerItems[id].stage === 'selling').length;
-      sumEl.textContent = `총 ${ids.length}품목 · 판매중 ${selling}`;
-    }
-  }
-
+  const ids = pipeItemsSorted(p);
   if (!ids.length) {
-    el.innerHTML = '<div class="trk-empty">아직 추적 중인 품목이 없습니다.<br>우측 상단 <strong>+ 품목 추가</strong>를 눌러 시작하세요.</div>';
+    const q = (pipeSearch[p] || '').trim();
+    el.innerHTML = `<div class="trk-empty">${q ? '검색 결과가 없습니다.' : '아직 품목이 없습니다. <strong>+ 품목 추가</strong>로 시작하세요.'}</div>`;
     return;
   }
   el.innerHTML = ids.map(id => trackerRow(id, trackerItems[id])).join('');
+}
+
+function pipeHeader(p) {
+  const cfg = PIPELINES[p];
+  const s = pipeSort[p];
+  const total = Object.keys(trackerItems).filter(id => (trackerItems[id].pipeline || 'sourcing') === p).length;
+  const sortBtn = (key, label) =>
+    `<button class="trk-sort${s.key === key ? ' active' : ''}" onclick="sortPipe('${p}','${key}')">${label}${s.key === key ? (s.asc ? ' ▲' : ' ▼') : ''}</button>`;
+  return `
+    <div class="pipe-head">
+      <div>
+        <div class="pipe-title">${cfg.title} <span class="pipe-count">${total}</span></div>
+        <div class="pipe-sub">${cfg.sub}</div>
+      </div>
+      <button class="tracker-add-btn" onclick="addTrackerItem('${p}')">+ 품목 추가</button>
+    </div>
+    <div class="pipe-controls">
+      <span class="pipe-ctrl-label">정렬</span>
+      ${sortBtn('name', '상품명')}
+      ${sortBtn('initialPrice', '판매가')}
+      ${sortBtn('expectedRevenue', '기대매출')}
+      <input class="pipe-search" type="search" placeholder="🔍 상품명 검색" value="${_trkAttr(pipeSearch[p])}" oninput="onPipeSearch('${p}', this.value)" />
+    </div>
+    <div class="pipe-list" id="pipe-list-${p}"></div>`;
+}
+
+function renderTracker() {
+  renderPipeToggles();
+  const el = document.getElementById('tracker-list');
+  if (!el) return;
+  const active = PIPELINE_ORDER.filter(p => pipeActive[p]);
+  if (!active.length) {
+    el.innerHTML = '<div class="trk-empty">표시할 파이프라인을 선택하세요. (위 토글에서 활성화)</div>';
+    return;
+  }
+  el.innerHTML = active.map(p => `<div class="pipe-block" id="pipe-block-${p}">${pipeHeader(p)}</div>`).join('');
+  active.forEach(renderPipeList);
 }
 
 // 초기 로드 — 메인 진입 시 '쿠팡 품목 진행상황'을 기본 페이지로 (app.js는 body 끝 로드라 DOM 준비됨)

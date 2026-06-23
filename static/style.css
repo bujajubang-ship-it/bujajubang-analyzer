@@ -1517,3 +1517,51 @@ body { font-family: -apple-system, 'Noto Sans KR', sans-serif; background: var(-
 .calc-legend { margin-top: 14px; background: #faf9ff; border: 1px solid #ede9fe; border-radius: 10px; padding: 12px 14px; }
 .calc-legend-row { font-size: 12.5px; color: #4b5563; margin: 3px 0; }
 .calc-note { margin-top: 9px; padding-top: 9px; border-top: 1px dashed #ddd6fe; font-size: 11.5px; color: #9ca3af; line-height: 1.55; }
+
+/* ── 파이프라인 (소싱 / 로켓) ── */
+.pipe-block { margin-bottom: 20px; }
+.pipe-block:last-child { margin-bottom: 0; }
+.pipe-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.pipe-title { font-size: 15px; font-weight: 800; color: #111827; }
+.pipe-count { display: inline-block; min-width: 20px; text-align: center; background: #ede9fe; color: #6d28d9; font-size: 12px; font-weight: 800; border-radius: 10px; padding: 1px 7px; margin-left: 4px; }
+.pipe-sub { font-size: 12px; color: #9ca3af; margin-top: 2px; }
+.pipe-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.pipe-ctrl-label { font-size: 12px; font-weight: 700; color: #9ca3af; margin-right: 2px; }
+.trk-sort { padding: 5px 11px; border: 1.5px solid #e5e7eb; background: #fff; color: #6b7280; border-radius: 14px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.trk-sort:hover { background: #f3f4f6; }
+.trk-sort.active { background: #6d28d9; color: #fff; border-color: #6d28d9; }
+.pipe-search { flex: 1; min-width: 130px; border: 1.5px solid #e5e7eb; border-radius: 14px; padding: 6px 12px; font-size: 13px; font-family: inherit; }
+.pipe-search:focus { outline: none; border-color: #8b5cf6; }
+.pipe-list { display: flex; flex-direction: column; gap: 10px; }
+
+/* 품목 요약 칩 / 링크 */
+.trk-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
+.trk-chip { font-size: 12px; color: #4b5563; background: #f3f4f6; border-radius: 8px; padding: 3px 9px; }
+.trk-chip.strong { background: #ede9fe; color: #6d28d9; font-weight: 700; }
+.trk-chip.memo { background: #fffbeb; color: #92400e; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trk-link { font-size: 12px; font-weight: 700; text-decoration: none; padding: 3px 9px; border-radius: 8px; background: #eef2ff; color: #4338ca; }
+.trk-link.cp { background: #fff1f0; color: #cf1322; }
+.trk-link:hover { opacity: .85; }
+
+/* 품목 편집 폼 (8필드) */
+.trk-edit { margin-top: 12px; border-top: 1px dashed #e5e7eb; padding-top: 12px; }
+.trk-edit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+@media (max-width: 640px) { .trk-edit-grid { grid-template-columns: 1fr; } }
+.trk-f { display: flex; flex-direction: column; gap: 3px; }
+.trk-f.full { grid-column: 1 / -1; }
+.trk-f span { font-size: 11.5px; font-weight: 700; color: #6b7280; }
+.trk-f input, .trk-f textarea { border: 1.5px solid #e5e7eb; border-radius: 7px; padding: 6px 9px; font-size: 13px; font-family: inherit; }
+.trk-f input:focus, .trk-f textarea:focus { outline: none; border-color: #8b5cf6; }
+.trk-edit-btns { display: flex; gap: 6px; margin-top: 10px; }
+
+/* ── 파이프라인 활성/비활성 토글 (제목 옆) ── */
+.tracker-head-left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.pipe-toggles { display: flex; gap: 6px; flex-wrap: wrap; }
+.pipe-tab {
+  padding: 5px 13px; border: 1.5px solid #ddd6fe; background: #fff; color: #7c3aed;
+  border-radius: 16px; font-size: 12.5px; font-weight: 700; cursor: pointer; white-space: nowrap;
+  transition: all .15s;
+}
+.pipe-tab:hover { background: #f3f0ff; }
+.pipe-tab.active { background: #6d28d9; color: #fff; border-color: #6d28d9; }
+.pipe-tab:not(.active) { opacity: .65; }
