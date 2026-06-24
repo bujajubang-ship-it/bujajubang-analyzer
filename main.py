@@ -744,7 +744,7 @@ async def pm_ai_stream(request: Request):
 # ===== 이카운트 자금일보 대시보드 =====
 JAGEUM_FILE = Path("jageum_data.json")
 JAGEUM_USER = os.getenv("JAGEUM_USER", "buja")
-JAGEUM_PASS = os.getenv("JAGEUM_PASS", "Buja-jageum-2026")
+JAGEUM_PASS = os.getenv("JAGEUM_PASS", "1234")
 JAGEUM_INGEST_SECRET = os.getenv("JAGEUM_INGEST_SECRET", "bj-ecount-2026-ingest")
 
 def _jageum_auth(request: Request) -> bool:
