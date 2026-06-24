@@ -13,7 +13,8 @@ from urllib.parse import quote as urlquote
 from pathlib import Path
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse, Response
+import base64
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -738,6 +739,48 @@ async def pm_ai_stream(request: Request):
 
     return StreamingResponse(generate(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ===== 이카운트 자금일보 대시보드 =====
+JAGEUM_FILE = Path("jageum_data.json")
+JAGEUM_USER = os.getenv("JAGEUM_USER", "buja")
+JAGEUM_PASS = os.getenv("JAGEUM_PASS", "Buja-jageum-2026")
+JAGEUM_INGEST_SECRET = os.getenv("JAGEUM_INGEST_SECRET", "bj-ecount-2026-ingest")
+
+def _jageum_auth(request: Request) -> bool:
+    h = request.headers.get("authorization", "")
+    if h.startswith("Basic "):
+        try:
+            u, p = base64.b64decode(h[6:]).decode().split(":", 1)
+            return u == JAGEUM_USER and p == JAGEUM_PASS
+        except Exception:
+            return False
+    return False
+
+_AUTH401 = Response("로그인이 필요합니다", status_code=401,
+                    headers={"WWW-Authenticate": 'Basic realm="jageum"'})
+
+@app.get("/jageum")
+def jageum_page(request: Request):
+    if not _jageum_auth(request):
+        return _AUTH401
+    return FileResponse("static/jageum.html", headers={"Cache-Control": "no-store"})
+
+@app.get("/jageum/api/data")
+def jageum_data(request: Request):
+    if not _jageum_auth(request):
+        return _AUTH401
+    if JAGEUM_FILE.exists():
+        return JSONResponse(json.loads(JAGEUM_FILE.read_text(encoding="utf-8")))
+    return JSONResponse({"period": "", "자금현황": [], "자금의증가": [], "자금의감소": []})
+
+@app.post("/jageum/api/ingest")
+async def jageum_ingest(request: Request):
+    if request.headers.get("x-ingest-secret", "") != JAGEUM_INGEST_SECRET:
+        return JSONResponse({"ok": False, "error": "forbidden"}, status_code=403)
+    body = await request.body()
+    JAGEUM_FILE.write_text(body.decode("utf-8"), encoding="utf-8")
+    return JSONResponse({"ok": True})
 
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
