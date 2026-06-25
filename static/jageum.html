@@ -103,7 +103,7 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
 
  <div class="card" id="settle_card" style="border-top:3px solid #059669">
    <h2>📅 월말 결산 — 팀별 매출·비용·순익</h2>
-   <div class="note">매월 쇼핑몰팀·영업팀(담당자별) 현금흐름 결산 · 태양광은 영업외수익 별도</div>
+   <div class="note">매월 팀별 현금흐름 결산 · 담당자=본인매출−직접비용(기여이익) · 매입·본사운영비·인건비는 본사·공통 · 태양광은 영업외</div>
    <div class="tabs" id="closedim"><button class="on" data-cd="순익">순익 보기</button><button data-cd="매출">매출 보기</button><button data-cd="비용">비용 보기</button></div>
    <div class="scroll" style="overflow-x:auto"><table id="t_close"></table></div>
  </div>
@@ -197,7 +197,7 @@ function dept(r){
  if(pj.includes('성기민')) return '영업·성기민';
  if(pj.includes('김성주')) return '영업·김성주';
  if(pj.includes('대표')) return '영업·대표';
- return '영업·기타';
+ return '본사·공통';
 }
 function deptKey(r){ return deptDim==='부서' ? dept(r) : ((r.프로젝트명||'').trim()||'(미지정)'); }
 function isGovSupport(r){ return /정부지원/.test(r.적요||''); }  // 정부지원 자부담(선금성 자산)
@@ -327,8 +327,8 @@ function render(){
 let closeDim='순익';
 function renderClose(){
  const ml=D.months_list||[]; if(!ml.length||!D.months) return;
- const teams=['쇼핑몰','영업·성기민','영업·김성주','영업·대표','영업·기타'];
- const tlabel={'쇼핑몰':'🛒 쇼핑몰','영업·성기민':'🧑‍💼 성기민','영업·김성주':'🧑‍💼 김성주','영업·대표':'👑 대표','영업·기타':'💼 기타'};
+ const teams=['쇼핑몰','영업·성기민','영업·김성주','영업·대표','본사·공통'];
+ const tlabel={'쇼핑몰':'🛒 쇼핑몰','영업·성기민':'🧑‍💼 성기민','영업·김성주':'🧑‍💼 김성주','영업·대표':'👑 대표','본사·공통':'🏢 본사·공통'};
  // [team][month] = {매출,비용}
  const data={}; teams.forEach(t=>data[t]={});
  ml.forEach(k=>{
@@ -378,10 +378,10 @@ function renderDept(){
  dept_period.textContent = P ? '· '+P.label : '';
  const g={}; const add=(r,w)=>{const k=deptKey(r);(g[k]=g[k]||{매출:0,비용:0})[w]+=r.금액;};
  inc.forEach(r=>add(r,'매출')); dec.forEach(r=>add(r,'비용'));
- let names = deptDim==='부서' ? ['쇼핑몰','영업·성기민','영업·김성주','영업·대표','영업·기타','태양광'].filter(n=>g[n]) : Object.keys(g).sort((a,b)=>((g[b].매출+g[b].비용)-(g[a].매출+g[a].비용)));
+ let names = deptDim==='부서' ? ['쇼핑몰','영업·성기민','영업·김성주','영업·대표','본사·공통','태양광'].filter(n=>g[n]) : Object.keys(g).sort((a,b)=>((g[b].매출+g[b].비용)-(g[a].매출+g[a].비용)));
  if(!names.length) names=['(없음)'];
  if(!deptSel||!names.includes(deptSel)) deptSel=names[0];
- const ic={'쇼핑몰':'🛒','영업·성기민':'🧑‍💼','영업·김성주':'🧑‍💼','영업·대표':'👑','영업·기타':'💼','태양광':'☀️'};
+ const ic={'쇼핑몰':'🛒','영업·성기민':'🧑‍💼','영업·김성주':'🧑‍💼','영업·대표':'👑','본사·공통':'🏢','태양광':'☀️'};
  document.getElementById('depttabs').innerHTML=names.map(n=>`<button class="${n===deptSel?'on':''}" data-g="${n}">${ic[n]||'📁'} ${n}</button>`).join('');
  document.querySelectorAll('#depttabs button').forEach(b=>b.onclick=()=>{deptSel=b.dataset.g;renderDept();});
  const cur=g[deptSel]||{매출:0,비용:0}; const net=cur.매출-cur.비용;
