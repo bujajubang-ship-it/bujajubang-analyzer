@@ -50,6 +50,19 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    <select id="month_sel"></select>
    <span id="period_label" class="muted"></span>
  </div></div>
+ <div id="edit_modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;align-items:flex-start;justify-content:center;overflow:auto;padding:30px 10px">
+   <div style="background:#fff;border-radius:14px;max-width:760px;width:100%;padding:20px">
+     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h2 id="em_title" style="margin:0;font-size:17px">편집</h2><button onclick="closeEdit()" style="border:none;background:#f3f4f6;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:15px">✕</button></div>
+     <div id="em_note" class="note" style="margin-bottom:10px"></div>
+     <div class="scroll" style="max-height:50vh"><table id="em_table"></table></div>
+     <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+       <button onclick="emAddRow()" style="border:1px dashed #5b21b6;background:#faf5ff;color:#5b21b6;border-radius:8px;padding:8px 14px;cursor:pointer">＋ 행 추가</button>
+       <div style="flex:1"></div>
+       <button onclick="closeEdit()" style="border:1px solid #d1d5db;background:#fff;border-radius:8px;padding:8px 16px;cursor:pointer">취소</button>
+       <button onclick="emSave()" style="border:none;background:#5b21b6;color:#fff;border-radius:8px;padding:8px 20px;cursor:pointer;font-weight:600">💾 저장</button>
+     </div>
+   </div>
+ </div>
  <div class="card" id="asset_panel">
    <div class="muted" style="font-size:13px">💎 실질 총자산 <span style="font-size:11px">(오늘 기준 · 통장+곧 들어올 돈+받을 돈+선급+투자)</span></div>
    <div id="asset_total" style="font-size:34px;font-weight:800;color:#5b21b6;line-height:1.2">-</div>
@@ -136,16 +149,23 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
 </div>
 <script>
 // ===== 선금 거래처 (수동관리) =====
-const SEONYZ=[
+// ===== 수동입력 기본값(서버에 저장된 게 없을 때 1회 시드) =====
+const SEONYZ_SEED=[
  {거래처:"주식회사 대림주방",잔액:36266500,비고:"선금 3/17 4,000만 입금 · 45% 할인",일자:"2026-05-29"},
  {거래처:"대경종합스텐",잔액:21610950,비고:"선금 2,000만 입금 · 15% 할인",일자:"2026-05-29"},
  {거래처:"주식회사 조이주방(억조)",잔액:20233472,비고:"선금 1,000만원 지급 (공급가액)",일자:"2026-05-31"},
  {거래처:"뉴세재코리아",잔액:21450000,비고:"식세기 재고: 빛달3·세신6·뉴세제17대 (825,000/대 부가세포함)",일자:"2026-06-19"},
- {거래처:"주식회사 오토기어드",잔액:2640000,비고:"화구형통돌이 중형6·본체2·대형솥1 (중형8.8만/팟99만/대형13.2만)",일자:"2026-06-19"},
+ {거래처:"주식회사 오토기어드",잔액:2640000,비고:"화구형통돌이 중형6·본체2·대형솥1",일자:"2026-06-19"},
  {거래처:"꼬챙이닷컴",잔액:11000000,비고:"",일자:"2026-04-30"},
  {거래처:"세스티에스",잔액:1000000,비고:"1800 토핑냉장고 보관(은영)",일자:"2026-03-05"},
  {거래처:"새날인터내셔널",잔액:13912800,비고:"식깡 332개",일자:"2026-06-02"},
 ];
+const LOAN_SEED=[{거래처:"중소기업진흥공단 대출",잔액:250000000,비고:"",일자:""},{거래처:"신용보증기금(하나은행) 대출",잔액:200000000,비고:"",일자:""}];
+// 수동입력 저장소(서버). M.선급금 / M.미수금수동 / M.카페24 / M.대출
+let M={};
+function manualGet(key,seed){ if(M[key]===undefined) return seed; return M[key]; }
+function saveManual(){ fetch('/jageum/api/manual',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(M)}).then(()=>{}); }
+const SEONYZ=()=>manualGet('선급금',SEONYZ_SEED);
 // ===== 계정과목 분류표 [대분류, 고정/변동] =====
 const CAT={
  '외상매입금':['매입','변동'],'상품':['매입','변동'],'가구매':['매입','변동'],'상품매입':['매입','변동'],
@@ -178,7 +198,49 @@ function isInvest(r){ const cust=(r.거래처명||''),memo=(r.적요||'');
  if(/대한무역|진흥공사|시청|세무서|구청|공단|국세/.test(cust)) return false;  // 관공서·지원기관 제외
  return /종보전기|한국전력|태양광|태양열/.test(cust+memo) || /투자/.test(memo); }  // 설비투자(자산) — 비용 아님
 const isOpex=r=>real(r)&&cat(r.상대계정명)[1]!=='영업외'&&!isInvest(r);  // 영업지출(대표/개인·투자·내부이체 제외)
-function load(){fetch('/jageum/api/data').then(r=>r.json()).then(d=>{D=d;initPeriod()}).catch(()=>{period.textContent='데이터 없음'})}
+function load(){fetch('/jageum/api/data').then(r=>r.json()).then(d=>{D=d;M=d.수동입력||{};initPeriod()}).catch(()=>{period.textContent='데이터 없음'})}
+// ===== 편집 모달 =====
+const EM_CFG={
+ '미수금':{title:'🧾 미수금 편집 (B2B 받을 돈)',note:'거래처·금액·받을예정일. 저장하면 이카운트 자동값 대신 이 목록을 씁니다. 전부 비우고 저장하면 다시 자동값으로 돌아갑니다.',cols:['거래처','잔액','일자','비고'],seedFn:()=>misuList()},
+ '선급금':{title:'🤝 선급금 편집 (거래처 선지급)',note:'거래처·남은금액·지급일·비고(언제 나갔는지/내용).',cols:['거래처','잔액','일자','비고'],seedFn:()=>SEONYZ()},
+ '대출':{title:'💳 대출(부채) 편집',note:'기관명·잔액. 갚으면 잔액 줄이세요.',cols:['거래처','잔액','일자','비고'],seedFn:()=>loanList()},
+ '카페24':{title:'🛍️ 카페24 묶인돈 편집',note:'cafe24payments 정산예정금액. API 구매확정전 추정(참고): '+(()=>cafe24Auto().toLocaleString())()+'원',cols:['금액'],single:true,seedFn:()=>cafe24Amt()},
+};
+let emKey=null, emRows=[];
+function openEdit(key){ emKey=key; const cfg=EM_CFG[key];
+ document.getElementById('em_title').textContent=cfg.title;
+ document.getElementById('em_note').textContent=cfg.note;
+ if(cfg.single){ emRows=[{잔액:cfg.seedFn()}]; }
+ else { emRows=JSON.parse(JSON.stringify(cfg.seedFn()||[])).map(x=>({거래처:x.거래처||x.거래처명||'',잔액:x.잔액||0,일자:x.일자||'',비고:x.비고||''})); }
+ emRender();
+ document.getElementById('edit_modal').style.display='flex';
+}
+function closeEdit(){document.getElementById('edit_modal').style.display='none';}
+function emRender(){ const cfg=EM_CFG[emKey];
+ if(cfg.single){ document.getElementById('em_table').innerHTML='<tr><td>금액 (원)</td><td><input type="text" value="'+(emRows[0].잔액||0).toLocaleString()+'" oninput="emRows[0].잔액=(+this.value.replace(/[^0-9-]/g,\'\')||0);this.value=emRows[0].잔액.toLocaleString()" style="width:180px;padding:6px;border:1px solid #d1d5db;border-radius:6px;text-align:right"></td></tr>';
+   document.querySelector('#edit_modal button[onclick="emAddRow()"]').style.display='none'; return; }
+ document.querySelector('#edit_modal button[onclick="emAddRow()"]').style.display='';
+ let h='<thead><tr><th>거래처/기관</th><th class="num">금액</th><th>'+(emKey==='선급금'?'지급일':'받을예정일')+'</th><th>비고</th><th></th></tr></thead><tbody>';
+ h+=emRows.map((r,i)=>`<tr>
+   <td><input value="${(r.거래처||'').replace(/"/g,'&quot;')}" oninput="emRows[${i}].거래처=this.value" style="width:150px;padding:5px;border:1px solid #d1d5db;border-radius:6px"></td>
+   <td><input value="${(r.잔액||0).toLocaleString()}" oninput="emRows[${i}].잔액=(+this.value.replace(/[^0-9-]/g,'')||0);this.value=emRows[${i}].잔액.toLocaleString()" style="width:110px;padding:5px;border:1px solid #d1d5db;border-radius:6px;text-align:right"></td>
+   <td><input type="date" value="${r.일자||''}" oninput="emRows[${i}].일자=this.value" style="padding:5px;border:1px solid #d1d5db;border-radius:6px"></td>
+   <td><input value="${(r.비고||'').replace(/"/g,'&quot;')}" oninput="emRows[${i}].비고=this.value" style="width:160px;padding:5px;border:1px solid #d1d5db;border-radius:6px"></td>
+   <td><button onclick="emRows.splice(${i},1);emRender()" style="border:none;background:#fee2e2;color:#b91c1c;border-radius:6px;padding:4px 9px;cursor:pointer">삭제</button></td></tr>`).join('');
+ const tot=emRows.reduce((s,r)=>s+(r.잔액||0),0);
+ h+='</tbody><tfoot><tr style="font-weight:700;background:#faf5ff"><td>합계</td><td class="num">'+tot.toLocaleString()+'</td><td colspan=3></td></tr></tfoot>';
+ document.getElementById('em_table').innerHTML=h;
+}
+function emAddRow(){emRows.push({거래처:'',잔액:0,일자:'',비고:''});emRender();}
+function emSave(){ const cfg=EM_CFG[emKey];
+ if(cfg.single){ M[emKey]=emRows[0].잔액||0; }
+ else {
+   const clean=emRows.filter(r=>(r.거래처||'').trim()||r.잔액);
+   if(emKey==='미수금' && clean.length===0){ delete M['미수금']; }  // 비우면 자동값 복귀
+   else M[emKey]=clean;
+ }
+ saveManual(); closeEdit(); render();
+}
 function ym2label(k){const a=k.split("-");return a[0]+"년 "+(+a[1])+"월";}
 function buildP(keys,label){
   const inc=[],dec=[];
@@ -220,7 +282,7 @@ function render(){
  const inv=decReal.filter(isInvest);   // 투자(자산)
  document.getElementById('period').textContent='기간: '+(D.period||'-');
  const tin=sum(inc,x=>x.금액), tout=sum(opex,x=>x.금액), townv=sum(own,x=>x.금액), tinv=sum(inv,x=>x.금액);
- const lock=sum(SEONYZ,x=>x.잔액);
+ const lock=sum(SEONYZ(),x=>x.잔액);
  k_in.textContent=won(tin); k_out.textContent=won(tout); k_net.textContent=won(tin-tout); k_lock.textContent=won(lock); k_own.textContent=won(townv);
  // 지출구조 (영업)
  const grp={}; opex.forEach(r=>{const[g,fv]=cat(r.상대계정명);(grp[g]=grp[g]||{v:0,fv})['v']+=r.금액});
@@ -241,7 +303,7 @@ function render(){
  document.querySelector('#t_chan tbody').innerHTML=cha.map(([k,v])=>`<tr><td>${k}</td><td class="num">${v.toLocaleString()}</td><td style="width:80px"><div class="bar"><span style="width:${Math.round(v/tin*100)}%;background:#10b981"></span></div></td></tr>`).join('');
  // 선금
  seonyz_sum.textContent='· 합계 '+won(lock);
- document.querySelector('#t_seonyz tbody').innerHTML=SEONYZ.slice().sort((a,b)=>b.잔액-a.잔액).map(s=>`<tr><td>${s.거래처}</td><td class="num" style="color:#d97706;font-weight:600">${s.잔액.toLocaleString()}</td><td class="muted" style="white-space:normal">${s.비고||''}</td><td>${s.일자||''}</td></tr>`).join('');
+ document.querySelector('#t_seonyz tbody').innerHTML=SEONYZ().slice().sort((a,b)=>b.잔액-a.잔액).map(s=>`<tr><td>${s.거래처}</td><td class="num" style="color:#d97706;font-weight:600">${s.잔액.toLocaleString()}</td><td class="muted" style="white-space:normal">${s.비고||''}</td><td>${s.일자||''}</td></tr>`).join('');
  // 일자별
  const days={}; inc.forEach(r=>{(days[r.일자]=days[r.일자]||[0,0])[0]+=r.금액}); opex.forEach(r=>{(days[r.일자]=days[r.일자]||[0,0])[1]+=r.금액});
  const labels=Object.keys(days).sort();
@@ -313,39 +375,41 @@ function renderDept(){
  if(ch3)ch3.destroy();
  ch3=new Chart(deptTrend,{type:'bar',data:{labels:ml.map(k=>k.slice(2)),datasets:[{label:'순익',data:trend,backgroundColor:trend.map(v=>v<0?'#ef4444':'#5b21b6')}]},options:{plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>(v/1e6)+'백만'}}}}});
 }
+// ── 미수금: 이카운트 자동(기본) + 수동 덮어쓰기 ──
+function misuList(){ const m=manualGet('미수금', null); if(m!==null) return m; // 수동 있으면 그것
+  return ((D.미수금&&D.미수금.items)||[]).map(x=>({거래처:x.거래처명,잔액:x.잔액,일자:'',비고:''})); }
+function misuIsManual(){ return manualGet('미수금',null)!==null; }
+function loanList(){ return manualGet('대출',LOAN_SEED); }
+function cafe24Amt(){ return manualGet('카페24', 70000000); }
+function cafe24Auto(){return (D.정산예정&&D.정산예정.카페24&&D.정산예정.카페24.구매확정전)||0;}
+function naverAmt(){return (D.정산예정&&D.정산예정.네이버&&D.정산예정.네이버.지급예정)||0;}
 function renderAssets(){
  const bal=(D.자금현황||[]).filter(b=>(b.계정명||'').includes('보통예금'));
  const cash=sum(bal,x=>x.금일잔액||0);
  const c=(D.정산예정&&D.정산예정.쿠팡)||{};
  const settle=(c.정산예정||0)+(c.미구매확정||0)+naverAmt()+cafe24Amt();
- const misu=(D.미수금&&D.미수금.total)||0, misuItems=(D.미수금&&D.미수금.items)||[];
- const seonyz=sum(SEONYZ,x=>x.잔액);
+ const misuArr=misuList(), misu=sum(misuArr,x=>x.잔액||0);
+ const seonyzArr=SEONYZ(), seonyz=sum(seonyzArr,x=>x.잔액||0);
  let invest=0; const investBy={};
  Object.values(D.months||{}).forEach(m=>{(m.자금의감소||[]).filter(real).filter(isInvest).forEach(r=>{invest+=r.금액; const k=r.거래처명||r.적요||'기타'; investBy[k]=(investBy[k]||0)+r.금액;});});
+ const loans=loanList(), loan=sum(loans,x=>x.잔액||0);
  const total=cash+settle+misu+seonyz+invest;
- const loan=loanTotal(), net=total-loan;
+ const net=total-loan;
  asset_total.textContent=won(total);
  document.getElementById('asset_net').innerHTML='− 대출(부채) '+won(loan)+'  =  <b style="color:#059669;font-size:17px">순자산 '+won(net)+'</b>';
  const D2=(arr)=>arr.map(([k,v])=>`<div><span>${k}</span><b style="color:#1f2937">${(v||0).toLocaleString()}</b></div>`).join('')||'<div>-</div>';
+ const D3=(arr)=>arr.map(x=>`<div><span>${x.거래처}${x.일자?' <span class=muted>('+x.일자+')</span>':''}</span><b style="color:#1f2937">${(x.잔액||0).toLocaleString()}</b></div>`).join('')||'<div>-</div>';
+ const editLink=(fn,t)=>`<div style="border-bottom:none"><a href="javascript:;" onclick="${fn}" style="color:#2563eb">✏️ ${t||'수정'}</a></div>`;
  const items=[
   ['🏦 현금 잔액 (통장)',cash, D2(bal.map(b=>[b.거래처명||b.계정명, b.금일잔액]))],
-  ['📦 정산예정 (결제됨·미입금)',settle, D2([['쿠팡 정산예정',c.정산예정||0],['쿠팡 미구매확정',c.미구매확정||0],['네이버',naverAmt()],['카페24',cafe24Amt()]])],
-  ['🧾 미수금 (B2B 받을 돈)',misu, D2(misuItems.map(x=>[x.거래처명,x.잔액]))],
-  ['🤝 선급금 (거래처 선지급)',seonyz, D2(SEONYZ.map(s=>[s.거래처,s.잔액]))],
+  ['📦 정산예정 (결제됨·미입금)',settle, editLink("openEdit('카페24')",'카페24 수정')+D2([['쿠팡 정산예정',c.정산예정||0],['쿠팡 미구매확정',c.미구매확정||0],['네이버(실시간)',naverAmt()],['카페24(수동)',cafe24Amt()]])],
+  ['🧾 미수금 (B2B 받을 돈)'+(misuIsManual()?' ✋':''),misu, editLink("openEdit('미수금')",'미수금 수정')+D3(misuArr)],
+  ['🤝 선급금 (거래처 선지급)',seonyz, editLink("openEdit('선급금')",'선급금 수정')+D3(seonyzArr)],
   ['☀️ 투자자산 (태양광·한전 설비)',invest, D2(Object.entries(investBy).sort((a,b)=>b[1]-a[1]))],
-  ['💳 대출 (부채)',-loan, '<div><a href="javascript:;" onclick="editLoan()" style="color:#2563eb">✏️ 대출액 수정</a></div>'+D2(DEFAULT_LOANS)],
+  ['💳 대출 (부채)',-loan, editLink("openEdit('대출')",'대출 수정')+D3(loans)],
  ];
  asset_items.innerHTML=items.map(([nm,val,det])=>`<details class="asset-item"><summary><span>${nm}</span><b style="color:${val<0?'#dc2626':'#5b21b6'}">${won(val)}</b></summary><div class="asset-detail">${det}</div></details>`).join('');
 }
-const SOLAR_INVEST=0; // 태양광 투자자산 (과거 백필 후 자동연결, 임시 0)
-function naverAmt(){return (D.정산예정&&D.정산예정.네이버&&D.정산예정.네이버.지급예정)||0;} // 네이버 실시간 정산미확정
-const CF24_DEFAULT=70000000; // 카페24 묶인돈 기본값(현재 실제값, 수정가능)
-function cafe24Auto(){return (D.정산예정&&D.정산예정.카페24&&D.정산예정.카페24.구매확정전)||0;} // API 구매확정전 추정(참고용)
-function cafe24Amt(){const ov=localStorage.getItem('cf24_override');return (ov!==null&&ov!=='')?(+ov||0):CF24_DEFAULT;}
-function editCafe24(){const v=prompt('카페24 묶인 돈 직접 입력 (현재값: '+cafe24Amt().toLocaleString()+'원).\nAPI 구매확정전 추정: '+cafe24Auto().toLocaleString()+'원 (참고).\n비우면 기본값('+CF24_DEFAULT.toLocaleString()+') 사용:', localStorage.getItem('cf24_override')||'');if(v===null)return;const c=v.replace(/[^0-9]/g,'');if(c==='')localStorage.removeItem('cf24_override');else localStorage.setItem('cf24_override',c);render();}
-const DEFAULT_LOANS=[['중소기업진흥공단 대출',250000000],['신용보증기금(하나은행) 대출',200000000]];
-function loanTotal(){const ov=localStorage.getItem('loan_override');return (ov!==null&&ov!=='')?(+ov||0):DEFAULT_LOANS.reduce((s,x)=>s+x[1],0);}
-function editLoan(){const v=prompt('대출(부채) 총액 직접 입력 (현재: '+loanTotal().toLocaleString()+'원).\n기본: 중진공 2.5억 + 신보 2억 = 4.5억. 비우면 기본값:', localStorage.getItem('loan_override')||'');if(v===null)return;const c=v.replace(/[^0-9]/g,'');if(c==='')localStorage.removeItem('loan_override');else localStorage.setItem('loan_override',c);render();}
 function renderSettle(){
  const c=(D.정산예정&&D.정산예정.쿠팡)||{};
  const cSettle=c.정산예정||0, cUncfm=c.미구매확정||0, items=c.items||[];

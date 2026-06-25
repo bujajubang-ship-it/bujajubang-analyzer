@@ -766,13 +766,19 @@ def jageum_page(request: Request):
         return _AUTH401
     return FileResponse("static/jageum.html", headers={"Cache-Control": "no-store"})
 
+JAGEUM_MANUAL_FILE = Path("jageum_manual.json")
+
 @app.get("/jageum/api/data")
 def jageum_data(request: Request):
     if not _jageum_auth(request):
         return _AUTH401
-    if JAGEUM_FILE.exists():
-        return JSONResponse(json.loads(JAGEUM_FILE.read_text(encoding="utf-8")))
-    return JSONResponse({"period": "", "자금현황": [], "자금의증가": [], "자금의감소": []})
+    d = json.loads(JAGEUM_FILE.read_text(encoding="utf-8")) if JAGEUM_FILE.exists() else {"period": "", "자금현황": [], "자금의증가": [], "자금의감소": []}
+    if JAGEUM_MANUAL_FILE.exists():
+        try:
+            d["수동입력"] = json.loads(JAGEUM_MANUAL_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            d["수동입력"] = {}
+    return JSONResponse(d)
 
 @app.post("/jageum/api/ingest")
 async def jageum_ingest(request: Request):
@@ -780,6 +786,14 @@ async def jageum_ingest(request: Request):
         return JSONResponse({"ok": False, "error": "forbidden"}, status_code=403)
     body = await request.body()
     JAGEUM_FILE.write_text(body.decode("utf-8"), encoding="utf-8")
+    return JSONResponse({"ok": True})
+
+@app.post("/jageum/api/manual")
+async def jageum_manual(request: Request):
+    if not _jageum_auth(request):
+        return _AUTH401
+    body = await request.body()
+    JAGEUM_MANUAL_FILE.write_text(body.decode("utf-8"), encoding="utf-8")
     return JSONResponse({"ok": True})
 
 
