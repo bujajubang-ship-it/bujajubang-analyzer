@@ -48,6 +48,9 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
      <div class="kpi"><div class="l">당기순이익</div><div class="v" id="pl_net">-</div><div class="s" id="pl_net_d"></div></div>
    </div>
    <div class="scroll"><table id="t_pl"><thead><tr><th>과목</th><th class="num" id="pl_cn">올해</th><th class="num" id="pl_pn">작년</th><th class="num">증감</th></tr></thead><tbody></tbody></table></div>
+   <details style="margin-top:12px"><summary style="cursor:pointer;color:#5b21b6;font-size:13px;user-select:none">📐 같은 기간으로 비교해보기 (올해는 반년치라 단순비교 주의) — 펼치기</summary>
+     <div id="pl_fair" style="font-size:13px;padding:10px 2px"></div>
+   </details>
  </div>
 
  <div class="grid2">
@@ -161,12 +164,15 @@ function render(){
 }
 const NAVER_SETTLE=650108; // 네이버 정산예정(수동) — 스토어 메인 정산예정금액
 function renderSettle(){
- const s=D.정산예정||{}; const cou=(s.쿠팡&&s.쿠팡.total)||0; const items=(s.쿠팡&&s.쿠팡.items)||[];
- const total=cou+NAVER_SETTLE;
- k_settle.textContent=won(total); settle_sum.textContent='· 합계 '+won(total)+' (쿠팡 '+won(cou)+' + 네이버 '+won(NAVER_SETTLE)+')';
- let html='';
- items.forEach(it=>{html+=`<tr><td>🔵 쿠팡 · ${it.date||''}</td><td class="muted">${it.type==='RESERVE'?'리저브':'주간정산'}</td><td class="num">${(it.amount||0).toLocaleString()}</td></tr>`;});
- html+=`<tr><td>🟢 네이버 · 정산예정</td><td class="muted">수동</td><td class="num">${NAVER_SETTLE.toLocaleString()}</td></tr>`;
+ const c=(D.정산예정&&D.정산예정.쿠팡)||{};
+ const cSettle=c.정산예정||0, cUncfm=c.미구매확정||0, items=c.items||[];
+ const couTotal=cSettle+cUncfm, total=couTotal+NAVER_SETTLE;
+ k_settle.textContent=won(total); settle_sum.textContent='· 합계 '+won(total);
+ let html=`<tr style="background:#eff6ff;font-weight:600"><td>🔵 쿠팡 묶인 돈</td><td class="muted">정산예정+미구매확정</td><td class="num">${couTotal.toLocaleString()}</td></tr>`;
+ html+=`<tr><td style="padding-left:18px">└ 정산예정 <span class="muted">(구매확정·지급대기)</span></td><td class="muted">${items.length}건</td><td class="num">${cSettle.toLocaleString()}</td></tr>`;
+ items.forEach(it=>{html+=`<tr><td style="padding-left:34px;color:#94a3b8">· ${it.date||''}</td><td class="muted">${it.type==='RESERVE'?'리저브':'주간'}</td><td class="num muted">${(it.amount||0).toLocaleString()}</td></tr>`;});
+ html+=`<tr><td style="padding-left:18px">└ 미구매확정 <span class="muted">(결제됨·확정전)</span></td><td class="muted">배송중·완료</td><td class="num">${cUncfm.toLocaleString()}</td></tr>`;
+ html+=`<tr style="background:#f0fdf4;font-weight:600"><td>🟢 네이버 정산예정</td><td class="muted">수동</td><td class="num">${NAVER_SETTLE.toLocaleString()}</td></tr>`;
  document.querySelector('#t_settle tbody').innerHTML=html;
 }
 function renderPL(){
@@ -188,6 +194,13 @@ function renderPL(){
    const diff=r.당기-r.전기;
    return `<tr style="${r.major?'background:#faf8ff;font-weight:600':''}"><td style="${r.major?'':'padding-left:20px'}">${r.과목}</td><td class="num" style="${r.당기<0?'color:#dc2626':''}">${r.당기.toLocaleString()}</td><td class="num muted">${r.전기.toLocaleString()}</td><td class="num" style="color:${diff<0?'#dc2626':'#059669'}">${diff>=0?'+':''}${diff.toLocaleString()}</td></tr>`;
  }).join('');
+ const now=new Date(); const me=Math.max(now.getMonth()+now.getDate()/30.4, 0.5); const f=12/me;
+ const annS=sales.당기*f, annO=op.당기*f;
+ document.getElementById('pl_fair').innerHTML=`<div class="muted" style="margin-bottom:6px">회계연도 1월 시작 가정 · 올해 약 ${me.toFixed(1)}개월 경과 → 연환산 추정</div>
+   <table><thead><tr><th>항목</th><th class="num">올해(${me.toFixed(0)}개월)</th><th class="num">올해 연환산</th><th class="num">작년(1년)</th></tr></thead><tbody>
+   <tr><td>매출</td><td class="num">${won(sales.당기)}</td><td class="num">${won(annS)}</td><td class="num muted">${won(sales.전기)}</td></tr>
+   <tr><td>영업손익</td><td class="num" style="color:${op.당기<0?'#dc2626':''}">${won(op.당기)}</td><td class="num" style="color:${annO<0?'#dc2626':'#059669'}">${won(annO)}</td><td class="num muted">${won(op.전기)}</td></tr></tbody></table>
+   <div class="muted" style="margin-top:6px">※ 단순 비례 추정. 정확한 동기비교는 작년 같은기간(1~6월) 실적이 필요해요.</div>`;
 }
 let aggKey='부서명';
 function renderAgg(){const inc=(D.자금의증가||[]).filter(real),dec=(D.자금의감소||[]).filter(isOpex);
