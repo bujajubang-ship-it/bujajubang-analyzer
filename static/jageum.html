@@ -34,9 +34,22 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
 .asset-item summary::-webkit-details-marker{display:none}
 .asset-detail{padding:0 12px 10px;font-size:12px;color:#6b7280;max-height:170px;overflow:auto}
 .asset-detail>div{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f3f4f6}
+#period_bar{position:sticky;top:0;z-index:20;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:10px 14px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+#period_bar .pbtns{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+#period_bar button{border:1px solid #d1d5db;background:#fff;padding:5px 11px;border-radius:7px;cursor:pointer;font-size:13px}
+#period_bar button.on{background:#5b21b6;color:#fff;border-color:#5b21b6}
+#period_bar select{padding:5px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:13px}
 </style></head><body>
 <div class="top"><h1>💰 부자홀딩스 자금 대시보드</h1><span class="sub" id="period">불러오는 중…</span></div>
 <div class="wrap">
+ <div id="period_bar"><div class="pbtns">
+   <b style="margin-right:4px">📅 기간</b>
+   <button data-p="this">이번달</button><button data-p="last">지난달</button>
+   <button data-p="y2026">2026 전체</button><button data-p="y2025">2025 전체</button>
+   <button data-p="q1">1Q</button><button data-p="q2">2Q</button><button data-p="q3">3Q</button><button data-p="q4">4Q</button>
+   <select id="month_sel"></select>
+   <span id="period_label" class="muted"></span>
+ </div></div>
  <div class="card" id="asset_panel">
    <div class="muted" style="font-size:13px">💎 실질 총자산 <span style="font-size:11px">(오늘 기준 · 통장+곧 들어올 돈+받을 돈+선급+투자)</span></div>
    <div id="asset_total" style="font-size:34px;font-weight:800;color:#5b21b6;line-height:1.2">-</div>
@@ -131,13 +144,44 @@ const CAT={
 function cat(acct){return CAT[acct]|| (acct? ['기타','변동'] : ['내부이체','-'])}
 const won=n=>(n<0?'-':'')+'₩'+Math.abs(Math.round(n)).toLocaleString();
 const man=n=>(Math.round(n/10000)).toLocaleString()+'만';
-let D={}, ch1,ch2;
+let D={}, ch1,ch2, P=null;
 const sum=(a,f)=>a.reduce((s,x)=>s+(f?f(x):0),0);
 const real=r=>(r.상대계정명||'').trim()!=='';   // 내부이체(대체) 제외
 const isOpex=r=>real(r)&&cat(r.상대계정명)[1]!=='영업외';  // 영업지출(대표/개인·내부이체 제외)
-function load(){fetch('/jageum/api/data').then(r=>r.json()).then(d=>{D=d;render()}).catch(()=>{period.textContent='데이터 없음'})}
+function load(){fetch('/jageum/api/data').then(r=>r.json()).then(d=>{D=d;initPeriod()}).catch(()=>{period.textContent='데이터 없음'})}
+function ym2label(k){const a=k.split("-");return a[0]+"년 "+(+a[1])+"월";}
+function buildP(keys,label){
+  const inc=[],dec=[];
+  keys.forEach(k=>{const m=(D.months||{})[k]; if(m){inc.push(...(m.자금의증가||[]));dec.push(...(m.자금의감소||[]));}});
+  const last=keys[keys.length-1]; const bal=((D.months||{})[last]||{}).자금현황||[];
+  P={증가:inc,감소:dec,현황:bal,label:label};
+  document.getElementById('period_label').textContent='· '+label+' ('+inc.length+'입금/'+dec.length+'출금)';
+  render();
+}
+function setPeriod(code,btn){
+  document.querySelectorAll('#period_bar button').forEach(b=>b.classList.remove('on'));
+  if(btn)btn.classList.add('on');
+  const ml=D.months_list||[]; const cm=D.current_month||ml[ml.length-1]||'';
+  const cy=+cm.split("-")[0], cmo=+cm.split("-")[1];
+  let keys=[],label='';
+  if(code==='this'){keys=[cm];label=ym2label(cm);}
+  else if(code==='last'){const d=new Date(cy,cmo-2,1);const k=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,'0');keys=[k];label=ym2label(k);}
+  else if(code==='y2026'){keys=ml.filter(k=>k.startsWith('2026'));label='2026년 전체';}
+  else if(code==='y2025'){keys=ml.filter(k=>k.startsWith('2025'));label='2025년 전체';}
+  else if(code[0]==='q'){const q=+code[1];keys=[(q-1)*3+1,(q-1)*3+2,(q-1)*3+3].map(x=>cy+"-"+String(x).padStart(2,'0'));label=cy+"년 "+q+"분기";}
+  keys=keys.filter(k=>ml.includes(k));
+  if(!keys.length){document.getElementById('period_label').textContent='· 데이터 없음';P={증가:[],감소:[],현황:[],label:label};render();return;}
+  buildP(keys,label);
+}
+function initPeriod(){
+  const ml=D.months_list||[]; const sel=document.getElementById('month_sel');
+  sel.innerHTML='<option value="">📅 월 선택…</option>'+ml.slice().reverse().map(k=>'<option value="'+k+'">'+ym2label(k)+'</option>').join('');
+  sel.onchange=()=>{if(sel.value){document.querySelectorAll('#period_bar button').forEach(b=>b.classList.remove('on'));buildP([sel.value],ym2label(sel.value));}};
+  document.querySelectorAll('#period_bar button[data-p]').forEach(b=>b.onclick=()=>setPeriod(b.dataset.p,b));
+  setPeriod('this',document.querySelector('#period_bar button[data-p="this"]'));
+}
 function render(){
- const incAll=D.자금의증가||[], decAll=D.자금의감소||[], bal=D.자금현황||[];
+ const incAll=(P&&P.증가)||D.자금의증가||[], decAll=(P&&P.감소)||D.자금의감소||[], bal=(P&&P.현황)||D.자금현황||[];
  const inc=incAll.filter(real);
  const decReal=decAll.filter(real);
  const opex=decReal.filter(isOpex);
