@@ -79,6 +79,16 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    </details>
  </div>
 
+ <div class="card" id="dept_card">
+   <h2>🏢 부서·프로젝트별 손익 <span class="muted big" id="dept_period"></span></h2>
+   <div class="note">선택 기간 기준 (현금흐름) · 부서: 쇼핑몰=프로젝트"쇼핑몰"/영업=그 외/태양광=종보전기·한국전력</div>
+   <div class="tabs" id="deptdim"><button class="on" data-dim="부서">부서별</button><button data-dim="프로젝트">프로젝트별</button></div>
+   <div class="tabs" id="depttabs"></div>
+   <div class="kpis" id="dept_kpis" style="margin-bottom:12px"></div>
+   <div id="dept_extra"></div>
+   <div style="margin-top:10px"><div class="note">월별 순익 추이</div><canvas id="deptTrend" height="75"></canvas></div>
+ </div>
+
  <div class="grid2">
   <div class="card"><h2>💸 지출 구조 — 고정비 vs 변동비</h2><div class="note">계정과목 자동분류 · 내부이체(대체) 제외</div>
     <canvas id="chartCost" height="150"></canvas>
@@ -144,7 +154,16 @@ const CAT={
 function cat(acct){return CAT[acct]|| (acct? ['기타','변동'] : ['내부이체','-'])}
 const won=n=>(n<0?'-':'')+'₩'+Math.abs(Math.round(n)).toLocaleString();
 const man=n=>(Math.round(n/10000)).toLocaleString()+'만';
-let D={}, ch1,ch2, P=null;
+let D={}, ch1,ch2,ch3, P=null;
+let deptDim='부서', deptSel=null;
+function dept(r){
+ const t=(r.거래처명||'')+(r.적요||'')+(r.상대계정명||'');
+ if(/종보전기|한국전력|전력매출/.test(t)) return '태양광';
+ if((r.프로젝트명||'').includes('쇼핑몰')) return '쇼핑몰';
+ return '영업';
+}
+function deptKey(r){ return deptDim==='부서' ? dept(r) : ((r.프로젝트명||'').trim()||'(미지정)'); }
+function opexReal(r){ return real(r) && cat(r.상대계정명)[1]!=='영업외'; }
 const sum=(a,f)=>a.reduce((s,x)=>s+(f?f(x):0),0);
 const real=r=>(r.상대계정명||'').trim()!=='';   // 내부이체(대체) 제외
 const isOpex=r=>real(r)&&cat(r.상대계정명)[1]!=='영업외';  // 영업지출(대표/개인·내부이체 제외)
@@ -178,6 +197,7 @@ function initPeriod(){
   sel.innerHTML='<option value="">📅 월 선택…</option>'+ml.slice().reverse().map(k=>'<option value="'+k+'">'+ym2label(k)+'</option>').join('');
   sel.onchange=()=>{if(sel.value){document.querySelectorAll('#period_bar button').forEach(b=>b.classList.remove('on'));buildP([sel.value],ym2label(sel.value));}};
   document.querySelectorAll('#period_bar button[data-p]').forEach(b=>b.onclick=()=>setPeriod(b.dataset.p,b));
+  document.querySelectorAll('#deptdim button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#deptdim button').forEach(x=>x.classList.remove('on'));b.classList.add('on');deptDim=b.dataset.dim;deptSel=null;renderDept();});
   setPeriod('this',document.querySelector('#period_bar button[data-p="this"]'));
 }
 function render(){
@@ -217,7 +237,45 @@ function render(){
  // 잔액
  const bote=bal.filter(b=>(b.계정명||'').includes('보통예금'));
  document.querySelector('#t_bal tbody').innerHTML=(bote.length?bote:bal).map(r=>`<tr><td>${r.계정명||''}</td><td>${r.거래처명||''}</td><td class="num">${(r.금일잔액||0).toLocaleString()}</td>`).join('');
- renderAgg(); renderDetail(); renderPL(); renderSettle(); renderAssets();
+ renderAgg(); renderDetail(); renderPL(); renderSettle(); renderAssets(); renderDept();
+}
+function renderDept(){
+ const inc=((P&&P.증가)||D.자금의증가||[]).filter(real);
+ const dec=((P&&P.감소)||D.자금의감소||[]).filter(opexReal);
+ dept_period.textContent = P ? '· '+P.label : '';
+ const g={}; const add=(r,w)=>{const k=deptKey(r);(g[k]=g[k]||{매출:0,비용:0})[w]+=r.금액;};
+ inc.forEach(r=>add(r,'매출')); dec.forEach(r=>add(r,'비용'));
+ let names = deptDim==='부서' ? ['쇼핑몰','영업','태양광'] : Object.keys(g).sort((a,b)=>((g[b].매출+g[b].비용)-(g[a].매출+g[a].비용)));
+ if(!names.length) names=['(없음)'];
+ if(!deptSel||!names.includes(deptSel)) deptSel=names[0];
+ const ic={'쇼핑몰':'🛒','영업':'💼','태양광':'☀️'};
+ document.getElementById('depttabs').innerHTML=names.map(n=>`<button class="${n===deptSel?'on':''}" data-g="${n}">${ic[n]||'📁'} ${n}</button>`).join('');
+ document.querySelectorAll('#depttabs button').forEach(b=>b.onclick=()=>{deptSel=b.dataset.g;renderDept();});
+ const cur=g[deptSel]||{매출:0,비용:0}; const net=cur.매출-cur.비용;
+ dept_kpis.innerHTML=`<div class="kpi in"><div class="l">매출 (입금)</div><div class="v">${won(cur.매출)}</div></div>`+
+   `<div class="kpi out"><div class="l">비용 (지출)</div><div class="v">${won(cur.비용)}</div></div>`+
+   `<div class="kpi net"><div class="l">순익</div><div class="v" style="color:${net<0?'#dc2626':'#2563eb'}">${won(net)}</div></div>`;
+ let ex='';
+ if(deptSel==='쇼핑몰'){
+   const ch={}; inc.filter(r=>deptKey(r)==='쇼핑몰').forEach(r=>{let k=r.거래처명||'기타';if(/네이버/.test(k))k='네이버';else if(/쿠팡/.test(k))k='쿠팡';else if(/카페24/.test(k))k='카페24';else if((r.상대계정명||'').includes('현금'))k='현금매출';ch[k]=(ch[k]||0)+r.금액;});
+   const a=Object.entries(ch).sort((x,y)=>y[1]-x[1]);const tot=a.reduce((s,x)=>s+x[1],0)||1;
+   ex='<div class="note">채널별 매출</div><table>'+a.map(([k,v])=>`<tr><td>${k}</td><td class="num">${v.toLocaleString()}</td><td style="width:110px"><div class="bar"><span style="width:${Math.round(v/tot*100)}%;background:#10b981"></span></div></td></tr>`).join('')+'</table>';
+ } else if(deptSel==='영업'){
+   const items=(D.미수금&&D.미수금.items)||[];
+   ex='<div class="note">미수금 — B2B 받을 돈 (현재 기준)</div><div class="scroll" style="max-height:200px"><table>'+items.map(x=>`<tr><td>${x.거래처명}</td><td class="num">${x.잔액.toLocaleString()}</td></tr>`).join('')+'</table></div>';
+ } else if(deptSel==='태양광'){
+   const rev=inc.filter(r=>deptKey(r)==='태양광').reduce((s,r)=>s+r.금액,0);
+   ex=`<div class="muted" style="font-size:13px;padding:6px 0">☀️ 전력판매 수익 <b>${won(rev)}</b> · 투자/비용 <b>${won(cur.비용)}</b> (종보전기 등)</div>`;
+ } else {
+   const byc={}; inc.filter(r=>deptKey(r)===deptSel).forEach(r=>{const k=r.거래처명||r.적요||'기타';byc[k]=(byc[k]||0)+r.금액;});
+   const a=Object.entries(byc).sort((x,y)=>y[1]-x[1]).slice(0,10);
+   ex='<div class="note">주요 입금처</div><table>'+a.map(([k,v])=>`<tr><td>${k}</td><td class="num">${v.toLocaleString()}</td></tr>`).join('')+'</table>';
+ }
+ dept_extra.innerHTML=ex;
+ const ml=D.months_list||[];
+ const trend=ml.map(k=>{const m=D.months[k]||{};let mi=0,mc=0;(m.자금의증가||[]).filter(real).forEach(r=>{if(deptKey(r)===deptSel)mi+=r.금액;});(m.자금의감소||[]).filter(opexReal).forEach(r=>{if(deptKey(r)===deptSel)mc+=r.금액;});return mi-mc;});
+ if(ch3)ch3.destroy();
+ ch3=new Chart(deptTrend,{type:'bar',data:{labels:ml.map(k=>k.slice(2)),datasets:[{label:'순익',data:trend,backgroundColor:trend.map(v=>v<0?'#ef4444':'#5b21b6')}]},options:{plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>(v/1e6)+'백만'}}}}});
 }
 function renderAssets(){
  const bal=(D.자금현황||[]).filter(b=>(b.계정명||'').includes('보통예금'));
