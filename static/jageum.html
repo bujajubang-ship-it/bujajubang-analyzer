@@ -1,17 +1,17 @@
 <!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>부자홀딩스 자금일보</title>
+<title>부자홀딩스 자금 대시보드</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,'Malgun Gothic',sans-serif;background:#f4f6fa;color:#1f2937}
 .top{background:#5b21b6;color:#fff;padding:14px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .top h1{font-size:18px;margin:0}.top .sub{font-size:13px;opacity:.85}
 .wrap{max-width:1200px;margin:0 auto;padding:18px}
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:16px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px}
 .kpi{background:#fff;border-radius:12px;padding:16px 18px;box-shadow:0 1px 3px rgba(0,0,0,.07)}
-.kpi .l{font-size:13px;color:#6b7280}.kpi .v{font-size:23px;font-weight:700;margin-top:4px}
-.kpi.in .v{color:#059669}.kpi.out .v{color:#dc2626}.kpi.net .v{color:#2563eb}
+.kpi .l{font-size:13px;color:#6b7280}.kpi .v{font-size:22px;font-weight:700;margin-top:4px}.kpi .s{font-size:11px;color:#9ca3af;margin-top:3px}
+.kpi.in .v{color:#059669}.kpi.out .v{color:#dc2626}.kpi.net .v{color:#2563eb}.kpi.lock .v{color:#d97706}
 .card{background:#fff;border-radius:12px;padding:16px 18px;box-shadow:0 1px 3px rgba(0,0,0,.07);margin-bottom:16px}
-.card h2{font-size:15px;margin:0 0 12px}
+.card h2{font-size:15px;margin:0 0 4px}.card .note{font-size:12px;color:#9ca3af;margin-bottom:12px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 @media(max-width:800px){.grid2{grid-template-columns:1fr}}
 table{width:100%;border-collapse:collapse;font-size:13px}
@@ -19,76 +19,131 @@ th,td{padding:7px 8px;border-bottom:1px solid #eef0f4;text-align:left;white-spac
 th{color:#6b7280;font-weight:600;background:#fafafe;position:sticky;top:0}
 td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 .scroll{max-height:420px;overflow:auto}
-.tabs{display:flex;gap:8px;margin-bottom:10px}.tabs button{border:1px solid #d1d5db;background:#fff;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:13px}
+.tabs{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}.tabs button{border:1px solid #d1d5db;background:#fff;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:13px}
 .tabs button.on{background:#5b21b6;color:#fff;border-color:#5b21b6}
 input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;margin-bottom:10px;font-size:13px}
-.bar{height:8px;background:#ede9fe;border-radius:4px;overflow:hidden}.bar>span{display:block;height:100%;background:#7c3aed}
-.muted{color:#9ca3af}
+.bar{height:8px;background:#ede9fe;border-radius:4px;overflow:hidden}.bar>span{display:block;height:100%}
+.muted{color:#9ca3af}.tag{font-size:11px;padding:2px 7px;border-radius:20px}
+.fix{background:#dbeafe;color:#1d4ed8}.var{background:#fee2e2;color:#b91c1c}
+.big{font-size:13px}
 </style></head><body>
-<div class="top"><h1>💰 부자홀딩스 자금일보</h1><span class="sub" id="period">불러오는 중…</span></div>
+<div class="top"><h1>💰 부자홀딩스 자금 대시보드</h1><span class="sub" id="period">불러오는 중…</span></div>
 <div class="wrap">
  <div class="kpis">
-  <div class="kpi in"><div class="l">총 입금 (자금의 증가)</div><div class="v" id="k_in">-</div></div>
-  <div class="kpi out"><div class="l">총 출금 (자금의 감소)</div><div class="v" id="k_out">-</div></div>
-  <div class="kpi net"><div class="l">순 현금흐름</div><div class="v" id="k_net">-</div></div>
-  <div class="kpi"><div class="l">보통예금 잔액 합계</div><div class="v" id="k_bal">-</div></div>
+  <div class="kpi in"><div class="l">영업 입금 (매출정산)</div><div class="v" id="k_in">-</div><div class="s">내부이체 제외</div></div>
+  <div class="kpi out"><div class="l">영업 지출</div><div class="v" id="k_out">-</div><div class="s">내부이체 제외</div></div>
+  <div class="kpi net"><div class="l">영업 순현금</div><div class="v" id="k_net">-</div><div class="s">입금 − 지출</div></div>
+  <div class="kpi lock"><div class="l">🔒 묶인 선금</div><div class="v" id="k_lock">-</div><div class="s">거래처 선지급 잔액</div></div>
  </div>
- <div class="card"><h2>📈 일자별 입금 vs 출금</h2><canvas id="chartDaily" height="90"></canvas></div>
+
  <div class="grid2">
-  <div class="card"><h2>🏦 은행/계정별 잔액 (금일)</h2><div class="scroll"><table id="t_bal"><thead><tr><th>계정</th><th>거래처(계좌)</th><th class="num">금일잔액</th></tr></thead><tbody></tbody></table></div></div>
-  <div class="card"><h2>🧾 부서·프로젝트별 집계</h2>
+  <div class="card"><h2>💸 지출 구조 — 고정비 vs 변동비</h2><div class="note">계정과목 자동분류 · 내부이체(대체) 제외</div>
+    <canvas id="chartCost" height="150"></canvas>
+    <div class="scroll" style="margin-top:10px"><table id="t_cat"><thead><tr><th>분류</th><th>고정/변동</th><th class="num">금액</th><th>비중</th></tr></thead><tbody></tbody></table></div>
+  </div>
+  <div class="card"><h2>📥 정산입금 — 채널별</h2><div class="note">어디서 돈이 들어오나</div>
+    <div class="scroll"><table id="t_chan"><thead><tr><th>채널/거래처</th><th class="num">입금액</th><th>비중</th></tr></thead><tbody></tbody></table></div>
+  </div>
+ </div>
+
+ <div class="card"><h2>🔒 묶인 선금 현황 <span class="muted big" id="seonyz_sum"></span></h2>
+   <div class="note">할인받으려 거래처에 미리 지급한 선금 잔액 (수동관리 — 변동 시 알려주세요)</div>
+   <div class="scroll"><table id="t_seonyz"><thead><tr><th>거래처</th><th class="num">선금 잔액</th><th>비고</th><th>지급일</th></tr></thead><tbody></tbody></table></div>
+ </div>
+
+ <div class="card"><h2>📈 일자별 입금 vs 지출 (영업)</h2><canvas id="chartDaily" height="80"></canvas></div>
+
+ <div class="grid2">
+  <div class="card"><h2>🏦 은행/계정별 잔액</h2><div class="scroll"><table id="t_bal"><thead><tr><th>계정</th><th>거래처(계좌)</th><th class="num">금일잔액</th></tr></thead><tbody></tbody></table></div></div>
+  <div class="card"><h2>🧾 부서·프로젝트별</h2>
     <div class="tabs" id="aggtabs"><button class="on" data-k="부서명">부서별</button><button data-k="프로젝트명">프로젝트별</button></div>
-    <div class="scroll"><table id="t_agg"><thead><tr><th>구분</th><th class="num">입금</th><th class="num">출금</th><th class="num">순액</th></tr></thead><tbody></tbody></table></div></div>
+    <div class="scroll"><table id="t_agg"><thead><tr><th>구분</th><th class="num">입금</th><th class="num">지출</th><th class="num">순액</th></tr></thead><tbody></tbody></table></div></div>
  </div>
- <div class="grid2">
-  <div class="card"><h2>⬆️ 입금처 TOP (거래처)</h2><div class="scroll"><table id="t_in_top"><thead><tr><th>거래처</th><th class="num">금액</th><th>비중</th></tr></thead><tbody></tbody></table></div></div>
-  <div class="card"><h2>⬇️ 출금처 TOP (거래처)</h2><div class="scroll"><table id="t_out_top"><thead><tr><th>거래처</th><th class="num">금액</th><th>비중</th></tr></thead><tbody></tbody></table></div></div>
- </div>
+
  <div class="card"><h2>📋 상세 내역</h2>
-   <div class="tabs" id="dtabs"><button class="on" data-k="자금의증가">입금 상세</button><button data-k="자금의감소">출금 상세</button></div>
-   <input class="search" id="dsearch" placeholder="거래처·적요·부서·프로젝트 검색…">
-   <div class="scroll"><table id="t_detail"><thead><tr><th>일자</th><th>상대계정</th><th>거래처</th><th>적요</th><th class="num">금액</th><th>부서</th><th>프로젝트</th></tr></thead><tbody></tbody></table></div>
+   <div class="tabs" id="dtabs"><button class="on" data-k="자금의증가">입금 상세</button><button data-k="자금의감소">지출 상세</button></div>
+   <input class="search" id="dsearch" placeholder="거래처·적요·계정·부서·프로젝트 검색…">
+   <div class="scroll"><table id="t_detail"><thead><tr><th>일자</th><th>계정</th><th>거래처</th><th>적요</th><th class="num">금액</th><th>부서</th><th>프로젝트</th></tr></thead><tbody></tbody></table></div>
    <div class="muted" id="dcount" style="margin-top:8px;font-size:12px"></div>
  </div>
- <div class="muted" style="font-size:12px;text-align:center;padding:10px">이카운트 자금일보 자동 수집 · 매일 갱신</div>
+ <div class="muted" style="font-size:12px;text-align:center;padding:10px">이카운트 자금일보 자동 수집 · 매일 아침 8시 갱신 · 내부이체(대체)는 영업수치에서 제외</div>
 </div>
 <script>
-const won=n=>(n<0?'-':'')+'₩'+Math.abs(n).toLocaleString();
-let D={}, dailyChart;
-function sum(a,f){return a.reduce((s,x)=>s+(f?f(x):0),0)}
-function aggBy(rows,key){const m={};rows.forEach(r=>{const k=r[key]||'(미지정)';m[k]=(m[k]||0)+r.금액});return m}
-function load(){fetch('/jageum/api/data').then(r=>r.json()).then(d=>{D=d;render()}).catch(e=>{period.textContent='데이터 없음 (아직 수집 전)'})}
+// ===== 선금 거래처 (수동관리) =====
+const SEONYZ=[
+ {거래처:"주식회사 대림주방",잔액:36266500,비고:"선금 3/17 4,000만 입금 · 45% 할인",일자:"2026-05-29"},
+ {거래처:"대경종합스텐",잔액:21610950,비고:"선금 2,000만 입금 · 15% 할인",일자:"2026-05-29"},
+ {거래처:"주식회사 조이주방(억조)",잔액:20233472,비고:"선금 1,000만원 지급 (공급가액)",일자:"2026-05-31"},
+ {거래처:"뉴세재코리아",잔액:21450000,비고:"식세기 재고: 빛달3·세신6·뉴세제17대 (825,000/대 부가세포함)",일자:"2026-06-19"},
+ {거래처:"주식회사 오토기어드",잔액:2640000,비고:"화구형통돌이 중형6·본체2·대형솥1 (중형8.8만/팟99만/대형13.2만)",일자:"2026-06-19"},
+ {거래처:"꼬챙이닷컴",잔액:11000000,비고:"",일자:"2026-04-30"},
+ {거래처:"세스티에스",잔액:1000000,비고:"1800 토핑냉장고 보관(은영)",일자:"2026-03-05"},
+ {거래처:"새날인터내셔널",잔액:13912800,비고:"식깡 332개",일자:"2026-06-02"},
+];
+// ===== 계정과목 분류표 [대분류, 고정/변동] =====
+const CAT={
+ '외상매입금':['매입','변동'],'상품':['매입','변동'],'가구매':['매입','변동'],'상품매입':['매입','변동'],
+ '직원급여(판)':['인건비','고정'],'잡급(판)':['인건비','고정'],'알바비':['인건비','고정'],'급여':['인건비','고정'],'상여금':['인건비','고정'],'퇴직급여(판)':['인건비','고정'],
+ '복리후생비(판)':['복리후생','고정'],
+ '보험료(판)':['보험','고정'],
+ '임차료(판)':['임차료','고정'],'지급임차료':['임차료','고정'],
+ '통신비(판)':['통신','고정'],
+ '이자비용':['금융','고정'],
+ '세금과공과금(판)':['세금','고정'],
+ '지급수수료(판)':['판관비','변동'],'운반비(판)':['판관비','변동'],'운반비':['판관비','변동'],'여비교통비(판)':['판관비','변동'],
+ '수선비(판)':['판관비','변동'],'접대비-일반(판)':['판관비','변동'],'소모품비(판)':['판관비','변동'],'광고선전비(판)':['판관비','변동'],
+ '미지급비용':['기타','변동'],'예수금':['기타','변동'],'법인카드':['기타','변동'],'인테리어법인카드':['기타','변동'],'잡손실':['기타','변동'],'외상매출금':['환불/기타','변동'],
+};
+function cat(acct){return CAT[acct]|| (acct? ['기타','변동'] : ['내부이체','-'])}
+const won=n=>(n<0?'-':'')+'₩'+Math.abs(Math.round(n)).toLocaleString();
+const man=n=>(Math.round(n/10000)).toLocaleString()+'만';
+let D={}, ch1,ch2;
+const sum=(a,f)=>a.reduce((s,x)=>s+(f?f(x):0),0);
+const real=r=>(r.상대계정명||'').trim()!=='';   // 내부이체(대체) 제외
+function load(){fetch('/jageum/api/data').then(r=>r.json()).then(d=>{D=d;render()}).catch(()=>{period.textContent='데이터 없음'})}
 function render(){
- const inc=D.자금의증가||[], dec=D.자금의감소||[], bal=D.자금현황||[];
+ const incAll=D.자금의증가||[], decAll=D.자금의감소||[], bal=D.자금현황||[];
+ const inc=incAll.filter(real), dec=decAll.filter(real);
  document.getElementById('period').textContent='기간: '+(D.period||'-');
  const tin=sum(inc,x=>x.금액), tout=sum(dec,x=>x.금액);
- k_in.textContent=won(tin); k_out.textContent=won(tout); k_net.textContent=won(tin-tout);
- const bote=bal.filter(b=>(b.계정명||'').includes('보통예금'));
- k_bal.textContent=won(sum(bote,x=>x.금일잔액));
+ const lock=sum(SEONYZ,x=>x.잔액);
+ k_in.textContent=won(tin); k_out.textContent=won(tout); k_net.textContent=won(tin-tout); k_lock.textContent=won(lock);
+ // 지출구조
+ const grp={}; dec.forEach(r=>{const[g,fv]=cat(r.상대계정명);(grp[g]=grp[g]||{v:0,fv})['v']+=r.금액});
+ const ce=Object.entries(grp).sort((a,b)=>b[1].v-a[1].v);
+ document.querySelector('#t_cat tbody').innerHTML=ce.map(([g,o])=>`<tr><td>${g}</td><td><span class="tag ${o.fv==='고정'?'fix':'var'}">${o.fv}</span></td><td class="num">${o.v.toLocaleString()}</td><td style="width:80px"><div class="bar"><span style="width:${Math.round(o.v/tout*100)}%;background:${o.fv==='고정'?'#3b82f6':'#ef4444'}"></span></div></td></tr>`).join('');
+ const fix=sum(dec.filter(r=>cat(r.상대계정명)[1]==='고정'),x=>x.금액), vr=tout-fix;
+ if(ch1)ch1.destroy();
+ ch1=new Chart(chartCost,{type:'doughnut',data:{labels:['고정비','변동비'],datasets:[{data:[fix,vr],backgroundColor:['#3b82f6','#ef4444']}]},options:{plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:c=>c.label+' '+won(c.parsed)+' ('+Math.round(c.parsed/tout*100)+'%)'}}}}});
+ // 정산입금 채널
+ const chan={}; inc.forEach(r=>{let k=r.거래처명||'(기타)';
+   if(/네이버/.test(k))k='네이버페이 정산';else if(/쿠팡/.test(k))k='쿠팡 정산';else if(/카페24|카페이십사/.test(k))k='카페24 정산';
+   else if((r.상대계정명||'').includes('현금매출'))k='현금매출';
+   chan[k]=(chan[k]||0)+r.금액});
+ const cha=Object.entries(chan).sort((a,b)=>b[1]-a[1]).slice(0,20);
+ document.querySelector('#t_chan tbody').innerHTML=cha.map(([k,v])=>`<tr><td>${k}</td><td class="num">${v.toLocaleString()}</td><td style="width:80px"><div class="bar"><span style="width:${Math.round(v/tin*100)}%;background:#10b981"></span></div></td></tr>`).join('');
+ // 선금
+ seonyz_sum.textContent='· 합계 '+won(lock);
+ document.querySelector('#t_seonyz tbody').innerHTML=SEONYZ.slice().sort((a,b)=>b.잔액-a.잔액).map(s=>`<tr><td>${s.거래처}</td><td class="num" style="color:#d97706;font-weight:600">${s.잔액.toLocaleString()}</td><td class="muted" style="white-space:normal">${s.비고||''}</td><td>${s.일자||''}</td></tr>`).join('');
+ // 일자별
  const days={}; inc.forEach(r=>{(days[r.일자]=days[r.일자]||[0,0])[0]+=r.금액}); dec.forEach(r=>{(days[r.일자]=days[r.일자]||[0,0])[1]+=r.금액});
  const labels=Object.keys(days).sort();
- if(dailyChart)dailyChart.destroy();
- dailyChart=new Chart(chartDaily,{type:'bar',data:{labels:labels.map(l=>l.slice(5)),datasets:[
-   {label:'입금',data:labels.map(l=>days[l][0]),backgroundColor:'#10b981'},
-   {label:'출금',data:labels.map(l=>days[l][1]),backgroundColor:'#ef4444'}]},
-   options:{responsive:true,scales:{y:{ticks:{callback:v=>(v/1e6)+'백만'}}},plugins:{legend:{position:'top'}}}});
- fill('t_bal',bote.length?bote:bal,r=>`<td>${r.계정명||''}</td><td>${r.거래처명||''}</td><td class="num">${(r.금일잔액||0).toLocaleString()}</td>`);
- topTable('t_in_top',aggBy(inc,'거래처명'),tin);
- topTable('t_out_top',aggBy(dec,'거래처명'),tout);
+ if(ch2)ch2.destroy();
+ ch2=new Chart(chartDaily,{type:'bar',data:{labels:labels.map(l=>l.slice(5)),datasets:[{label:'입금',data:labels.map(l=>days[l][0]),backgroundColor:'#10b981'},{label:'지출',data:labels.map(l=>days[l][1]),backgroundColor:'#ef4444'}]},options:{scales:{y:{ticks:{callback:v=>(v/1e6)+'백만'}}},plugins:{legend:{position:'top'}}}});
+ // 잔액
+ const bote=bal.filter(b=>(b.계정명||'').includes('보통예금'));
+ document.querySelector('#t_bal tbody').innerHTML=(bote.length?bote:bal).map(r=>`<tr><td>${r.계정명||''}</td><td>${r.거래처명||''}</td><td class="num">${(r.금일잔액||0).toLocaleString()}</td>`).join('');
  renderAgg(); renderDetail();
 }
-function fill(id,rows,row){document.querySelector('#'+id+' tbody').innerHTML=rows.map(r=>'<tr>'+row(r)+'</tr>').join('')}
-function topTable(id,m,tot){const a=Object.entries(m).sort((x,y)=>y[1]-x[1]).slice(0,15);
- document.querySelector('#'+id+' tbody').innerHTML=a.map(([k,v])=>`<tr><td>${k||'(미지정)'}</td><td class="num">${v.toLocaleString()}</td><td style="width:90px"><div class="bar"><span style="width:${tot?Math.round(v/tot*100):0}%"></span></div></td></tr>`).join('')}
 let aggKey='부서명';
-function renderAgg(){const inc=D.자금의증가||[],dec=D.자금의감소||[];
- const i=aggBy(inc,aggKey),o=aggBy(dec,aggKey);const keys=[...new Set([...Object.keys(i),...Object.keys(o)])];
- keys.sort((a,b)=>((i[b]||0)+(o[b]||0))-((i[a]||0)+(o[a]||0)));
+function renderAgg(){const inc=(D.자금의증가||[]).filter(real),dec=(D.자금의감소||[]).filter(real);
+ const ab=(rows)=>{const m={};rows.forEach(r=>{const k=r[aggKey]||'(미지정)';m[k]=(m[k]||0)+r.금액});return m};
+ const i=ab(inc),o=ab(dec);const keys=[...new Set([...Object.keys(i),...Object.keys(o)])].sort((a,b)=>((i[b]||0)+(o[b]||0))-((i[a]||0)+(o[a]||0)));
  document.querySelector('#t_agg tbody').innerHTML=keys.map(k=>`<tr><td>${k}</td><td class="num" style="color:#059669">${(i[k]||0).toLocaleString()}</td><td class="num" style="color:#dc2626">${(o[k]||0).toLocaleString()}</td><td class="num">${((i[k]||0)-(o[k]||0)).toLocaleString()}</td></tr>`).join('')}
 let dKey='자금의증가';
 function renderDetail(){const q=(dsearch.value||'').trim();let rows=D[dKey]||[];
  if(q)rows=rows.filter(r=>[r.거래처명,r.적요,r.부서명,r.프로젝트명,r.상대계정명].join(' ').includes(q));
- document.querySelector('#t_detail tbody').innerHTML=rows.map(r=>`<tr><td>${r.일자||''}</td><td>${r.상대계정명||''}</td><td>${r.거래처명||''}</td><td>${r.적요||''}</td><td class="num">${(r.금액||0).toLocaleString()}</td><td>${r.부서명||''}</td><td>${r.프로젝트명||''}</td></tr>`).join('');
+ document.querySelector('#t_detail tbody').innerHTML=rows.map(r=>`<tr><td>${r.일자||''}</td><td>${r.상대계정명||'<span class=muted>내부이체</span>'}</td><td>${r.거래처명||''}</td><td>${r.적요||''}</td><td class="num">${(r.금액||0).toLocaleString()}</td><td>${r.부서명||''}</td><td>${r.프로젝트명||''}</td></tr>`).join('');
  dcount.textContent=`${rows.length}건 · 합계 ${won(sum(rows,x=>x.금액))}`}
 document.querySelectorAll('#aggtabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#aggtabs button').forEach(x=>x.classList.remove('on'));b.classList.add('on');aggKey=b.dataset.k;renderAgg()});
 document.querySelectorAll('#dtabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#dtabs button').forEach(x=>x.classList.remove('on'));b.classList.add('on');dKey=b.dataset.k;renderDetail()});
