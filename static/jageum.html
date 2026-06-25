@@ -33,6 +33,7 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
   <div class="kpi in"><div class="l">영업 입금 (매출정산)</div><div class="v" id="k_in">-</div><div class="s">내부이체 제외</div></div>
   <div class="kpi out"><div class="l">영업 지출</div><div class="v" id="k_out">-</div><div class="s">내부이체 제외</div></div>
   <div class="kpi net"><div class="l">영업 순현금</div><div class="v" id="k_net">-</div><div class="s">입금 − 지출</div></div>
+  <div class="kpi"><div class="l">대표/개인·세금</div><div class="v" id="k_own" style="color:#7c3aed">-</div><div class="s">영업외 (양도세·생활비 등)</div></div>
   <div class="kpi lock"><div class="l">🔒 묶인 선금</div><div class="v" id="k_lock">-</div><div class="s">거래처 선지급 잔액</div></div>
  </div>
 
@@ -84,15 +85,14 @@ const SEONYZ=[
 const CAT={
  '외상매입금':['매입','변동'],'상품':['매입','변동'],'가구매':['매입','변동'],'상품매입':['매입','변동'],
  '직원급여(판)':['인건비','고정'],'잡급(판)':['인건비','고정'],'알바비':['인건비','고정'],'급여':['인건비','고정'],'상여금':['인건비','고정'],'퇴직급여(판)':['인건비','고정'],
- '복리후생비(판)':['복리후생','고정'],
- '보험료(판)':['보험','고정'],
- '임차료(판)':['임차료','고정'],'지급임차료':['임차료','고정'],
- '통신비(판)':['통신','고정'],
- '이자비용':['금융','고정'],
- '세금과공과금(판)':['세금','고정'],
+ '예수금':['4대보험·세금','고정'],'세금과공과금(판)':['4대보험·세금','고정'],
+ '법인카드':['카드대금','변동'],'미지급비용':['카드대금','변동'],'인테리어법인카드':['카드대금','변동'],
  '지급수수료(판)':['판관비','변동'],'운반비(판)':['판관비','변동'],'운반비':['판관비','변동'],'여비교통비(판)':['판관비','변동'],
  '수선비(판)':['판관비','변동'],'접대비-일반(판)':['판관비','변동'],'소모품비(판)':['판관비','변동'],'광고선전비(판)':['판관비','변동'],
- '미지급비용':['기타','변동'],'예수금':['기타','변동'],'법인카드':['기타','변동'],'인테리어법인카드':['기타','변동'],'잡손실':['기타','변동'],'외상매출금':['환불/기타','변동'],
+ '복리후생비(판)':['복리후생','고정'],'보험료(판)':['보험','고정'],'임차료(판)':['임차료','고정'],'지급임차료':['임차료','고정'],'통신비(판)':['통신','고정'],
+ '이자비용':['금융','고정'],
+ '외상매출금':['환불','변동'],
+ '잡손실':['대표/개인·세금','영업외'],'가지급금':['대표/개인·세금','영업외'],'인출금':['대표/개인·세금','영업외'],
 };
 function cat(acct){return CAT[acct]|| (acct? ['기타','변동'] : ['내부이체','-'])}
 const won=n=>(n<0?'-':'')+'₩'+Math.abs(Math.round(n)).toLocaleString();
@@ -100,19 +100,25 @@ const man=n=>(Math.round(n/10000)).toLocaleString()+'만';
 let D={}, ch1,ch2;
 const sum=(a,f)=>a.reduce((s,x)=>s+(f?f(x):0),0);
 const real=r=>(r.상대계정명||'').trim()!=='';   // 내부이체(대체) 제외
+const isOpex=r=>real(r)&&cat(r.상대계정명)[1]!=='영업외';  // 영업지출(대표/개인·내부이체 제외)
 function load(){fetch('/jageum/api/data').then(r=>r.json()).then(d=>{D=d;render()}).catch(()=>{period.textContent='데이터 없음'})}
 function render(){
  const incAll=D.자금의증가||[], decAll=D.자금의감소||[], bal=D.자금현황||[];
- const inc=incAll.filter(real), dec=decAll.filter(real);
+ const inc=incAll.filter(real);
+ const decReal=decAll.filter(real);
+ const opex=decReal.filter(isOpex);
+ const own=decReal.filter(r=>!isOpex(r));   // 대표/개인·세금(영업외)
  document.getElementById('period').textContent='기간: '+(D.period||'-');
- const tin=sum(inc,x=>x.금액), tout=sum(dec,x=>x.금액);
+ const tin=sum(inc,x=>x.금액), tout=sum(opex,x=>x.금액), townv=sum(own,x=>x.금액);
  const lock=sum(SEONYZ,x=>x.잔액);
- k_in.textContent=won(tin); k_out.textContent=won(tout); k_net.textContent=won(tin-tout); k_lock.textContent=won(lock);
- // 지출구조
- const grp={}; dec.forEach(r=>{const[g,fv]=cat(r.상대계정명);(grp[g]=grp[g]||{v:0,fv})['v']+=r.금액});
+ k_in.textContent=won(tin); k_out.textContent=won(tout); k_net.textContent=won(tin-tout); k_lock.textContent=won(lock); k_own.textContent=won(townv);
+ // 지출구조 (영업)
+ const grp={}; opex.forEach(r=>{const[g,fv]=cat(r.상대계정명);(grp[g]=grp[g]||{v:0,fv})['v']+=r.금액});
  const ce=Object.entries(grp).sort((a,b)=>b[1].v-a[1].v);
- document.querySelector('#t_cat tbody').innerHTML=ce.map(([g,o])=>`<tr><td>${g}</td><td><span class="tag ${o.fv==='고정'?'fix':'var'}">${o.fv}</span></td><td class="num">${o.v.toLocaleString()}</td><td style="width:80px"><div class="bar"><span style="width:${Math.round(o.v/tout*100)}%;background:${o.fv==='고정'?'#3b82f6':'#ef4444'}"></span></div></td></tr>`).join('');
- const fix=sum(dec.filter(r=>cat(r.상대계정명)[1]==='고정'),x=>x.금액), vr=tout-fix;
+ let catHtml=ce.map(([g,o])=>`<tr><td>${g}</td><td><span class="tag ${o.fv==='고정'?'fix':'var'}">${o.fv}</span></td><td class="num">${o.v.toLocaleString()}</td><td style="width:80px"><div class="bar"><span style="width:${Math.round(o.v/tout*100)}%;background:${o.fv==='고정'?'#3b82f6':'#ef4444'}"></span></div></td></tr>`).join('');
+ if(townv) catHtml+=`<tr><td>대표/개인·세금</td><td><span class="tag" style="background:#f3e8ff;color:#7c3aed">영업외</span></td><td class="num">${townv.toLocaleString()}</td><td class="muted" style="font-size:11px">영업지출 제외</td></tr>`;
+ document.querySelector('#t_cat tbody').innerHTML=catHtml;
+ const fix=sum(opex.filter(r=>cat(r.상대계정명)[1]==='고정'),x=>x.금액), vr=tout-fix;
  if(ch1)ch1.destroy();
  ch1=new Chart(chartCost,{type:'doughnut',data:{labels:['고정비','변동비'],datasets:[{data:[fix,vr],backgroundColor:['#3b82f6','#ef4444']}]},options:{plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:c=>c.label+' '+won(c.parsed)+' ('+Math.round(c.parsed/tout*100)+'%)'}}}}});
  // 정산입금 채널
@@ -126,7 +132,7 @@ function render(){
  seonyz_sum.textContent='· 합계 '+won(lock);
  document.querySelector('#t_seonyz tbody').innerHTML=SEONYZ.slice().sort((a,b)=>b.잔액-a.잔액).map(s=>`<tr><td>${s.거래처}</td><td class="num" style="color:#d97706;font-weight:600">${s.잔액.toLocaleString()}</td><td class="muted" style="white-space:normal">${s.비고||''}</td><td>${s.일자||''}</td></tr>`).join('');
  // 일자별
- const days={}; inc.forEach(r=>{(days[r.일자]=days[r.일자]||[0,0])[0]+=r.금액}); dec.forEach(r=>{(days[r.일자]=days[r.일자]||[0,0])[1]+=r.금액});
+ const days={}; inc.forEach(r=>{(days[r.일자]=days[r.일자]||[0,0])[0]+=r.금액}); opex.forEach(r=>{(days[r.일자]=days[r.일자]||[0,0])[1]+=r.금액});
  const labels=Object.keys(days).sort();
  if(ch2)ch2.destroy();
  ch2=new Chart(chartDaily,{type:'bar',data:{labels:labels.map(l=>l.slice(5)),datasets:[{label:'입금',data:labels.map(l=>days[l][0]),backgroundColor:'#10b981'},{label:'지출',data:labels.map(l=>days[l][1]),backgroundColor:'#ef4444'}]},options:{scales:{y:{ticks:{callback:v=>(v/1e6)+'백만'}}},plugins:{legend:{position:'top'}}}});
@@ -136,7 +142,7 @@ function render(){
  renderAgg(); renderDetail();
 }
 let aggKey='부서명';
-function renderAgg(){const inc=(D.자금의증가||[]).filter(real),dec=(D.자금의감소||[]).filter(real);
+function renderAgg(){const inc=(D.자금의증가||[]).filter(real),dec=(D.자금의감소||[]).filter(isOpex);
  const ab=(rows)=>{const m={};rows.forEach(r=>{const k=r[aggKey]||'(미지정)';m[k]=(m[k]||0)+r.금액});return m};
  const i=ab(inc),o=ab(dec);const keys=[...new Set([...Object.keys(i),...Object.keys(o)])].sort((a,b)=>((i[b]||0)+(o[b]||0))-((i[a]||0)+(o[a]||0)));
  document.querySelector('#t_agg tbody').innerHTML=keys.map(k=>`<tr><td>${k}</td><td class="num" style="color:#059669">${(i[k]||0).toLocaleString()}</td><td class="num" style="color:#dc2626">${(o[k]||0).toLocaleString()}</td><td class="num">${((i[k]||0)-(o[k]||0)).toLocaleString()}</td></tr>`).join('')}
