@@ -163,10 +163,11 @@ function dept(r){
  return '영업';
 }
 function deptKey(r){ return deptDim==='부서' ? dept(r) : ((r.프로젝트명||'').trim()||'(미지정)'); }
-function opexReal(r){ return real(r) && cat(r.상대계정명)[1]!=='영업외'; }
+function opexReal(r){ return real(r) && cat(r.상대계정명)[1]!=='영업외' && !isInvest(r); }
 const sum=(a,f)=>a.reduce((s,x)=>s+(f?f(x):0),0);
 const real=r=>(r.상대계정명||'').trim()!=='';   // 내부이체(대체) 제외
-const isOpex=r=>real(r)&&cat(r.상대계정명)[1]!=='영업외';  // 영업지출(대표/개인·내부이체 제외)
+const isInvest=r=>(/투자/.test(r.적요||'')||/종보전기|한국전력|태양광/.test((r.거래처명||'')+(r.적요||'')));  // 설비투자(자산) — 비용 아님
+const isOpex=r=>real(r)&&cat(r.상대계정명)[1]!=='영업외'&&!isInvest(r);  // 영업지출(대표/개인·투자·내부이체 제외)
 function load(){fetch('/jageum/api/data').then(r=>r.json()).then(d=>{D=d;initPeriod()}).catch(()=>{period.textContent='데이터 없음'})}
 function ym2label(k){const a=k.split("-");return a[0]+"년 "+(+a[1])+"월";}
 function buildP(keys,label){
@@ -205,9 +206,10 @@ function render(){
  const inc=incAll.filter(real);
  const decReal=decAll.filter(real);
  const opex=decReal.filter(isOpex);
- const own=decReal.filter(r=>!isOpex(r));   // 대표/개인·세금(영업외)
+ const own=decReal.filter(r=>cat(r.상대계정명)[1]==='영업외'&&!isInvest(r));   // 대표/개인·세금
+ const inv=decReal.filter(isInvest);   // 투자(자산)
  document.getElementById('period').textContent='기간: '+(D.period||'-');
- const tin=sum(inc,x=>x.금액), tout=sum(opex,x=>x.금액), townv=sum(own,x=>x.금액);
+ const tin=sum(inc,x=>x.금액), tout=sum(opex,x=>x.금액), townv=sum(own,x=>x.금액), tinv=sum(inv,x=>x.금액);
  const lock=sum(SEONYZ,x=>x.잔액);
  k_in.textContent=won(tin); k_out.textContent=won(tout); k_net.textContent=won(tin-tout); k_lock.textContent=won(lock); k_own.textContent=won(townv);
  // 지출구조 (영업)
@@ -215,6 +217,7 @@ function render(){
  const ce=Object.entries(grp).sort((a,b)=>b[1].v-a[1].v);
  let catHtml=ce.map(([g,o])=>`<tr><td>${g}</td><td><span class="tag ${o.fv==='고정'?'fix':'var'}">${o.fv}</span></td><td class="num">${o.v.toLocaleString()}</td><td style="width:80px"><div class="bar"><span style="width:${Math.round(o.v/tout*100)}%;background:${o.fv==='고정'?'#3b82f6':'#ef4444'}"></span></div></td></tr>`).join('');
  if(townv) catHtml+=`<tr><td>대표/개인·세금</td><td><span class="tag" style="background:#f3e8ff;color:#7c3aed">영업외</span></td><td class="num">${townv.toLocaleString()}</td><td class="muted" style="font-size:11px">영업지출 제외</td></tr>`;
+ if(tinv) catHtml+=`<tr><td>투자 (태양광·설비)</td><td><span class="tag" style="background:#fef3c7;color:#b45309">자산</span></td><td class="num">${tinv.toLocaleString()}</td><td class="muted" style="font-size:11px">비용 아님(자산화)</td></tr>`;
  document.querySelector('#t_cat tbody').innerHTML=catHtml;
  const fix=sum(opex.filter(r=>cat(r.상대계정명)[1]==='고정'),x=>x.금액), vr=tout-fix;
  if(ch1)ch1.destroy();
@@ -284,7 +287,9 @@ function renderAssets(){
  const settle=(c.정산예정||0)+(c.미구매확정||0)+NAVER_SETTLE;
  const misu=(D.미수금&&D.미수금.total)||0, misuItems=(D.미수금&&D.미수금.items)||[];
  const seonyz=sum(SEONYZ,x=>x.잔액);
- const total=cash+settle+misu+seonyz+SOLAR_INVEST;
+ let invest=0; const investBy={};
+ Object.values(D.months||{}).forEach(m=>{(m.자금의감소||[]).filter(real).filter(isInvest).forEach(r=>{invest+=r.금액; const k=r.거래처명||r.적요||'기타'; investBy[k]=(investBy[k]||0)+r.금액;});});
+ const total=cash+settle+misu+seonyz+invest;
  asset_total.textContent=won(total);
  const D2=(arr)=>arr.map(([k,v])=>`<div><span>${k}</span><b style="color:#1f2937">${(v||0).toLocaleString()}</b></div>`).join('')||'<div>-</div>';
  const items=[
@@ -292,7 +297,7 @@ function renderAssets(){
   ['📦 정산예정 (결제됨·미입금)',settle, D2([['쿠팡 정산예정',c.정산예정||0],['쿠팡 미구매확정',c.미구매확정||0],['네이버',NAVER_SETTLE]])],
   ['🧾 미수금 (B2B 받을 돈)',misu, D2(misuItems.map(x=>[x.거래처명,x.잔액]))],
   ['🤝 선급금 (거래처 선지급)',seonyz, D2(SEONYZ.map(s=>[s.거래처,s.잔액]))],
-  ['☀️ 태양광 투자자산',SOLAR_INVEST, '<div><span>과거 데이터(백필) 연결 후 자동 표시</span></div>'],
+  ['☀️ 투자자산 (태양광·한전 설비)',invest, D2(Object.entries(investBy).sort((a,b)=>b[1]-a[1]))],
  ];
  asset_items.innerHTML=items.map(([nm,val,det])=>`<details class="asset-item"><summary><span>${nm}</span><b>${won(val)}</b></summary><div class="asset-detail">${det}</div></details>`).join('');
 }
