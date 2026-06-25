@@ -37,6 +37,18 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
   <div class="kpi lock"><div class="l">🔒 묶인 선금</div><div class="v" id="k_lock">-</div><div class="s">거래처 선지급 잔액</div></div>
  </div>
 
+ <div class="card" id="pl_card" style="border-top:3px solid #5b21b6">
+   <h2>📊 손익계산서 <span class="muted big" id="pl_label"></span></h2>
+   <div class="note">발생주의 손익(실제 번/쓴 것 기준) — 위 현금흐름과 다른 개념이에요</div>
+   <div class="kpis" style="margin-bottom:12px">
+     <div class="kpi"><div class="l">매출</div><div class="v" id="pl_sales" style="color:#1f2937">-</div><div class="s" id="pl_sales_d"></div></div>
+     <div class="kpi"><div class="l">매출총이익 (마진)</div><div class="v" id="pl_gp" style="color:#059669">-</div><div class="s" id="pl_gp_r"></div></div>
+     <div class="kpi"><div class="l">영업손익</div><div class="v" id="pl_op">-</div><div class="s" id="pl_op_r"></div></div>
+     <div class="kpi"><div class="l">당기순이익</div><div class="v" id="pl_net">-</div><div class="s" id="pl_net_d"></div></div>
+   </div>
+   <div class="scroll"><table id="t_pl"><thead><tr><th>과목</th><th class="num" id="pl_cn">올해</th><th class="num" id="pl_pn">작년</th><th class="num">증감</th></tr></thead><tbody></tbody></table></div>
+ </div>
+
  <div class="grid2">
   <div class="card"><h2>💸 지출 구조 — 고정비 vs 변동비</h2><div class="note">계정과목 자동분류 · 내부이체(대체) 제외</div>
     <canvas id="chartCost" height="150"></canvas>
@@ -139,7 +151,27 @@ function render(){
  // 잔액
  const bote=bal.filter(b=>(b.계정명||'').includes('보통예금'));
  document.querySelector('#t_bal tbody').innerHTML=(bote.length?bote:bal).map(r=>`<tr><td>${r.계정명||''}</td><td>${r.거래처명||''}</td><td class="num">${(r.금일잔액||0).toLocaleString()}</td>`).join('');
- renderAgg(); renderDetail();
+ renderAgg(); renderDetail(); renderPL();
+}
+function renderPL(){
+ const pl=D.손익; const card=document.getElementById('pl_card');
+ if(!pl||!pl.rows||!pl.rows.length){card.style.display='none';return}
+ card.style.display='';
+ pl_label.textContent='· '+(pl.당기명||'올해')+' vs '+(pl.전기명||'작년');
+ pl_cn.textContent=pl.당기명||'올해'; pl_pn.textContent=pl.전기명||'작년';
+ const M={}; pl.rows.forEach(r=>{M[r.과목.replace(/\s/g,'')]=r});
+ const sales=M['1.매출']||{당기:0,전기:0}, gp=M['3.매출총이익']||{당기:0,전기:0};
+ const op=M['5.영업손익']||M['5.영업이익']||{당기:0,전기:0};
+ const net=M['12.당기순이익']||pl.rows.find(r=>r.과목.includes('당기순이익'))||{당기:0,전기:0};
+ const pct=(a,b)=>b?Math.round(a/b*100):0;
+ pl_sales.textContent=won(sales.당기); pl_sales_d.textContent='작년 '+won(sales.전기);
+ pl_gp.textContent=won(gp.당기); pl_gp_r.textContent='마진율 '+pct(gp.당기,sales.당기)+'%';
+ pl_op.textContent=won(op.당기); pl_op.style.color=op.당기<0?'#dc2626':'#059669'; pl_op_r.textContent='영업이익률 '+pct(op.당기,sales.당기)+'%';
+ pl_net.textContent=won(net.당기); pl_net.style.color=net.당기<0?'#dc2626':'#059669'; pl_net_d.textContent='작년 '+won(net.전기);
+ document.querySelector('#t_pl tbody').innerHTML=pl.rows.map(r=>{
+   const diff=r.당기-r.전기;
+   return `<tr style="${r.major?'background:#faf8ff;font-weight:600':''}"><td style="${r.major?'':'padding-left:20px'}">${r.과목}</td><td class="num" style="${r.당기<0?'color:#dc2626':''}">${r.당기.toLocaleString()}</td><td class="num muted">${r.전기.toLocaleString()}</td><td class="num" style="color:${diff<0?'#dc2626':'#059669'}">${diff>=0?'+':''}${diff.toLocaleString()}</td></tr>`;
+ }).join('');
 }
 let aggKey='부서명';
 function renderAgg(){const inc=(D.자금의증가||[]).filter(real),dec=(D.자금의감소||[]).filter(isOpex);
