@@ -26,9 +26,22 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
 .muted{color:#9ca3af}.tag{font-size:11px;padding:2px 7px;border-radius:20px}
 .fix{background:#dbeafe;color:#1d4ed8}.var{background:#fee2e2;color:#b91c1c}
 .big{font-size:13px}
+#asset_panel{border:2px solid #5b21b6;background:linear-gradient(135deg,#faf5ff,#f3e8ff)}
+#asset_panel .asset-items{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:8px;margin-top:14px}
+.asset-item{background:#fff;border:1px solid #e9d5ff;border-radius:8px}
+.asset-item summary{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;cursor:pointer;list-style:none;font-size:13px;user-select:none}
+.asset-item summary b{color:#5b21b6;font-size:15px}
+.asset-item summary::-webkit-details-marker{display:none}
+.asset-detail{padding:0 12px 10px;font-size:12px;color:#6b7280;max-height:170px;overflow:auto}
+.asset-detail>div{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f3f4f6}
 </style></head><body>
 <div class="top"><h1>💰 부자홀딩스 자금 대시보드</h1><span class="sub" id="period">불러오는 중…</span></div>
 <div class="wrap">
+ <div class="card" id="asset_panel">
+   <div class="muted" style="font-size:13px">💎 실질 총자산 <span style="font-size:11px">(오늘 기준 · 통장+곧 들어올 돈+받을 돈+선급+투자)</span></div>
+   <div id="asset_total" style="font-size:34px;font-weight:800;color:#5b21b6;line-height:1.2">-</div>
+   <div class="asset-items" id="asset_items"></div>
+ </div>
  <div class="kpis">
   <div class="kpi in"><div class="l">영업 입금 (매출정산)</div><div class="v" id="k_in">-</div><div class="s">내부이체 제외</div></div>
   <div class="kpi out"><div class="l">영업 지출</div><div class="v" id="k_out">-</div><div class="s">내부이체 제외</div></div>
@@ -160,8 +173,28 @@ function render(){
  // 잔액
  const bote=bal.filter(b=>(b.계정명||'').includes('보통예금'));
  document.querySelector('#t_bal tbody').innerHTML=(bote.length?bote:bal).map(r=>`<tr><td>${r.계정명||''}</td><td>${r.거래처명||''}</td><td class="num">${(r.금일잔액||0).toLocaleString()}</td>`).join('');
- renderAgg(); renderDetail(); renderPL(); renderSettle();
+ renderAgg(); renderDetail(); renderPL(); renderSettle(); renderAssets();
 }
+function renderAssets(){
+ const bal=(D.자금현황||[]).filter(b=>(b.계정명||'').includes('보통예금'));
+ const cash=sum(bal,x=>x.금일잔액||0);
+ const c=(D.정산예정&&D.정산예정.쿠팡)||{};
+ const settle=(c.정산예정||0)+(c.미구매확정||0)+NAVER_SETTLE;
+ const misu=(D.미수금&&D.미수금.total)||0, misuItems=(D.미수금&&D.미수금.items)||[];
+ const seonyz=sum(SEONYZ,x=>x.잔액);
+ const total=cash+settle+misu+seonyz+SOLAR_INVEST;
+ asset_total.textContent=won(total);
+ const D2=(arr)=>arr.map(([k,v])=>`<div><span>${k}</span><b style="color:#1f2937">${(v||0).toLocaleString()}</b></div>`).join('')||'<div>-</div>';
+ const items=[
+  ['🏦 현금 잔액 (통장)',cash, D2(bal.map(b=>[b.거래처명||b.계정명, b.금일잔액]))],
+  ['📦 정산예정 (결제됨·미입금)',settle, D2([['쿠팡 정산예정',c.정산예정||0],['쿠팡 미구매확정',c.미구매확정||0],['네이버',NAVER_SETTLE]])],
+  ['🧾 미수금 (B2B 받을 돈)',misu, D2(misuItems.map(x=>[x.거래처명,x.잔액]))],
+  ['🤝 선급금 (거래처 선지급)',seonyz, D2(SEONYZ.map(s=>[s.거래처,s.잔액]))],
+  ['☀️ 태양광 투자자산',SOLAR_INVEST, '<div><span>과거 데이터(백필) 연결 후 자동 표시</span></div>'],
+ ];
+ asset_items.innerHTML=items.map(([nm,val,det])=>`<details class="asset-item"><summary><span>${nm}</span><b>${won(val)}</b></summary><div class="asset-detail">${det}</div></details>`).join('');
+}
+const SOLAR_INVEST=0; // 태양광 투자자산 (과거 백필 후 자동연결, 임시 0)
 const NAVER_SETTLE=650108; // 네이버 정산예정(수동) — 스토어 메인 정산예정금액
 function renderSettle(){
  const c=(D.정산예정&&D.정산예정.쿠팡)||{};
