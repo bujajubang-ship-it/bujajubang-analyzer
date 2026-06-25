@@ -78,20 +78,18 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
   <div class="kpi"><div class="l">📦 정산예정 (곧 입금)</div><div class="v" id="k_settle" style="color:#0891b2">-</div><div class="s">쿠팡+네이버 묶인 돈</div></div>
  </div>
 
- <div class="card" id="pl_card" style="border-top:3px solid #5b21b6">
-   <h2>📊 손익계산서 <span class="muted big" id="pl_label"></span></h2>
-   <div class="note">발생주의 손익(실제 번/쓴 것 기준) — 위 현금흐름과 다른 개념이에요</div>
+ <details class="card" id="pl_card" style="border-top:3px solid #5b21b6">
+   <summary style="cursor:pointer;list-style:none;font-size:15px;font-weight:600;color:#1f2937">📊 손익계산서 (이카운트 발생주의) <span class="muted" style="font-weight:400;font-size:12px" id="pl_label">— 펼치기</span></summary>
+   <div class="note" style="margin-top:8px">실제 번/쓴 것 기준 손익 (현금흐름과 다른 개념). 자주 보진 않는 참고용.</div>
    <div class="kpis" style="margin-bottom:12px">
      <div class="kpi"><div class="l">매출</div><div class="v" id="pl_sales" style="color:#1f2937">-</div><div class="s" id="pl_sales_d"></div></div>
      <div class="kpi"><div class="l">매출총이익 (마진)</div><div class="v" id="pl_gp" style="color:#059669">-</div><div class="s" id="pl_gp_r"></div></div>
      <div class="kpi"><div class="l">영업손익</div><div class="v" id="pl_op">-</div><div class="s" id="pl_op_r"></div></div>
      <div class="kpi"><div class="l">당기순이익</div><div class="v" id="pl_net">-</div><div class="s" id="pl_net_d"></div></div>
    </div>
-   <div class="scroll"><table id="t_pl"><thead><tr><th>과목</th><th class="num" id="pl_cn">올해</th><th class="num" id="pl_pn">작년</th><th class="num">증감</th></tr></thead><tbody></tbody></table></div>
-   <details style="margin-top:12px"><summary style="cursor:pointer;color:#5b21b6;font-size:13px;user-select:none">📐 같은 기간으로 비교해보기 (올해는 반년치라 단순비교 주의) — 펼치기</summary>
-     <div id="pl_fair" style="font-size:13px;padding:10px 2px"></div>
-   </details>
- </div>
+   <div class="scroll"><table id="t_pl"><thead><tr><th>과목</th><th class="num" id="pl_cn">올해</th></tr></thead><tbody></tbody></table></div>
+   <div id="pl_fair" style="display:none"></div>
+ </details>
 
  <div class="card" id="dept_card">
    <h2>🏢 부서·프로젝트별 손익 <span class="muted big" id="dept_period"></span></h2>
@@ -101,6 +99,13 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    <div class="kpis" id="dept_kpis" style="margin-bottom:12px"></div>
    <div id="dept_extra"></div>
    <div style="margin-top:10px"><div class="note">월별 순익 추이</div><canvas id="deptTrend" height="75"></canvas></div>
+ </div>
+
+ <div class="card" id="settle_card" style="border-top:3px solid #059669">
+   <h2>📅 월말 결산 — 팀별 매출·비용·순익</h2>
+   <div class="note">매월 쇼핑몰팀·영업팀(담당자별) 현금흐름 결산 · 태양광은 영업외수익 별도</div>
+   <div class="tabs" id="closedim"><button class="on" data-cd="순익">순익 보기</button><button data-cd="매출">매출 보기</button><button data-cd="비용">비용 보기</button></div>
+   <div class="scroll" style="overflow-x:auto"><table id="t_close"></table></div>
  </div>
 
  <div class="card" id="baltrend_card">
@@ -187,11 +192,16 @@ let deptDim='부서', deptSel=null;
 function dept(r){
  const t=(r.거래처명||'')+(r.적요||'')+(r.상대계정명||'');
  if(/종보전기|한국전력|전력매출/.test(t)) return '태양광';
- if((r.프로젝트명||'').includes('쇼핑몰')) return '쇼핑몰';
- return '영업';
+ const pj=(r.프로젝트명||'');
+ if(pj.includes('쇼핑몰')) return '쇼핑몰';
+ if(pj.includes('성기민')) return '영업·성기민';
+ if(pj.includes('김성주')) return '영업·김성주';
+ if(pj.includes('대표')) return '영업·대표';
+ return '영업·기타';
 }
 function deptKey(r){ return deptDim==='부서' ? dept(r) : ((r.프로젝트명||'').trim()||'(미지정)'); }
-function opexReal(r){ return real(r) && cat(r.상대계정명)[1]!=='영업외' && !isInvest(r); }
+function isGovSupport(r){ return /정부지원/.test(r.적요||''); }  // 정부지원 자부담(선금성 자산)
+function opexReal(r){ return real(r) && cat(r.상대계정명)[1]!=='영업외' && !isInvest(r) && !isGovSupport(r); }
 const sum=(a,f)=>a.reduce((s,x)=>s+(f?f(x):0),0);
 const real=r=>(r.상대계정명||'').trim()!=='';   // 내부이체(대체) 제외
 function isInvest(r){ const cust=(r.거래처명||''),memo=(r.적요||'');
@@ -312,7 +322,32 @@ function render(){
  // 잔액
  const bote=bal.filter(b=>(b.계정명||'').includes('보통예금'));
  document.querySelector('#t_bal tbody').innerHTML=(bote.length?bote:bal).map(r=>`<tr><td>${r.계정명||''}</td><td>${r.거래처명||''}</td><td class="num">${(r.금일잔액||0).toLocaleString()}</td>`).join('');
- renderAgg(); renderDetail(); renderPL(); renderSettle(); renderAssets(); renderDept(); renderBalTrend();
+ renderAgg(); renderDetail(); renderPL(); renderSettle(); renderAssets(); renderDept(); renderBalTrend(); renderClose();
+}
+let closeDim='순익';
+function renderClose(){
+ const ml=D.months_list||[]; if(!ml.length||!D.months) return;
+ const teams=['쇼핑몰','영업·성기민','영업·김성주','영업·대표','영업·기타'];
+ const tlabel={'쇼핑몰':'🛒 쇼핑몰','영업·성기민':'🧑‍💼 성기민','영업·김성주':'🧑‍💼 김성주','영업·대표':'👑 대표','영업·기타':'💼 기타'};
+ // [team][month] = {매출,비용}
+ const data={}; teams.forEach(t=>data[t]={});
+ ml.forEach(k=>{
+   const m=D.months[k];
+   (m.자금의증가||[]).filter(real).forEach(r=>{const t=dept(r); if(data[t]){(data[t][k]=data[t][k]||{매출:0,비용:0}).매출+=r.금액;}});
+   (m.자금의감소||[]).filter(opexReal).forEach(r=>{const t=dept(r); if(data[t]){(data[t][k]=data[t][k]||{매출:0,비용:0}).비용+=r.금액;}});
+ });
+ const val=(t,k)=>{const c=data[t][k]||{매출:0,비용:0}; return closeDim==='매출'?c.매출:closeDim==='비용'?c.비용:(c.매출-c.비용);};
+ const stick='position:sticky;left:0;z-index:1;';
+ let head='<tr><th style="'+stick+'background:#fafafe">팀/담당</th>'+ml.map(k=>'<th class="num">'+k.slice(2)+'</th>').join('')+'<th class="num">합계</th></tr>';
+ let rows=teams.map(t=>{
+   const cells=ml.map(k=>val(t,k)); const sum=cells.reduce((s,v)=>s+v,0);
+   return '<tr><td style="'+stick+'background:#fff;white-space:nowrap">'+tlabel[t]+'</td>'+cells.map(v=>'<td class="num" style="color:'+(closeDim==='순익'&&v<0?'#dc2626':'#1f2937')+'">'+(v?Math.round(v/10000).toLocaleString()+'만':'-')+'</td>').join('')+'<td class="num" style="font-weight:700">'+(sum?Math.round(sum/10000).toLocaleString()+'만':'-')+'</td></tr>';
+ }).join('');
+ const totByM=ml.map(k=>teams.reduce((s,t)=>s+val(t,k),0));
+ const gtot=totByM.reduce((s,v)=>s+v,0);
+ let totrow='<tr style="font-weight:700;background:#ecfdf5"><td style="'+stick+'background:#ecfdf5">전체 합계</td>'+totByM.map(v=>'<td class="num" style="color:'+(closeDim==='순익'&&v<0?'#dc2626':'#065f46')+'">'+(v?Math.round(v/10000).toLocaleString()+'만':'-')+'</td>').join('')+'<td class="num">'+Math.round(gtot/10000).toLocaleString()+'만</td></tr>';
+ document.getElementById('t_close').innerHTML='<thead>'+head+'</thead><tbody>'+totrow+rows+'</tbody>';
+ document.querySelectorAll('#closedim button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#closedim button').forEach(x=>x.classList.remove('on'));b.classList.add('on');closeDim=b.dataset.cd;renderClose();});
 }
 function renderBalTrend(){
  const ml=D.months_list||[]; if(!ml.length||!D.months) return;
@@ -343,10 +378,10 @@ function renderDept(){
  dept_period.textContent = P ? '· '+P.label : '';
  const g={}; const add=(r,w)=>{const k=deptKey(r);(g[k]=g[k]||{매출:0,비용:0})[w]+=r.금액;};
  inc.forEach(r=>add(r,'매출')); dec.forEach(r=>add(r,'비용'));
- let names = deptDim==='부서' ? ['쇼핑몰','영업','태양광'] : Object.keys(g).sort((a,b)=>((g[b].매출+g[b].비용)-(g[a].매출+g[a].비용)));
+ let names = deptDim==='부서' ? ['쇼핑몰','영업·성기민','영업·김성주','영업·대표','영업·기타','태양광'].filter(n=>g[n]) : Object.keys(g).sort((a,b)=>((g[b].매출+g[b].비용)-(g[a].매출+g[a].비용)));
  if(!names.length) names=['(없음)'];
  if(!deptSel||!names.includes(deptSel)) deptSel=names[0];
- const ic={'쇼핑몰':'🛒','영업':'💼','태양광':'☀️'};
+ const ic={'쇼핑몰':'🛒','영업·성기민':'🧑‍💼','영업·김성주':'🧑‍💼','영업·대표':'👑','영업·기타':'💼','태양광':'☀️'};
  document.getElementById('depttabs').innerHTML=names.map(n=>`<button class="${n===deptSel?'on':''}" data-g="${n}">${ic[n]||'📁'} ${n}</button>`).join('');
  document.querySelectorAll('#depttabs button').forEach(b=>b.onclick=()=>{deptSel=b.dataset.g;renderDept();});
  const cur=g[deptSel]||{매출:0,비용:0}; const net=cur.매출-cur.비용;
@@ -358,16 +393,13 @@ function renderDept(){
    const ch={}; inc.filter(r=>deptKey(r)==='쇼핑몰').forEach(r=>{let k=r.거래처명||'기타';if(/네이버/.test(k))k='네이버';else if(/쿠팡/.test(k))k='쿠팡';else if(/카페24/.test(k))k='카페24';else if((r.상대계정명||'').includes('현금'))k='현금매출';ch[k]=(ch[k]||0)+r.금액;});
    const a=Object.entries(ch).sort((x,y)=>y[1]-x[1]);const tot=a.reduce((s,x)=>s+x[1],0)||1;
    ex='<div class="note">채널별 매출</div><table>'+a.map(([k,v])=>`<tr><td>${k}</td><td class="num">${v.toLocaleString()}</td><td style="width:110px"><div class="bar"><span style="width:${Math.round(v/tot*100)}%;background:#10b981"></span></div></td></tr>`).join('')+'</table>';
- } else if(deptSel==='영업'){
-   const items=(D.미수금&&D.미수금.items)||[];
-   ex='<div class="note">미수금 — B2B 받을 돈 (현재 기준)</div><div class="scroll" style="max-height:200px"><table>'+items.map(x=>`<tr><td>${x.거래처명}</td><td class="num">${x.잔액.toLocaleString()}</td></tr>`).join('')+'</table></div>';
  } else if(deptSel==='태양광'){
    const rev=inc.filter(r=>deptKey(r)==='태양광').reduce((s,r)=>s+r.금액,0);
-   ex=`<div class="muted" style="font-size:13px;padding:6px 0">☀️ 전력판매 수익 <b>${won(rev)}</b> · 투자/비용 <b>${won(cur.비용)}</b> (종보전기 등)</div>`;
+   ex=`<div class="muted" style="font-size:13px;padding:6px 0">☀️ 전력판매 수익(영업외) <b>${won(rev)}</b> · 투자/비용 <b>${won(cur.비용)}</b> (종보전기 등)</div>`;
  } else {
-   const byc={}; inc.filter(r=>deptKey(r)===deptSel).forEach(r=>{const k=r.거래처명||r.적요||'기타';byc[k]=(byc[k]||0)+r.금액;});
-   const a=Object.entries(byc).sort((x,y)=>y[1]-x[1]).slice(0,10);
-   ex='<div class="note">주요 입금처</div><table>'+a.map(([k,v])=>`<tr><td>${k}</td><td class="num">${v.toLocaleString()}</td></tr>`).join('')+'</table>';
+   const byc={}; inc.filter(r=>deptKey(r)===deptSel).forEach(r=>{const k=(r.프로젝트명||r.거래처명||'기타');byc[k]=(byc[k]||0)+r.금액;});
+   const a=Object.entries(byc).sort((x,y)=>y[1]-x[1]).slice(0,12);
+   ex='<div class="note">거래처/프로젝트별 매출</div><table>'+a.map(([k,v])=>`<tr><td style="white-space:normal">${k}</td><td class="num">${v.toLocaleString()}</td></tr>`).join('')+'</table>';
  }
  dept_extra.innerHTML=ex;
  const ml=D.months_list||[];
@@ -390,10 +422,13 @@ function renderAssets(){
  const settle=(c.정산예정||0)+(c.미구매확정||0)+naverAmt()+cafe24Amt();
  const misuArr=misuList(), misu=sum(misuArr,x=>x.잔액||0);
  const seonyzArr=SEONYZ(), seonyz=sum(seonyzArr,x=>x.잔액||0);
- let invest=0; const investBy={};
- Object.values(D.months||{}).forEach(m=>{(m.자금의감소||[]).filter(real).filter(isInvest).forEach(r=>{invest+=r.금액; const k=r.거래처명||r.적요||'기타'; investBy[k]=(investBy[k]||0)+r.금액;});});
+ let invest=0; const investBy={}; let gov=0; const govBy={};
+ Object.values(D.months||{}).forEach(m=>{(m.자금의감소||[]).filter(real).forEach(r=>{
+   if(isInvest(r)){invest+=r.금액; const k=r.거래처명||r.적요||'기타'; investBy[k]=(investBy[k]||0)+r.금액;}
+   else if(isGovSupport(r)){gov+=r.금액; const k=r.적요||r.거래처명||'기타'; govBy[k]=(govBy[k]||0)+r.금액;}
+ });});
  const loans=loanList(), loan=sum(loans,x=>x.잔액||0);
- const total=cash+settle+misu+seonyz+invest;
+ const total=cash+settle+misu+seonyz+invest+gov;
  const net=total-loan;
  asset_total.textContent=won(total);
  document.getElementById('asset_net').innerHTML='− 대출(부채) '+won(loan)+'  =  <b style="color:#059669;font-size:17px">순자산 '+won(net)+'</b>';
@@ -406,6 +441,7 @@ function renderAssets(){
   ['🧾 미수금 (B2B 받을 돈)'+(misuIsManual()?' ✋':''),misu, editLink("openEdit('미수금')",'미수금 수정')+D3(misuArr)],
   ['🤝 선급금 (거래처 선지급)',seonyz, editLink("openEdit('선급금')",'선급금 수정')+D3(seonyzArr)],
   ['☀️ 투자자산 (태양광·한전 설비)',invest, D2(Object.entries(investBy).sort((a,b)=>b[1]-a[1]))],
+  ['🏛️ 정부지원사업 (자부담 선지급)',gov, gov?D2(Object.entries(govBy).sort((a,b)=>b[1]-a[1])):'<div><span>출금 적요에 \'정부지원\' 적으면 자동집계 (수출바우처 자부담 등)</span></div>'],
   ['💳 대출 (부채)',-loan, editLink("openEdit('대출')",'대출 수정')+D3(loans)],
  ];
  asset_items.innerHTML=items.map(([nm,val,det])=>`<details class="asset-item"><summary><span>${nm}</span><b style="color:${val<0?'#dc2626':'#5b21b6'}">${won(val)}</b></summary><div class="asset-detail">${det}</div></details>`).join('');
@@ -428,28 +464,20 @@ function renderPL(){
  const pl=D.손익; const card=document.getElementById('pl_card');
  if(!pl||!pl.rows||!pl.rows.length){card.style.display='none';return}
  card.style.display='';
- pl_label.textContent='· '+(pl.당기명||'올해')+' vs '+(pl.전기명||'작년');
- pl_cn.textContent=pl.당기명||'올해'; pl_pn.textContent=pl.전기명||'작년';
+ pl_label.textContent='— '+(pl.당기명||'올해')+' (펼치기)';
+ pl_cn.textContent=pl.당기명||'올해';
  const M={}; pl.rows.forEach(r=>{M[r.과목.replace(/\s/g,'')]=r});
- const sales=M['1.매출']||{당기:0,전기:0}, gp=M['3.매출총이익']||{당기:0,전기:0};
- const op=M['5.영업손익']||M['5.영업이익']||{당기:0,전기:0};
- const net=M['12.당기순이익']||pl.rows.find(r=>r.과목.includes('당기순이익'))||{당기:0,전기:0};
+ const sales=M['1.매출']||{당기:0}, gp=M['3.매출총이익']||{당기:0};
+ const op=M['5.영업손익']||M['5.영업이익']||{당기:0};
+ const net=M['12.당기순이익']||pl.rows.find(r=>r.과목.includes('당기순이익'))||{당기:0};
  const pct=(a,b)=>b?Math.round(a/b*100):0;
- pl_sales.textContent=won(sales.당기); pl_sales_d.textContent='작년 '+won(sales.전기);
+ pl_sales.textContent=won(sales.당기); pl_sales_d.textContent='';
  pl_gp.textContent=won(gp.당기); pl_gp_r.textContent='마진율 '+pct(gp.당기,sales.당기)+'%';
  pl_op.textContent=won(op.당기); pl_op.style.color=op.당기<0?'#dc2626':'#059669'; pl_op_r.textContent='영업이익률 '+pct(op.당기,sales.당기)+'%';
- pl_net.textContent=won(net.당기); pl_net.style.color=net.당기<0?'#dc2626':'#059669'; pl_net_d.textContent='작년 '+won(net.전기);
- document.querySelector('#t_pl tbody').innerHTML=pl.rows.map(r=>{
-   const diff=r.당기-r.전기;
-   return `<tr style="${r.major?'background:#faf8ff;font-weight:600':''}"><td style="${r.major?'':'padding-left:20px'}">${r.과목}</td><td class="num" style="${r.당기<0?'color:#dc2626':''}">${r.당기.toLocaleString()}</td><td class="num muted">${r.전기.toLocaleString()}</td><td class="num" style="color:${diff<0?'#dc2626':'#059669'}">${diff>=0?'+':''}${diff.toLocaleString()}</td></tr>`;
- }).join('');
- const now=new Date(); const me=Math.max(now.getMonth()+now.getDate()/30.4, 0.5); const f=12/me;
- const annS=sales.당기*f, annO=op.당기*f;
- document.getElementById('pl_fair').innerHTML=`<div class="muted" style="margin-bottom:6px">회계연도 1월 시작 가정 · 올해 약 ${me.toFixed(1)}개월 경과 → 연환산 추정</div>
-   <table><thead><tr><th>항목</th><th class="num">올해(${me.toFixed(0)}개월)</th><th class="num">올해 연환산</th><th class="num">작년(1년)</th></tr></thead><tbody>
-   <tr><td>매출</td><td class="num">${won(sales.당기)}</td><td class="num">${won(annS)}</td><td class="num muted">${won(sales.전기)}</td></tr>
-   <tr><td>영업손익</td><td class="num" style="color:${op.당기<0?'#dc2626':''}">${won(op.당기)}</td><td class="num" style="color:${annO<0?'#dc2626':'#059669'}">${won(annO)}</td><td class="num muted">${won(op.전기)}</td></tr></tbody></table>
-   <div class="muted" style="margin-top:6px">※ 단순 비례 추정. 정확한 동기비교는 작년 같은기간(1~6월) 실적이 필요해요.</div>`;
+ pl_net.textContent=won(net.당기); pl_net.style.color=net.당기<0?'#dc2626':'#059669'; pl_net_d.textContent='';
+ document.querySelector('#t_pl tbody').innerHTML=pl.rows.map(r=>
+   `<tr style="${r.major?'background:#faf8ff;font-weight:600':''}"><td style="${r.major?'':'padding-left:20px'}">${r.과목}</td><td class="num" style="${r.당기<0?'color:#dc2626':''}">${r.당기.toLocaleString()}</td></tr>`
+ ).join('');
 }
 let aggKey='부서명';
 function renderAgg(){const inc=(D.자금의증가||[]).filter(real),dec=(D.자금의감소||[]).filter(isOpex);
