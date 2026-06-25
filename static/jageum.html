@@ -203,6 +203,7 @@ function deptKey(r){ return deptDim==='부서' ? dept(r) : ((r.프로젝트명||
 function isGovSupport(r){ return /정부지원/.test(r.적요||''); }  // 정부지원 자부담(선금성 자산)
 function opexReal(r){ return real(r) && cat(r.상대계정명)[1]!=='영업외' && !isInvest(r) && !isGovSupport(r); }
 const sum=(a,f)=>a.reduce((s,x)=>s+(f?f(x):0),0);
+function acctName(r){ const nm=r.거래처명||r.계정명||''; const code=(r.거래처코드||'').toString(); return code.length>=3 ? nm+' ('+code.slice(0,3)+')' : nm; }
 const real=r=>(r.상대계정명||'').trim()!=='';   // 내부이체(대체) 제외
 function isInvest(r){ const cust=(r.거래처명||''),memo=(r.적요||'');
  if(/대한무역|진흥공사|시청|세무서|구청|공단|국세/.test(cust)) return false;  // 관공서·지원기관 제외
@@ -321,7 +322,7 @@ function render(){
  ch2=new Chart(chartDaily,{type:'bar',data:{labels:labels.map(l=>l.slice(5)),datasets:[{label:'입금',data:labels.map(l=>days[l][0]),backgroundColor:'#10b981'},{label:'지출',data:labels.map(l=>days[l][1]),backgroundColor:'#ef4444'}]},options:{scales:{y:{ticks:{callback:v=>(v/1e6)+'백만'}}},plugins:{legend:{position:'top'}}}});
  // 잔액
  const bote=bal.filter(b=>(b.계정명||'').includes('보통예금'));
- document.querySelector('#t_bal tbody').innerHTML=(bote.length?bote:bal).map(r=>`<tr><td>${r.계정명||''}</td><td>${r.거래처명||''}</td><td class="num">${(r.금일잔액||0).toLocaleString()}</td>`).join('');
+ document.querySelector('#t_bal tbody').innerHTML=(bote.length?bote:bal).map(r=>`<tr><td>${r.계정명||''}</td><td>${acctName(r)}</td><td class="num">${(r.금일잔액||0).toLocaleString()}</td>`).join('');
  renderAgg(); renderDetail(); renderPL(); renderSettle(); renderAssets(); renderDept(); renderBalTrend(); renderClose();
 }
 let closeDim='순익';
@@ -351,11 +352,15 @@ function renderClose(){
 }
 function renderBalTrend(){
  const ml=D.months_list||[]; if(!ml.length||!D.months) return;
+ // 거래처명→계좌앞3자리 매핑(코드 있는 달에서 수집)
+ const codeMap={};
+ ml.forEach(k=>{(D.months[k].자금현황||[]).forEach(b=>{const nm=b.거래처명||''; const c=(b.거래처코드||'').toString(); if(nm&&c.length>=3&&!codeMap[nm])codeMap[nm]=c.slice(0,3);});});
+ const lbl=(nm)=>codeMap[nm]?nm+' ('+codeMap[nm]+')':nm;
  const accounts={}; const totals=[];
  ml.forEach(k=>{
    const bal=(D.months[k].자금현황||[]).filter(b=>(b.계정명||'').includes('보통예금'));
    let t=0;
-   bal.forEach(b=>{const nm=b.거래처명||b.계정명||'(기타)'; (accounts[nm]=accounts[nm]||{})[k]=b.금일잔액||0; t+=b.금일잔액||0;});
+   bal.forEach(b=>{const nm=lbl(b.거래처명||b.계정명||'(기타)'); (accounts[nm]=accounts[nm]||{})[k]=b.금일잔액||0; t+=b.금일잔액||0;});
    totals.push(t);
  });
  const lastM=ml[ml.length-1];
@@ -436,7 +441,7 @@ function renderAssets(){
  const D3=(arr)=>arr.map(x=>`<div><span>${x.거래처}${x.일자?' <span class=muted>('+x.일자+')</span>':''}</span><b style="color:#1f2937">${(x.잔액||0).toLocaleString()}</b></div>`).join('')||'<div>-</div>';
  const editLink=(fn,t)=>`<div style="border-bottom:none"><a href="javascript:;" onclick="${fn}" style="color:#2563eb">✏️ ${t||'수정'}</a></div>`;
  const items=[
-  ['🏦 현금 잔액 (통장)',cash, D2(bal.map(b=>[b.거래처명||b.계정명, b.금일잔액]))],
+  ['🏦 현금 잔액 (통장)',cash, D2(bal.map(b=>[acctName(b), b.금일잔액]))],
   ['📦 정산예정 (결제됨·미입금)',settle, editLink("openEdit('카페24')",'카페24 수정')+D2([['쿠팡 정산예정',c.정산예정||0],['쿠팡 미구매확정',c.미구매확정||0],['네이버(실시간)',naverAmt()],['카페24(수동)',cafe24Amt()]])],
   ['🧾 미수금 (B2B 받을 돈)'+(misuIsManual()?' ✋':''),misu, editLink("openEdit('미수금')",'미수금 수정')+D3(misuArr)],
   ['🤝 선급금 (거래처 선지급)',seonyz, editLink("openEdit('선급금')",'선급금 수정')+D3(seonyzArr)],
