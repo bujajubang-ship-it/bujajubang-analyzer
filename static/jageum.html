@@ -286,7 +286,7 @@ function renderAssets(){
  const bal=(D.자금현황||[]).filter(b=>(b.계정명||'').includes('보통예금'));
  const cash=sum(bal,x=>x.금일잔액||0);
  const c=(D.정산예정&&D.정산예정.쿠팡)||{};
- const settle=(c.정산예정||0)+(c.미구매확정||0)+naverAmt();
+ const settle=(c.정산예정||0)+(c.미구매확정||0)+naverAmt()+cafe24Amt();
  const misu=(D.미수금&&D.미수금.total)||0, misuItems=(D.미수금&&D.미수금.items)||[];
  const seonyz=sum(SEONYZ,x=>x.잔액);
  let invest=0; const investBy={};
@@ -296,7 +296,7 @@ function renderAssets(){
  const D2=(arr)=>arr.map(([k,v])=>`<div><span>${k}</span><b style="color:#1f2937">${(v||0).toLocaleString()}</b></div>`).join('')||'<div>-</div>';
  const items=[
   ['🏦 현금 잔액 (통장)',cash, D2(bal.map(b=>[b.거래처명||b.계정명, b.금일잔액]))],
-  ['📦 정산예정 (결제됨·미입금)',settle, D2([['쿠팡 정산예정',c.정산예정||0],['쿠팡 미구매확정',c.미구매확정||0],['네이버',naverAmt()]])],
+  ['📦 정산예정 (결제됨·미입금)',settle, D2([['쿠팡 정산예정',c.정산예정||0],['쿠팡 미구매확정',c.미구매확정||0],['네이버',naverAmt()],['카페24',cafe24Amt()]])],
   ['🧾 미수금 (B2B 받을 돈)',misu, D2(misuItems.map(x=>[x.거래처명,x.잔액]))],
   ['🤝 선급금 (거래처 선지급)',seonyz, D2(SEONYZ.map(s=>[s.거래처,s.잔액]))],
   ['☀️ 투자자산 (태양광·한전 설비)',invest, D2(Object.entries(investBy).sort((a,b)=>b[1]-a[1]))],
@@ -305,16 +305,22 @@ function renderAssets(){
 }
 const SOLAR_INVEST=0; // 태양광 투자자산 (과거 백필 후 자동연결, 임시 0)
 function naverAmt(){return (D.정산예정&&D.정산예정.네이버&&D.정산예정.네이버.지급예정)||0;} // 네이버 실시간 정산미확정
+const CF24_DEFAULT=70000000; // 카페24 묶인돈 기본값(현재 실제값, 수정가능)
+function cafe24Auto(){return (D.정산예정&&D.정산예정.카페24&&D.정산예정.카페24.구매확정전)||0;} // API 구매확정전 추정(참고용)
+function cafe24Amt(){const ov=localStorage.getItem('cf24_override');return (ov!==null&&ov!=='')?(+ov||0):CF24_DEFAULT;}
+function editCafe24(){const v=prompt('카페24 묶인 돈 직접 입력 (현재값: '+cafe24Amt().toLocaleString()+'원).\nAPI 구매확정전 추정: '+cafe24Auto().toLocaleString()+'원 (참고).\n비우면 기본값('+CF24_DEFAULT.toLocaleString()+') 사용:', localStorage.getItem('cf24_override')||'');if(v===null)return;const c=v.replace(/[^0-9]/g,'');if(c==='')localStorage.removeItem('cf24_override');else localStorage.setItem('cf24_override',c);render();}
 function renderSettle(){
  const c=(D.정산예정&&D.정산예정.쿠팡)||{};
  const cSettle=c.정산예정||0, cUncfm=c.미구매확정||0, items=c.items||[];
- const couTotal=cSettle+cUncfm, total=couTotal+naverAmt();
+ const couTotal=cSettle+cUncfm, total=couTotal+naverAmt()+cafe24Amt();
  k_settle.textContent=won(total); settle_sum.textContent='· 합계 '+won(total);
  let html=`<tr style="background:#eff6ff;font-weight:600"><td>🔵 쿠팡 묶인 돈</td><td class="muted">정산예정+미구매확정</td><td class="num">${couTotal.toLocaleString()}</td></tr>`;
  html+=`<tr><td style="padding-left:18px">└ 정산예정 <span class="muted">(구매확정·지급대기)</span></td><td class="muted">${items.length}건</td><td class="num">${cSettle.toLocaleString()}</td></tr>`;
  items.forEach(it=>{html+=`<tr><td style="padding-left:34px;color:#94a3b8">· ${it.date||''}</td><td class="muted">${it.type==='RESERVE'?'리저브':'주간'}</td><td class="num muted">${(it.amount||0).toLocaleString()}</td></tr>`;});
  html+=`<tr><td style="padding-left:18px">└ 미구매확정 <span class="muted">(결제됨·확정전)</span></td><td class="muted">배송중·완료</td><td class="num">${cUncfm.toLocaleString()}</td></tr>`;
  html+=`<tr style="background:#f0fdf4;font-weight:600"><td>🟢 네이버 정산예정</td><td class="muted">실시간</td><td class="num">${naverAmt().toLocaleString()}</td></tr>`;
+ html+=`<tr style="background:#eef6ff;font-weight:600"><td>🛍️ 카페24 묶인돈 <a href="javascript:;" onclick="editCafe24()" style="font-size:11px;color:#2563eb">✏️수정</a></td><td class="muted">${localStorage.getItem('cf24_override')?'수동':'기본'}</td><td class="num">${cafe24Amt().toLocaleString()}</td></tr>`;
+ html+=`<tr><td style="padding-left:18px" class="muted">└ API 구매확정전 추정(참고)</td><td class="muted">상한</td><td class="num muted">${cafe24Auto().toLocaleString()}</td></tr>`;
  document.querySelector('#t_settle tbody').innerHTML=html;
 }
 function renderPL(){
