@@ -93,7 +93,7 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
  <div class="card" id="baltrend_card">
    <h2>🏦 월말 통장 잔고 추이</h2>
    <div class="note">각 달 말일 기준 은행 잔액 (보통예금 계좌) · 잔고가 늘었는지 줄었는지 한눈에</div>
-   <canvas id="balTrend" height="70"></canvas>
+   <div style="height:300px"><canvas id="balTrend"></canvas></div>
    <div class="scroll" style="overflow-x:auto;margin-top:12px"><table id="t_baltrend"></table></div>
  </div>
 
@@ -261,10 +261,14 @@ function renderBalTrend(){
    bal.forEach(b=>{const nm=b.거래처명||b.계정명||'(기타)'; (accounts[nm]=accounts[nm]||{})[k]=b.금일잔액||0; t+=b.금일잔액||0;});
    totals.push(t);
  });
- if(ch4)ch4.destroy();
- ch4=new Chart(balTrend,{type:'line',data:{labels:ml.map(k=>k.slice(2)),datasets:[{label:'월말 통장잔고',data:totals,borderColor:'#5b21b6',backgroundColor:'rgba(91,33,182,.12)',fill:true,tension:.3,pointRadius:3}]},options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>won(c.parsed.y)}}},scales:{y:{ticks:{callback:v=>(v/1e8).toFixed(1)+'억'}}}}});
  const lastM=ml[ml.length-1];
  const names=Object.keys(accounts).sort((a,b)=>(accounts[b][lastM]||0)-(accounts[a][lastM]||0));
+ const TOPN=7, palette=['#5b21b6','#2563eb','#059669','#d97706','#dc2626','#0891b2','#7c3aed','#db2777','#65a30d','#94a3b8'];
+ const topAcc=names.slice(0,TOPN), restAcc=names.slice(TOPN);
+ const ds=topAcc.map((nm,i)=>({label:nm.length>13?nm.slice(0,12)+'…':nm,data:ml.map(k=>accounts[nm][k]||0),backgroundColor:palette[i%palette.length]}));
+ if(restAcc.length) ds.push({label:'기타 '+restAcc.length+'개',data:ml.map(k=>restAcc.reduce((s,nm)=>s+(accounts[nm][k]||0),0)),backgroundColor:'#e2e8f0'});
+ if(ch4)ch4.destroy();
+ ch4=new Chart(balTrend,{type:'bar',data:{labels:ml.map(k=>k.slice(2)),datasets:ds},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:11,font:{size:10},padding:5}},tooltip:{callbacks:{label:c=>c.dataset.label+': '+won(c.parsed.y)}}},scales:{x:{stacked:true},y:{stacked:true,ticks:{callback:v=>(v/1e8).toFixed(1)+'억'}}}}});
  const stick='position:sticky;left:0;z-index:1;';
  let head='<tr><th style="'+stick+'background:#fafafe">계좌</th>'+ml.map(k=>'<th class="num">'+k.slice(2)+'</th>').join('')+'</tr>';
  let rows=names.map(nm=>'<tr><td style="'+stick+'background:#fff;white-space:nowrap">'+nm+'</td>'+ml.map(k=>'<td class="num">'+(accounts[nm][k]!=null?accounts[nm][k].toLocaleString():'-')+'</td>').join('')+'</tr>').join('');
