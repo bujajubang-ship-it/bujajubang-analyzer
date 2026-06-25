@@ -166,7 +166,9 @@ function deptKey(r){ return deptDim==='부서' ? dept(r) : ((r.프로젝트명||
 function opexReal(r){ return real(r) && cat(r.상대계정명)[1]!=='영업외' && !isInvest(r); }
 const sum=(a,f)=>a.reduce((s,x)=>s+(f?f(x):0),0);
 const real=r=>(r.상대계정명||'').trim()!=='';   // 내부이체(대체) 제외
-const isInvest=r=>(/투자/.test(r.적요||'')||/종보전기|한국전력|태양광/.test((r.거래처명||'')+(r.적요||'')));  // 설비투자(자산) — 비용 아님
+function isInvest(r){ const cust=(r.거래처명||''),memo=(r.적요||'');
+ if(/대한무역|진흥공사|시청|세무서|구청|공단|국세/.test(cust)) return false;  // 관공서·지원기관 제외
+ return /종보전기|한국전력|태양광|태양열/.test(cust+memo) || /투자/.test(memo); }  // 설비투자(자산) — 비용 아님
 const isOpex=r=>real(r)&&cat(r.상대계정명)[1]!=='영업외'&&!isInvest(r);  // 영업지출(대표/개인·투자·내부이체 제외)
 function load(){fetch('/jageum/api/data').then(r=>r.json()).then(d=>{D=d;initPeriod()}).catch(()=>{period.textContent='데이터 없음'})}
 function ym2label(k){const a=k.split("-");return a[0]+"년 "+(+a[1])+"월";}
