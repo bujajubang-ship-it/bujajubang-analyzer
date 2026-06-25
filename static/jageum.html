@@ -53,6 +53,7 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
  <div class="card" id="asset_panel">
    <div class="muted" style="font-size:13px">💎 실질 총자산 <span style="font-size:11px">(오늘 기준 · 통장+곧 들어올 돈+받을 돈+선급+투자)</span></div>
    <div id="asset_total" style="font-size:34px;font-weight:800;color:#5b21b6;line-height:1.2">-</div>
+   <div id="asset_net" style="font-size:14px;color:#374151;margin-top:2px"></div>
    <div class="asset-items" id="asset_items"></div>
  </div>
  <div class="kpis">
@@ -318,7 +319,9 @@ function renderAssets(){
  let invest=0; const investBy={};
  Object.values(D.months||{}).forEach(m=>{(m.자금의감소||[]).filter(real).filter(isInvest).forEach(r=>{invest+=r.금액; const k=r.거래처명||r.적요||'기타'; investBy[k]=(investBy[k]||0)+r.금액;});});
  const total=cash+settle+misu+seonyz+invest;
+ const loan=loanTotal(), net=total-loan;
  asset_total.textContent=won(total);
+ document.getElementById('asset_net').innerHTML='− 대출(부채) '+won(loan)+'  =  <b style="color:#059669;font-size:17px">순자산 '+won(net)+'</b>';
  const D2=(arr)=>arr.map(([k,v])=>`<div><span>${k}</span><b style="color:#1f2937">${(v||0).toLocaleString()}</b></div>`).join('')||'<div>-</div>';
  const items=[
   ['🏦 현금 잔액 (통장)',cash, D2(bal.map(b=>[b.거래처명||b.계정명, b.금일잔액]))],
@@ -326,8 +329,9 @@ function renderAssets(){
   ['🧾 미수금 (B2B 받을 돈)',misu, D2(misuItems.map(x=>[x.거래처명,x.잔액]))],
   ['🤝 선급금 (거래처 선지급)',seonyz, D2(SEONYZ.map(s=>[s.거래처,s.잔액]))],
   ['☀️ 투자자산 (태양광·한전 설비)',invest, D2(Object.entries(investBy).sort((a,b)=>b[1]-a[1]))],
+  ['💳 대출 (부채)',-loan, '<div><a href="javascript:;" onclick="editLoan()" style="color:#2563eb">✏️ 대출액 수정</a></div>'+D2(DEFAULT_LOANS)],
  ];
- asset_items.innerHTML=items.map(([nm,val,det])=>`<details class="asset-item"><summary><span>${nm}</span><b>${won(val)}</b></summary><div class="asset-detail">${det}</div></details>`).join('');
+ asset_items.innerHTML=items.map(([nm,val,det])=>`<details class="asset-item"><summary><span>${nm}</span><b style="color:${val<0?'#dc2626':'#5b21b6'}">${won(val)}</b></summary><div class="asset-detail">${det}</div></details>`).join('');
 }
 const SOLAR_INVEST=0; // 태양광 투자자산 (과거 백필 후 자동연결, 임시 0)
 function naverAmt(){return (D.정산예정&&D.정산예정.네이버&&D.정산예정.네이버.지급예정)||0;} // 네이버 실시간 정산미확정
@@ -335,6 +339,9 @@ const CF24_DEFAULT=70000000; // 카페24 묶인돈 기본값(현재 실제값, �
 function cafe24Auto(){return (D.정산예정&&D.정산예정.카페24&&D.정산예정.카페24.구매확정전)||0;} // API 구매확정전 추정(참고용)
 function cafe24Amt(){const ov=localStorage.getItem('cf24_override');return (ov!==null&&ov!=='')?(+ov||0):CF24_DEFAULT;}
 function editCafe24(){const v=prompt('카페24 묶인 돈 직접 입력 (현재값: '+cafe24Amt().toLocaleString()+'원).\nAPI 구매확정전 추정: '+cafe24Auto().toLocaleString()+'원 (참고).\n비우면 기본값('+CF24_DEFAULT.toLocaleString()+') 사용:', localStorage.getItem('cf24_override')||'');if(v===null)return;const c=v.replace(/[^0-9]/g,'');if(c==='')localStorage.removeItem('cf24_override');else localStorage.setItem('cf24_override',c);render();}
+const DEFAULT_LOANS=[['중소기업진흥공단 대출',250000000],['신용보증기금(하나은행) 대출',200000000]];
+function loanTotal(){const ov=localStorage.getItem('loan_override');return (ov!==null&&ov!=='')?(+ov||0):DEFAULT_LOANS.reduce((s,x)=>s+x[1],0);}
+function editLoan(){const v=prompt('대출(부채) 총액 직접 입력 (현재: '+loanTotal().toLocaleString()+'원).\n기본: 중진공 2.5억 + 신보 2억 = 4.5억. 비우면 기본값:', localStorage.getItem('loan_override')||'');if(v===null)return;const c=v.replace(/[^0-9]/g,'');if(c==='')localStorage.removeItem('loan_override');else localStorage.setItem('loan_override',c);render();}
 function renderSettle(){
  const c=(D.정산예정&&D.정산예정.쿠팡)||{};
  const cSettle=c.정산예정||0, cUncfm=c.미구매확정||0, items=c.items||[];
