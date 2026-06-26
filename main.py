@@ -797,6 +797,135 @@ async def jageum_manual(request: Request):
     return JSONResponse({"ok": True})
 
 
+# ===== 자금 대시보드 AI 채팅 + 결재함 =====
+JAGEUM_APPROVALS_FILE = Path("jageum_approvals.json")
+
+def _load_approvals():
+    if JAGEUM_APPROVALS_FILE.exists():
+        try:
+            return json.loads(JAGEUM_APPROVALS_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+    return []
+
+def _save_approvals(items):
+    JAGEUM_APPROVALS_FILE.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
+
+def _jageum_summary() -> str:
+    """대시보드 데이터를 AI가 보기 좋게 요약(토큰 절약)."""
+    if not JAGEUM_FILE.exists():
+        return "(자금 데이터 없음)"
+    try:
+        d = json.loads(JAGEUM_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return "(데이터 로드 실패)"
+    months = d.get("months", {})
+    lines = ["[자금 대시보드 데이터 요약]"]
+    def real(r): return (r.get("상대계정명") or "").strip() != ""
+    # 월별 영업입금/지출 + 팀별
+    def dept(r):
+        t = (r.get("거래처명","")+r.get("적요","")+r.get("상대계정명",""))
+        import re as _re
+        if _re.search("종보전기|한국전력|전력매출", t): return "태양광"
+        pj = r.get("프로젝트명","")
+        if "쇼핑몰" in pj: return "쇼핑몰"
+        if "성기민" in pj: return "영업·성기민"
+        if "김성주" in pj: return "영업·김성주"
+        if "대표" in pj: return "영업·대표"
+        return "본사·공통"
+    for k in sorted(months.keys())[-6:]:
+        m = months[k]
+        inc = sum(r["금액"] for r in m.get("자금의증가",[]) if real(r))
+        dec = sum(r["금액"] for r in m.get("자금의감소",[]) if real(r))
+        teams = {}
+        for r in m.get("자금의증가",[]):
+            if real(r): teams.setdefault(dept(r),[0,0])[0]+=r["금액"]
+        for r in m.get("자금의감소",[]):
+            if real(r): teams.setdefault(dept(r),[0,0])[1]+=r["금액"]
+        ts = " / ".join(f"{t}:순익{(v[0]-v[1])//10000}만" for t,v in teams.items())
+        lines.append(f"{k}: 영업입금 {inc//10000}만, 지출 {dec//10000}만 | 팀별 {ts}")
+    # 손익
+    pl = d.get("손익",{})
+    if pl.get("rows"):
+        major = [r for r in pl["rows"] if r.get("major")]
+        lines.append("[손익계산서(올해)] " + " / ".join(f"{r['과목']}:{r['당기']//10000}만" for r in major))
+    # 정산예정·미수금
+    s = d.get("정산예정",{})
+    if s:
+        cou = (s.get("쿠팡",{}).get("정산예정",0)+s.get("쿠팡",{}).get("미구매확정",0))
+        nav = s.get("네이버",{}).get("지급예정",0)
+        lines.append(f"[정산예정] 쿠팡 {cou//10000}만, 네이버 {nav//10000}만")
+    if d.get("미수금"):
+        lines.append(f"[미수금] {d['미수금'].get('total',0)//10000}만")
+    return "\n".join(lines)
+
+@app.post("/jageum/api/chat")
+async def jageum_chat(request: Request):
+    if not _jageum_auth(request):
+        return _AUTH401
+    data = await request.json()
+    messages = data.get("messages", [])  # [{role, content}]
+    who = (data.get("who") or "경리").strip()
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return JSONResponse({"error": "ANTHROPIC_API_KEY 미설정"}, status_code=500)
+    system = f"""당신은 부자홀딩스(업소용 주방기기 셀러)의 자금 대시보드를 돕는 AI 비서입니다.
+지금 '{who}'님과 대화 중입니다. 아래 실제 자금 데이터를 보고 한국어 존댓말로 친절하고 실무적으로 답하세요.
+
+{_jageum_summary()}
+
+규칙:
+- 숫자는 실제 데이터 기반으로 구체적으로 답하세요. (만원 단위)
+- 대시보드 기능 수정/추가가 필요한 협의가 정리되면, 답변 맨 끝에 별도 줄로 다음 형식을 정확히 출력하세요:
+[결재요청] 제목 | 무엇을 어떻게 바꿀지 한 문장 요약
+- 단순 상담/질문이면 결재요청을 넣지 마세요. 실제로 코드/기능 변경이 필요할 때만.
+- 모르는 건 모른다고 하세요."""
+    body = {
+        "model": "claude-opus-4-8", "max_tokens": 1500, "system": system,
+        "messages": [{"role": m["role"], "content": m["content"]} for m in messages[-12:]],
+    }
+    headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
+    async with httpx.AsyncClient(timeout=90) as client:
+        r = await client.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
+        if r.status_code != 200:
+            return JSONResponse({"error": f"AI 오류: {r.text[:200]}"}, status_code=500)
+        rd = r.json()
+    text = "".join(b.get("text","") for b in rd.get("content",[]) if b.get("type")=="text")
+    # 결재요청 추출
+    approval = None
+    import re as _re
+    mt = _re.search(r"\[결재요청\]\s*(.+?)\s*\|\s*(.+)", text)
+    if mt:
+        title, desc = mt.group(1).strip(), mt.group(2).strip()
+        text = text[:mt.start()].rstrip()
+        items = _load_approvals()
+        aid = (max([a["id"] for a in items], default=0) + 1)
+        items.append({"id": aid, "title": title, "desc": desc, "who": who,
+                      "status": "대기", "ts": ""})
+        _save_approvals(items)
+        approval = {"id": aid, "title": title, "desc": desc}
+    return JSONResponse({"reply": text, "approval": approval})
+
+@app.get("/jageum/api/approvals")
+async def jageum_approvals(request: Request):
+    if not _jageum_auth(request):
+        return _AUTH401
+    return JSONResponse({"items": _load_approvals()})
+
+@app.post("/jageum/api/approvals/{aid}")
+async def jageum_approval_act(aid: int, request: Request):
+    if not _jageum_auth(request):
+        return _AUTH401
+    data = await request.json()
+    action = data.get("action")  # approve / reject
+    items = _load_approvals()
+    for a in items:
+        if a["id"] == aid:
+            a["status"] = "승인" if action == "approve" else "반려"
+    _save_approvals(items)
+    return JSONResponse({"ok": True})
+
+
 # ===== CN메이커 (CN인사이더 → 부자주방 상세페이지) — Lightsail 중개 =====
 CNMAKER_BASE = os.getenv("CNMAKER_BASE", "http://43.200.232.189")
 CNMAKER_SECRET = os.getenv("CNMAKER_SECRET", "bj-cnmaker-2026")

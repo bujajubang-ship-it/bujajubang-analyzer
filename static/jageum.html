@@ -151,6 +151,27 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    <div class="scroll"><table id="t_detail"><thead><tr><th>일자</th><th>계정</th><th>거래처</th><th>적요</th><th class="num">금액</th><th>부서</th><th>프로젝트</th></tr></thead><tbody></tbody></table></div>
    <div class="muted" id="dcount" style="margin-top:8px;font-size:12px"></div>
  </div>
+ <div class="card" id="chat_card" style="border-top:3px solid #5b21b6">
+   <h2>💬 자금 AI 비서 <span class="muted big">— 경리·사장님이 AI와 실무 협의</span></h2>
+   <div class="note">실제 자금 데이터를 보고 답합니다. 기능 수정이 필요하면 AI가 사장님께 결재 요청을 올립니다.</div>
+   <div style="display:flex;gap:8px;margin-bottom:8px">
+     <select id="chat_who" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px">
+       <option>경리</option><option>사장님</option></select>
+     <span class="muted" style="font-size:12px;align-self:center">로 대화</span>
+   </div>
+   <div id="chat_log" style="max-height:360px;overflow:auto;border:1px solid #eef0f4;border-radius:10px;padding:12px;background:#fafbfc;margin-bottom:10px"></div>
+   <div style="display:flex;gap:8px">
+     <input id="chat_in" placeholder="예: 6월 영업팀 순익 어때요? / 미수금 항목 추가해주세요" style="flex:1;padding:11px 13px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px">
+     <button onclick="chatSend()" id="chat_btn" style="background:#5b21b6;color:#fff;border:none;border-radius:10px;padding:0 22px;font-weight:700;cursor:pointer">전송</button>
+   </div>
+ </div>
+
+ <div class="card" id="approval_card" style="border-top:3px solid #d97706">
+   <h2>📋 결재함 <span class="muted big" id="appr_count"></span></h2>
+   <div class="note">AI가 올린 기능 수정 요청입니다. 사장님이 승인하면 개발자(클로드코드)가 반영합니다.</div>
+   <div id="appr_list"></div>
+ </div>
+
  <div class="muted" style="font-size:12px;text-align:center;padding:10px">이카운트 자금일보 자동 수집 · 매일 아침 8시 갱신 · 내부이체(대체)는 영업수치에서 제외</div>
 </div>
 <script>
@@ -498,5 +519,52 @@ function renderDetail(){const q=(dsearch.value||'').trim();let rows=D[dKey]||[];
 document.querySelectorAll('#aggtabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#aggtabs button').forEach(x=>x.classList.remove('on'));b.classList.add('on');aggKey=b.dataset.k;renderAgg()});
 document.querySelectorAll('#dtabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#dtabs button').forEach(x=>x.classList.remove('on'));b.classList.add('on');dKey=b.dataset.k;renderDetail()});
 dsearch.oninput=renderDetail;
+// ===== AI 채팅 + 결재함 =====
+let chatMsgs=[];
+function chatRender(){
+ chat_log.innerHTML=chatMsgs.map(m=>{
+   const me=m.role==='user';
+   return `<div style="display:flex;justify-content:${me?'flex-end':'flex-start'};margin:6px 0">
+     <div style="max-width:80%;padding:9px 13px;border-radius:12px;font-size:13.5px;line-height:1.6;white-space:pre-wrap;${me?'background:#5b21b6;color:#fff':'background:#fff;border:1px solid #e5e7eb'}">${m.content.replace(/</g,'&lt;')}</div></div>`;
+ }).join('');
+ chat_log.scrollTop=chat_log.scrollHeight;
+}
+function chatSend(){
+ const t=chat_in.value.trim(); if(!t)return;
+ chat_in.value=''; chatMsgs.push({role:'user',content:t}); chatRender();
+ chat_btn.disabled=true; chatMsgs.push({role:'assistant',content:'…'}); chatRender();
+ fetch('/jageum/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:chatMsgs.filter(m=>m.content!=='…'),who:chat_who.value})})
+  .then(r=>r.json()).then(d=>{
+    chatMsgs.pop();
+    if(d.error){chatMsgs.push({role:'assistant',content:'⚠️ '+d.error});}
+    else{chatMsgs.push({role:'assistant',content:d.reply||'(응답 없음)'});
+      if(d.approval){chatMsgs.push({role:'assistant',content:'📋 결재 요청을 올렸습니다: "'+d.approval.title+'" → 사장님 확인 후 반영됩니다.'});loadApprovals();}}
+    chatRender(); chat_btn.disabled=false;
+  }).catch(()=>{chatMsgs.pop();chatMsgs.push({role:'assistant',content:'⚠️ 연결 실패'});chatRender();chat_btn.disabled=false;});
+}
+chat_in.addEventListener('keydown',e=>{if(e.key==='Enter')chatSend();});
+function loadApprovals(){
+ fetch('/jageum/api/approvals').then(r=>r.json()).then(d=>{
+  const items=(d.items||[]).slice().reverse();
+  const pend=items.filter(a=>a.status==='대기').length;
+  appr_count.textContent=pend?`· 대기 ${pend}건`:'· 대기 없음';
+  appr_list.innerHTML=items.length?items.map(a=>{
+    const c=a.status==='승인'?'#059669':a.status==='반려'?'#9ca3af':'#d97706';
+    return `<div style="border:1px solid #eef0f4;border-radius:10px;padding:12px;margin:8px 0">
+      <div style="font-weight:700">${a.title} <span style="color:${c};font-size:12px">[${a.status}]</span></div>
+      <div class="muted" style="font-size:13px;margin:4px 0;white-space:normal">${a.desc}</div>
+      <div class="muted" style="font-size:11px">요청: ${a.who}</div>
+      ${a.status==='대기'?`<div style="margin-top:8px;display:flex;gap:8px">
+        <button onclick="apprAct(${a.id},'approve')" style="background:#059669;color:#fff;border:none;border-radius:7px;padding:7px 16px;cursor:pointer;font-weight:600">✅ 승인 (Yes)</button>
+        <button onclick="apprAct(${a.id},'reject')" style="background:#fff;color:#dc2626;border:1px solid #fca5a5;border-radius:7px;padding:7px 14px;cursor:pointer">반려</button></div>`:''}
+    </div>`;
+  }).join(''):'<div class="muted" style="font-size:13px">아직 결재 요청이 없습니다.</div>';
+ });
+}
+function apprAct(id,action){
+ fetch('/jageum/api/approvals/'+id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})})
+  .then(()=>loadApprovals());
+}
+loadApprovals();
 load();
 </script></body></html>
