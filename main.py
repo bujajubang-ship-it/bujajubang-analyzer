@@ -772,22 +772,10 @@ def _check_token(tok: str) -> str:
     return ""
 
 def _jageum_role(request: Request) -> str:
-    """'boss' / 'staff' / '' — 쿠키 토큰 우선, Basic도 호환(API용)"""
+    """'boss' / 'staff' / '' — 쿠키 세션 토큰만 인정 (Basic Auth 자동통과 방지)"""
     tok = request.cookies.get("jg_session", "")
     if tok:
-        r = _check_token(tok)
-        if r:
-            return r
-    h = request.headers.get("authorization", "")
-    if h.startswith("Basic "):
-        try:
-            u, p = base64.b64decode(h[6:]).decode().split(":", 1)
-            if u == JAGEUM_BOSS_USER and p == JAGEUM_BOSS_PASS:
-                return "boss"
-            if u == JAGEUM_USER and p == JAGEUM_PASS:
-                return "staff"
-        except Exception:
-            return ""
+        return _check_token(tok)
     return ""
 
 def _jageum_auth(request: Request) -> bool:
