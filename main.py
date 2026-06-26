@@ -746,16 +746,26 @@ JAGEUM_FILE = Path("jageum_data.json")
 JAGEUM_USER = os.getenv("JAGEUM_USER", "buja")
 JAGEUM_PASS = os.getenv("JAGEUM_PASS", "1234")
 JAGEUM_INGEST_SECRET = os.getenv("JAGEUM_INGEST_SECRET", "bj-ecount-2026-ingest")
+# 사장님(대표) 계정 — 결재함 권한
+JAGEUM_BOSS_USER = os.getenv("JAGEUM_BOSS_USER", "성건1248")
+JAGEUM_BOSS_PASS = os.getenv("JAGEUM_BOSS_PASS", "todtktakftlf1")
 
-def _jageum_auth(request: Request) -> bool:
+def _jageum_role(request: Request) -> str:
+    """'boss'(사장님) / 'staff'(경리) / '' (인증실패)"""
     h = request.headers.get("authorization", "")
     if h.startswith("Basic "):
         try:
             u, p = base64.b64decode(h[6:]).decode().split(":", 1)
-            return u == JAGEUM_USER and p == JAGEUM_PASS
+            if u == JAGEUM_BOSS_USER and p == JAGEUM_BOSS_PASS:
+                return "boss"
+            if u == JAGEUM_USER and p == JAGEUM_PASS:
+                return "staff"
         except Exception:
-            return False
-    return False
+            return ""
+    return ""
+
+def _jageum_auth(request: Request) -> bool:
+    return _jageum_role(request) != ""
 
 _AUTH401 = Response("로그인이 필요합니다", status_code=401,
                     headers={"WWW-Authenticate": 'Basic realm="jageum"'})
@@ -778,6 +788,7 @@ def jageum_data(request: Request):
             d["수동입력"] = json.loads(JAGEUM_MANUAL_FILE.read_text(encoding="utf-8"))
         except Exception:
             d["수동입력"] = {}
+    d["_role"] = _jageum_role(request)
     return JSONResponse(d)
 
 @app.post("/jageum/api/ingest")
@@ -908,14 +919,15 @@ async def jageum_chat(request: Request):
 
 @app.get("/jageum/api/approvals")
 async def jageum_approvals(request: Request):
-    if not _jageum_auth(request):
-        return _AUTH401
+    # 결재함은 사장님(대표)만 조회 가능
+    if _jageum_role(request) != "boss":
+        return JSONResponse({"items": [], "forbidden": True})
     return JSONResponse({"items": _load_approvals()})
 
 @app.post("/jageum/api/approvals/{aid}")
 async def jageum_approval_act(aid: int, request: Request):
-    if not _jageum_auth(request):
-        return _AUTH401
+    if _jageum_role(request) != "boss":
+        return JSONResponse({"error": "권한 없음 (대표 전용)"}, status_code=403)
     data = await request.json()
     action = data.get("action")  # approve / reject
     items = _load_approvals()
