@@ -66,7 +66,7 @@ function start(){
   document.getElementById('err').innerHTML='';
   if(!url.includes('cninsider')){document.getElementById('err').innerHTML='<div class=err>CN인사이더 상품 URL을 넣어주세요.</div>';return;}
   document.getElementById('go').disabled=true;
-  document.getElementById('progress').style.display='';
+  document.getElementById('progress').style.display='block';
   document.getElementById('result').style.display='none';
   setStep(1);
   fetch('/cnmaker/api/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})})
@@ -92,7 +92,7 @@ function poll(){
 function done(d){
   for(let i=1;i<=4;i++){document.getElementById('s'+i).className='step done';document.getElementById('s'+i).querySelector('.ico').textContent='✓';}
   document.getElementById('go').disabled=false;
-  document.getElementById('result').style.display='';
+  document.getElementById('result').style.display='block';
   document.getElementById('rtitle').textContent='✅ '+(d.product_name||'완성!');
   const c=d.copy||{};
   document.getElementById('copybox').innerHTML=
