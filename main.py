@@ -798,7 +798,7 @@ async def jageum_manual(request: Request):
 
 
 # ===== CN메이커 (CN인사이더 → 부자주방 상세페이지) — Lightsail 중개 =====
-CNMAKER_BASE = os.getenv("CNMAKER_BASE", "http://43.200.232.189:8090")
+CNMAKER_BASE = os.getenv("CNMAKER_BASE", "http://43.200.232.189")
 CNMAKER_SECRET = os.getenv("CNMAKER_SECRET", "bj-cnmaker-2026")
 
 @app.get("/cnmaker")
