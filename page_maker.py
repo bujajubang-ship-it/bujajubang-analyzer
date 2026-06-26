@@ -213,8 +213,8 @@ HEADERS = {
 }
 
 FONT_DIR    = Path(__file__).parent / "fonts"
-FONT_REG    = FONT_DIR / "NanumGothic.ttf"
-FONT_BOLD   = FONT_DIR / "NanumGothicBold.ttf"
+FONT_REG    = FONT_DIR / "Pretendard.ttf"       # 부자주방 기본 글씨체
+FONT_BOLD   = FONT_DIR / "PretendardBold.ttf"
 
 # 지원 폰트 목록 (key: UI 표시명, value: (regular_file, bold_file))
 FONT_CATALOG = {
@@ -1297,7 +1297,7 @@ def _ov_cta(img, W, H, p):
 
 # ── 부자주방 스타일 (흰 배경 + Pillow 전체 렌더링) ──────────────────
 
-BJ_RED   = (232, 36, 40)
+BJ_RED   = (215, 0, 16)   # #D70010 부자주방 로고/강조 빨강
 BJ_BLACK = (26, 26, 26)
 BJ_GRAY  = (110, 110, 110)
 BJ_LGRAY = (245, 245, 245)
