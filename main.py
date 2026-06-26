@@ -809,11 +809,24 @@ def cnmaker_page():
 async def cnmaker_start(request: Request):
     data = await request.json()
     url = (data.get("url") or "").strip()
-    if "cninsider" not in url:
-        return JSONResponse({"error": "CN인사이더 상품 URL을 넣어주세요"}, status_code=400)
+    if not url.startswith("http"):
+        return JSONResponse({"error": "상품 URL을 넣어주세요"}, status_code=400)
     async with httpx.AsyncClient(timeout=20) as client:
         r = await client.post(f"{CNMAKER_BASE}/cnmaker/start",
                               json={"url": url}, headers={"x-secret": CNMAKER_SECRET})
+        return JSONResponse(r.json(), status_code=r.status_code)
+
+@app.post("/cnmaker/api/start_imgs")
+async def cnmaker_start_imgs(request: Request):
+    data = await request.json()
+    images = data.get("images") or []
+    title = (data.get("title") or "").strip()
+    if not images:
+        return JSONResponse({"error": "이미지를 업로드해주세요"}, status_code=400)
+    async with httpx.AsyncClient(timeout=40) as client:
+        r = await client.post(f"{CNMAKER_BASE}/cnmaker/start_imgs",
+                              json={"images": images, "title": title},
+                              headers={"x-secret": CNMAKER_SECRET})
         return JSONResponse(r.json(), status_code=r.status_code)
 
 @app.get("/cnmaker/api/status")
