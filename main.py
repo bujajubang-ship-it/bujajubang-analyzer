@@ -748,7 +748,7 @@ JAGEUM_PASS = os.getenv("JAGEUM_PASS", "1234")
 JAGEUM_INGEST_SECRET = os.getenv("JAGEUM_INGEST_SECRET", "bj-ecount-2026-ingest")
 # 사장님(대표) 계정 — 결재함 권한
 JAGEUM_BOSS_USER = os.getenv("JAGEUM_BOSS_USER", "성건1248")
-JAGEUM_BOSS_PASS = os.getenv("JAGEUM_BOSS_PASS", "todtktakftlf1")
+JAGEUM_BOSS_PASS = os.getenv("JAGEUM_BOSS_PASS", "313131")
 
 import hashlib, hmac, time
 _JAGEUM_SECRET = os.getenv("JAGEUM_TOKEN_SECRET", "bj-jageum-token-2026")
