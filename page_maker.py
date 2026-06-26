@@ -20,6 +20,62 @@ GEMINI_IMAGE_MODEL  = "gemini-2.5-flash-image"
 GEMINI_VISION_MODEL = "gemini-2.5-flash"
 GEMINI_BASE         = "https://generativelanguage.googleapis.com/v1beta/models"
 
+# 분석·카피는 Claude Opus 4.8 (한국어 마케팅·상품이해 최상)
+CLAUDE_ANALYSIS_MODEL = "claude-opus-4-8"
+
+
+async def _claude_vision_json(prompt: str, images: list, max_tokens: int = 3000) -> dict:
+    """프롬프트 + 이미지(URL 또는 (mime,b64)) → Claude Opus 4.8 Vision → JSON dict.
+    images: list of either str(url) or tuple(mime, b64).
+    """
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return {"error": "ANTHROPIC_API_KEY 미설정"}
+    content = [{"type": "text", "text": prompt}]
+    # 이미지 다운로드/첨부 (최대 8장, Claude 한도 고려)
+    async with httpx.AsyncClient(headers=HEADERS, timeout=20, follow_redirects=True) as client:
+        for img in images[:8]:
+            try:
+                if isinstance(img, tuple):
+                    mime, b64 = img
+                else:
+                    ir = await client.get(img)
+                    if ir.status_code != 200 or len(ir.content) < 5000:
+                        continue
+                    mime = ir.headers.get("content-type", "image/jpeg").split(";")[0]
+                    if not mime.startswith("image/"):
+                        continue
+                    b64 = base64.b64encode(ir.content).decode()
+                if mime not in ("image/jpeg", "image/png", "image/gif", "image/webp"):
+                    mime = "image/jpeg"
+                content.append({"type": "image", "source": {
+                    "type": "base64", "media_type": mime, "data": b64}})
+            except Exception:
+                continue
+    body = {
+        "model": CLAUDE_ANALYSIS_MODEL,
+        "max_tokens": max_tokens,
+        "messages": [{"role": "user", "content": content}],
+    }
+    headers = {
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+    }
+    async with httpx.AsyncClient(timeout=120) as client:
+        resp = await client.post("https://api.anthropic.com/v1/messages",
+                                 json=body, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+        text = "".join(b.get("text", "") for b in data.get("content", [])
+                       if b.get("type") == "text")
+    text = re.sub(r"```[a-z]*", "", text).strip("`\n ")
+    # JSON 본문만 안전 추출
+    s, e = text.find("{"), text.rfind("}")
+    if s >= 0 and e > s:
+        text = text[s:e + 1]
+    return json.loads(text)
+
 SECTIONS = [
     {"key": "01_헤더",    "name": "헤더 배너",  "aspect": "9:16"},
     {"key": "02_특징요약", "name": "핵심 특징",  "aspect": "3:4"},
@@ -266,8 +322,8 @@ JSON만 반환 (코드블록 없이):
   "color_scheme": "warm 또는 cool 또는 neutral 또는 green 중 제품에 적합한 것"
 }}"""
         resp = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=600,
+            model=CLAUDE_ANALYSIS_MODEL,
+            max_tokens=1200,
             messages=[{"role": "user", "content": prompt}],
         )
         raw = resp.content[0].text.strip()
@@ -1667,61 +1723,46 @@ def _extract_json_images(obj, out: list, depth: int = 0):
 
 async def _run_gemini_analysis(title: str, page_text: str,
                                images_to_send: list, rep_image: str) -> dict:
-    """제목 + 텍스트 + 이미지들 → Gemini 종합 분석 → 마케팅 카피 dict"""
-    prompt = f"""당신은 한국 이커머스 마케팅 전문가입니다.
-아래 상품 페이지 정보와 첨부된 이미지들을 종합 분석하여 고품질 상세페이지용 마케팅 카피를 개발해주세요.
+    """제목 + 텍스트 + 이미지들 → Claude Opus 4.8 종합 분석 → 마케팅 카피 dict.
+    (함수명은 호환 위해 유지, 내부는 Claude)"""
+    prompt = f"""당신은 한국 이커머스(쿠팡·네이버 스마트스토어) 최고의 상세페이지 카피라이터입니다.
+업소용 주방기기 전문 셀러 '부자주방'의 상세페이지를 만든다고 가정하고, 아래 상품 정보와 첨부 이미지들을 종합 분석해 **실제로 구매전환을 높이는** 마케팅 카피를 개발하세요.
 
-⚠️ 중요: 이미지 안에 적힌 모든 텍스트(마케팅 문구, 스펙, 특징 설명 등)를 꼼꼼히 읽고 활용하세요.
+⚠️ 매우 중요:
+- 첨부된 모든 이미지 안에 적힌 텍스트(스펙·수치·소재·특징·인증 등)를 꼼꼼히 읽고 카피에 반영하세요.
+- 추상적 미사여구 말고, **구체적 수치·소재·규격·사용 상황**을 담은 설득력 있는 문장을 쓰세요.
+- 업소(식당·매장) 사장님이 읽고 "이거다" 싶게, 실무적 이점(내구성·위생·효율·전기/가스비·공간)을 강조하세요.
 
 페이지 제목: {title}
-페이지 텍스트: {page_text[:1500] if page_text else "(없음)"}
+페이지 텍스트: {page_text[:2500] if page_text else "(없음)"}
 
-아래 JSON 형식으로만 출력하라. 코드블록 없이 JSON만.
-실제 상품 정보를 바탕으로 구체적이고 설득력 있는 한국어 마케팅 카피를 작성할 것.
-key_features는 이미지에서 읽은 실제 특징과 장점을 마케팅 언어로 발전시켜 작성.
+아래 JSON 형식으로만 출력하세요. 코드블록 없이 순수 JSON만.
+key_features는 이미지/텍스트에서 읽은 실제 특징을 마케팅 언어로 발전시켜 5개 작성.
 
 {{
   "product_name": "정확한 상품명",
   "category": "카테고리",
-  "key_features": "• 특징1 (구체적 수치/소재 포함)\n• 특징2\n• 특징3\n• 특징4",
-  "specs": "항목: 값\n항목: 값\n항목: 값",
+  "headline": "상세페이지 최상단 한 줄 메인 후킹 카피 (강력하게)",
+  "sub_headline": "헤드라인 보조 문구 한 줄",
+  "key_features": "• 특징1 (구체적 수치/소재 포함)\n• 특징2\n• 특징3\n• 특징4\n• 특징5",
+  "specs": "항목: 값\n항목: 값\n항목: 값\n항목: 값",
   "how_to_use": "1. 사용법1\n2. 사용법2\n3. 사용법3\n4. 사용법4",
-  "target_customer": "타겟 고객 설명 (구체적으로)",
+  "target_customer": "타겟 고객 설명 (어떤 업종/상황의 사장님인지 구체적으로)",
+  "cta": "구매를 유도하는 마지막 한 줄 카피",
   "main_color": "#XXXXXX",
   "sub_color": "#XXXXXX",
   "background": "배경 스타일",
   "mood": "분위기 키워드",
   "font_style": "폰트 스타일"
 }}"""
-
-    parts = [{"text": prompt}]
-    async with httpx.AsyncClient(headers=HEADERS, timeout=20, follow_redirects=True) as client:
-        for img_url in images_to_send:
-            try:
-                ir = await client.get(img_url)
-                if ir.status_code == 200 and len(ir.content) > 5000:
-                    ct = ir.headers.get("content-type", "image/jpeg").split(";")[0]
-                    if ct.startswith("image/"):
-                        parts.append({"inline_data": {
-                            "mime_type": ct,
-                            "data": base64.b64encode(ir.content).decode(),
-                        }})
-            except Exception:
-                continue
-
-    body = {"contents": [{"parts": parts}]}
-    api_url = f"{GEMINI_BASE}/{GEMINI_VISION_MODEL}:generateContent"
     try:
-        async with httpx.AsyncClient(timeout=90) as client:
-            resp = await client.post(api_url, json=body, headers=_gemini_headers())
-            resp.raise_for_status()
-            data = resp.json()
-            text = data["candidates"][0]["content"]["parts"][0]["text"]
-            text = re.sub(r"```[a-z]*", "", text).strip("`\n ")
-            result = json.loads(text)
-            result["_rep_image"] = rep_image
-            result["_images"]    = images_to_send
-            return result
+        result = await _claude_vision_json(prompt, list(images_to_send), max_tokens=3500)
+        if "error" in result:
+            return {"error": f"분석 실패: {result['error']}", "product_name": title,
+                    "_rep_image": rep_image, "_images": images_to_send}
+        result["_rep_image"] = rep_image
+        result["_images"] = images_to_send
+        return result
     except Exception as e:
         return {"error": f"분석 실패: {e}", "product_name": title,
                 "_rep_image": rep_image, "_images": images_to_send}
@@ -2147,29 +2188,11 @@ async def analyze_product_image(image_url: str) -> dict:
 
 
 async def _analyze_single_image(image_url: str) -> dict:
+    """단일 상품 이미지 → Claude Opus 4.8 분석 → 마케팅 카피 dict"""
+    prompt = """당신은 한국 이커머스 상세페이지 카피라이터입니다. 첨부된 업소용 주방기기 상품 이미지를 분석해, 이미지 안의 텍스트(스펙·수치·소재)까지 읽어서 아래 JSON만 출력하세요 (코드블록 없이 순수 JSON).
+{"product_name":"정확한 상품명","category":"카테고리","headline":"메인 후킹 카피 한 줄","sub_headline":"보조 문구","key_features":"• 특징1(수치/소재 포함)\n• 특징2\n• 특징3\n• 특징4\n• 특징5","specs":"항목: 값\n항목: 값","how_to_use":"1. \n2. \n3. ","target_customer":"타겟 고객","cta":"구매 유도 카피","main_color":"#2C5F8A","sub_color":"#F0F4F8","background":"깔끔한 화이트","mood":"모던, 신뢰감 있는","font_style":"굵은 고딕체"}"""
     try:
-        async with httpx.AsyncClient(headers=HEADERS, timeout=20, follow_redirects=True) as client:
-            r = await client.get(image_url)
-            r.raise_for_status()
-            img_b64 = base64.b64encode(r.content).decode()
-            ct = r.headers.get("content-type", "image/jpeg").split(";")[0]
-    except Exception as e:
-        return {"error": f"이미지 다운로드 실패: {e}"}
-
-    prompt = """상품 이미지를 분석하여 아래 JSON만 출력하라 (코드블록 없이).
-{"product_name":"","category":"","key_features":"• \n• \n• \n• ","specs":"","how_to_use":"1. \n2. \n3. ","target_customer":"","main_color":"#2C5F8A","sub_color":"#F0F4F8","background":"깔끔한 화이트","mood":"모던, 신뢰감 있는","font_style":"굵은 고딕체"}"""
-
-    body = {"contents": [{"parts": [{"text": prompt},
-                                     {"inline_data": {"mime_type": ct, "data": img_b64}}]}]}
-    url = f"{GEMINI_BASE}/{GEMINI_VISION_MODEL}:generateContent"
-    try:
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(url, json=body, headers=_gemini_headers())
-            resp.raise_for_status()
-            data = resp.json()
-            text = data["candidates"][0]["content"]["parts"][0]["text"]
-            text = re.sub(r"```[a-z]*", "", text).strip("`\n ")
-            return json.loads(text)
+        return await _claude_vision_json(prompt, [image_url], max_tokens=2500)
     except Exception as e:
         return {"error": f"분석 실패: {e}", "product_name": ""}
 
