@@ -750,8 +750,34 @@ JAGEUM_INGEST_SECRET = os.getenv("JAGEUM_INGEST_SECRET", "bj-ecount-2026-ingest"
 JAGEUM_BOSS_USER = os.getenv("JAGEUM_BOSS_USER", "성건1248")
 JAGEUM_BOSS_PASS = os.getenv("JAGEUM_BOSS_PASS", "todtktakftlf1")
 
+import hashlib, hmac, time
+_JAGEUM_SECRET = os.getenv("JAGEUM_TOKEN_SECRET", "bj-jageum-token-2026")
+
+def _make_token(role: str) -> str:
+    """role|expiry|sig 형태의 세션 토큰 (24시간 유효)"""
+    exp = str(int(time.time()) + 86400)
+    msg = f"{role}|{exp}"
+    sig = hmac.new(_JAGEUM_SECRET.encode(), msg.encode(), hashlib.sha256).hexdigest()[:16]
+    return f"{msg}|{sig}"
+
+def _check_token(tok: str) -> str:
+    try:
+        role, exp, sig = tok.split("|")
+        msg = f"{role}|{exp}"
+        good = hmac.new(_JAGEUM_SECRET.encode(), msg.encode(), hashlib.sha256).hexdigest()[:16]
+        if hmac.compare_digest(sig, good) and int(exp) > time.time():
+            return role
+    except Exception:
+        pass
+    return ""
+
 def _jageum_role(request: Request) -> str:
-    """'boss'(사장님) / 'staff'(경리) / '' (인증실패)"""
+    """'boss' / 'staff' / '' — 쿠키 토큰 우선, Basic도 호환(API용)"""
+    tok = request.cookies.get("jg_session", "")
+    if tok:
+        r = _check_token(tok)
+        if r:
+            return r
     h = request.headers.get("authorization", "")
     if h.startswith("Basic "):
         try:
@@ -767,14 +793,40 @@ def _jageum_role(request: Request) -> str:
 def _jageum_auth(request: Request) -> bool:
     return _jageum_role(request) != ""
 
-_AUTH401 = Response("로그인이 필요합니다", status_code=401,
-                    headers={"WWW-Authenticate": 'Basic realm="jageum"'})
+_AUTH401 = JSONResponse({"error": "로그인 필요"}, status_code=401)
 
 @app.get("/jageum")
 def jageum_page(request: Request):
     if not _jageum_auth(request):
-        return _AUTH401
+        return FileResponse("static/jageum_login.html", headers={"Cache-Control": "no-store"})
     return FileResponse("static/jageum.html", headers={"Cache-Control": "no-store"})
+
+@app.get("/jageum/login")
+def jageum_login_page():
+    return FileResponse("static/jageum_login.html", headers={"Cache-Control": "no-store"})
+
+@app.post("/jageum/api/login")
+async def jageum_login(request: Request):
+    data = await request.json()
+    u = (data.get("id") or "").strip()
+    p = (data.get("pw") or "")
+    role = ""
+    if u == JAGEUM_BOSS_USER and p == JAGEUM_BOSS_PASS:
+        role = "boss"
+    elif u == JAGEUM_USER and p == JAGEUM_PASS:
+        role = "staff"
+    if not role:
+        return JSONResponse({"error": "아이디 또는 비밀번호가 맞지 않습니다"}, status_code=401)
+    resp = JSONResponse({"ok": True, "role": role})
+    resp.set_cookie("jg_session", _make_token(role), max_age=86400,
+                    httponly=True, samesite="lax")
+    return resp
+
+@app.post("/jageum/api/logout")
+async def jageum_logout():
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie("jg_session")
+    return resp
 
 JAGEUM_MANUAL_FILE = Path("jageum_manual.json")
 

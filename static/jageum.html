@@ -40,7 +40,7 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
 #period_bar button.on{background:#5b21b6;color:#fff;border-color:#5b21b6}
 #period_bar select{padding:5px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:13px}
 </style></head><body>
-<div class="top"><h1>💰 부자홀딩스 자금 대시보드</h1><span class="sub" id="period">불러오는 중…</span></div>
+<div class="top"><h1>💰 부자홀딩스 자금 대시보드</h1><span class="sub" id="period">불러오는 중…</span><span class="sub" id="whoami" style="margin-left:auto"></span><button onclick="logout()" style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:7px;padding:6px 14px;cursor:pointer;font-size:13px">로그아웃</button></div>
 <div class="wrap">
  <div id="period_bar"><div class="pbtns">
    <b style="margin-right:4px">📅 기간</b>
@@ -232,7 +232,9 @@ function isInvest(r){ const cust=(r.거래처명||''),memo=(r.적요||'');
  return /종보전기|한국전력|태양광|태양열/.test(cust+memo) || /투자/.test(memo); }  // 설비투자(자산) — 비용 아님
 const isOpex=r=>real(r)&&cat(r.상대계정명)[1]!=='영업외'&&!isInvest(r);  // 영업지출(대표/개인·투자·내부이체 제외)
 let MYROLE='';
-function load(){fetch('/jageum/api/data').then(r=>r.json()).then(d=>{D=d;M=d.수동입력||{};MYROLE=d._role||'';
+function logout(){fetch('/jageum/api/logout',{method:'POST'}).then(()=>location.href='/jageum/login');}
+function load(){fetch('/jageum/api/data').then(r=>{if(r.status===401){location.href='/jageum/login';return null;}return r.json();}).then(d=>{if(!d)return;D=d;M=d.수동입력||{};MYROLE=d._role||'';
+  document.getElementById('whoami').textContent = MYROLE==='boss'?'👑 대표님':(MYROLE==='staff'?'🧑‍💼 경리':'');
   if(MYROLE==='boss'){document.getElementById('approval_card').style.display='';loadApprovals();}
   initPeriod()}).catch(()=>{period.textContent='데이터 없음'})}
 // ===== 편집 모달 =====
