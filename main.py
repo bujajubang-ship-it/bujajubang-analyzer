@@ -797,4 +797,37 @@ async def jageum_manual(request: Request):
     return JSONResponse({"ok": True})
 
 
+# ===== CN메이커 (CN인사이더 → 부자주방 상세페이지) — Lightsail 중개 =====
+CNMAKER_BASE = os.getenv("CNMAKER_BASE", "http://43.200.232.189:8090")
+CNMAKER_SECRET = os.getenv("CNMAKER_SECRET", "bj-cnmaker-2026")
+
+@app.get("/cnmaker")
+def cnmaker_page():
+    return FileResponse("static/cnmaker.html", headers={"Cache-Control": "no-store"})
+
+@app.post("/cnmaker/api/start")
+async def cnmaker_start(request: Request):
+    data = await request.json()
+    url = (data.get("url") or "").strip()
+    if "cninsider" not in url:
+        return JSONResponse({"error": "CN인사이더 상품 URL을 넣어주세요"}, status_code=400)
+    async with httpx.AsyncClient(timeout=20) as client:
+        r = await client.post(f"{CNMAKER_BASE}/cnmaker/start",
+                              json={"url": url}, headers={"x-secret": CNMAKER_SECRET})
+        return JSONResponse(r.json(), status_code=r.status_code)
+
+@app.get("/cnmaker/api/status")
+async def cnmaker_status(job: str):
+    async with httpx.AsyncClient(timeout=20) as client:
+        r = await client.get(f"{CNMAKER_BASE}/cnmaker/status",
+                             params={"job": job}, headers={"x-secret": CNMAKER_SECRET})
+        return JSONResponse(r.json(), status_code=r.status_code)
+
+@app.get("/cnmaker/api/result")
+async def cnmaker_result(job: str):
+    async with httpx.AsyncClient(timeout=60) as client:
+        r = await client.get(f"{CNMAKER_BASE}/cnmaker/result", params={"job": job})
+        return Response(content=r.content, media_type="image/jpeg")
+
+
 app.mount("/static", StaticFiles(directory="static"), name="static")

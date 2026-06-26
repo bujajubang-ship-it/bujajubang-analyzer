@@ -1,0 +1,112 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CN메이커 — 부자주방 상세페이지 자동생성</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,'Pretendard','Malgun Gothic',sans-serif;background:#f4f6fa;color:#1f2937}
+.top{background:#D70010;color:#fff;padding:16px 22px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.top h1{font-size:18px;margin:0;flex:1}
+.wrap{max-width:760px;margin:0 auto;padding:22px}
+.card{background:#fff;border-radius:14px;padding:22px;box-shadow:0 1px 4px rgba(0,0,0,.08);margin-bottom:18px}
+.card h2{font-size:16px;margin:0 0 14px}
+input.url{width:100%;padding:13px 14px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;margin-bottom:12px}
+input.url:focus{outline:none;border-color:#D70010}
+button.go{background:#D70010;color:#fff;border:none;border-radius:10px;padding:13px 28px;font-size:15px;font-weight:700;cursor:pointer}
+button.go:disabled{background:#d1a0a3;cursor:not-allowed}
+.note{font-size:12px;color:#9ca3af;margin-top:6px;line-height:1.6}
+#progress{display:none}
+.step{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:14px;color:#9ca3af}
+.step.active{color:#D70010;font-weight:700}.step.done{color:#059669}
+.step .ico{width:24px;text-align:center}
+.spin{display:inline-block;width:16px;height:16px;border:2px solid #f3d0d2;border-top-color:#D70010;border-radius:50%;animation:s .8s linear infinite}
+@keyframes s{to{transform:rotate(360deg)}}
+#result{display:none;text-align:center}
+#result img{max-width:100%;border:1px solid #eee;border-radius:8px}
+.dlbtn{display:inline-block;margin-top:14px;background:#1f2937;color:#fff;text-decoration:none;padding:12px 26px;border-radius:10px;font-weight:600}
+.err{background:#fef2f2;color:#b91c1c;padding:12px 14px;border-radius:8px;font-size:13px;margin-top:10px}
+.copybox{background:#faf5ff;border-radius:10px;padding:14px;margin-top:14px;text-align:left;font-size:13px;line-height:1.8}
+.copybox b{color:#D70010}
+</style></head><body>
+<div class="top"><h1>🏭 CN메이커 — 부자주방 상세페이지 자동생성</h1></div>
+<div class="wrap">
+ <div class="card">
+   <h2>1688 / CN인사이더 상품 URL 붙여넣기</h2>
+   <input class="url" id="url" placeholder="https://www.cninsider.co.kr/mall/#/productinfo?myid=...">
+   <button class="go" id="go" onclick="start()">상세페이지 만들기 🚀</button>
+   <div class="note">CN인사이더 상품 페이지 주소를 넣으면 → 자동 로그인 → 중국어 번역 → 이미지 정리 → 부자주방 스타일 상세페이지가 만들어집니다. (약 1~2분 소요)</div>
+   <div id="err"></div>
+ </div>
+
+ <div class="card" id="progress">
+   <h2>진행 상황</h2>
+   <div class="step" id="s1"><span class="ico">①</span> 로그인 & 상품 스크래핑</div>
+   <div class="step" id="s2"><span class="ico">②</span> 중국어 → 한국어 번역·카피 (Opus 4.8)</div>
+   <div class="step" id="s3"><span class="ico">③</span> 이미지 선별 (중국어 제거)</div>
+   <div class="step" id="s4"><span class="ico">④</span> 부자주방 스타일 합성</div>
+   <div class="note" id="pmsg" style="margin-top:10px"></div>
+ </div>
+
+ <div class="card" id="result">
+   <h2 id="rtitle">✅ 완성!</h2>
+   <div class="copybox" id="copybox"></div>
+   <img id="rimg">
+   <div><a class="dlbtn" id="dl" download="상세페이지.jpg">⬇️ 상세페이지 다운로드</a></div>
+ </div>
+</div>
+<script>
+let job=null, timer=null;
+function setStep(active){
+  const nums=['','①','②','③','④'];
+  for(let i=1;i<=4;i++){
+    const e=document.getElementById('s'+i);
+    e.className='step'+(i<active?' done':i===active?' active':'');
+    e.querySelector('.ico').innerHTML = i<active?'✓':(i===active?'<span class="spin"></span>':nums[i]);
+  }
+}
+function start(){
+  const url=document.getElementById('url').value.trim();
+  document.getElementById('err').innerHTML='';
+  if(!url.includes('cninsider')){document.getElementById('err').innerHTML='<div class=err>CN인사이더 상품 URL을 넣어주세요.</div>';return;}
+  document.getElementById('go').disabled=true;
+  document.getElementById('progress').style.display='';
+  document.getElementById('result').style.display='none';
+  setStep(1);
+  fetch('/cnmaker/api/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})})
+    .then(r=>r.json()).then(d=>{
+      if(d.error){fail(d.error);return;}
+      job=d.job_id; poll();
+    }).catch(()=>fail('요청 실패'));
+}
+function poll(){
+  timer=setInterval(()=>{
+    fetch('/cnmaker/api/status?job='+job).then(r=>r.json()).then(d=>{
+      const m=(d.msg||'');
+      document.getElementById('pmsg').textContent=m;
+      if(m.includes('스크래핑')||m.includes('로그인')||m.includes('캡차')) setStep(1);
+      else if(m.includes('번역')||m.includes('카피')) setStep(2);
+      else if(m.includes('평가')||m.includes('이미지')) setStep(3);
+      else if(m.includes('합성')) setStep(4);
+      if(d.status==='done'){clearInterval(timer);done(d);}
+      else if(d.status==='error'){clearInterval(timer);fail(d.error||'처리 실패');}
+    }).catch(()=>{});
+  },2500);
+}
+function done(d){
+  for(let i=1;i<=4;i++){document.getElementById('s'+i).className='step done';document.getElementById('s'+i).querySelector('.ico').textContent='✓';}
+  document.getElementById('go').disabled=false;
+  document.getElementById('result').style.display='';
+  document.getElementById('rtitle').textContent='✅ '+(d.product_name||'완성!');
+  const c=d.copy||{};
+  document.getElementById('copybox').innerHTML=
+    (c.headline?'<b>헤드라인:</b> '+c.headline+'<br>':'')+
+    (c.sub_headline?'<b>서브:</b> '+c.sub_headline+'<br>':'')+
+    (c.key_features?'<b>특징:</b><br>'+c.key_features.replace(/\n/g,'<br>'):'');
+  const src='/cnmaker/api/result?job='+job+'&t='+Date.now();
+  document.getElementById('rimg').src=src;
+  document.getElementById('dl').href=src;
+  document.getElementById('result').scrollIntoView({behavior:'smooth'});
+}
+function fail(msg){
+  if(timer)clearInterval(timer);
+  document.getElementById('go').disabled=false;
+  document.getElementById('err').innerHTML='<div class=err>'+msg+'</div>';
+}
+</script></body></html>
