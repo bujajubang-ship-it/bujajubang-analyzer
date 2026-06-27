@@ -108,6 +108,12 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    <div class="scroll" style="overflow-x:auto"><table id="t_close"></table></div>
  </div>
 
+ <div class="card" id="sales_card" style="border-top:3px solid #5b21b6">
+   <h2>📊 영업 손익 — 담당자·거래처별 매출/이익 <span class="muted big" id="sales_period"></span></h2>
+   <div class="note">판매조회(확정 판매전표) 기준 · 이익 = 공급가 − 품목원가(선입선출) · 🔴 = 원가 미입력 품목 있음(이익 과대, 클릭하면 품목 표시) · <b>2026년 7월부터 집계</b></div>
+   <div class="scroll" id="sales_box" style="overflow-x:auto;margin-top:8px"></div>
+ </div>
+
  <div class="card" id="baltrend_card">
    <h2>🏦 월말 통장 잔고 추이</h2>
    <div class="note">각 달 말일 기준 은행 잔액 (보통예금 계좌) · 잔고가 늘었는지 줄었는지 한눈에</div>
@@ -284,7 +290,7 @@ function buildP(keys,label){
   const inc=[],dec=[];
   keys.forEach(k=>{const m=(D.months||{})[k]; if(m){inc.push(...(m.자금의증가||[]));dec.push(...(m.자금의감소||[]));}});
   const last=keys[keys.length-1]; const bal=((D.months||{})[last]||{}).자금현황||[];
-  P={증가:inc,감소:dec,현황:bal,label:label};
+  P={증가:inc,감소:dec,현황:bal,label:label,keys:keys};
   document.getElementById('period_label').textContent='· '+label+' ('+inc.length+'입금/'+dec.length+'출금)';
   render();
 }
@@ -350,7 +356,46 @@ function render(){
  // 잔액
  const bote=bal.filter(b=>(b.계정명||'').includes('보통예금'));
  document.querySelector('#t_bal tbody').innerHTML=(bote.length?bote:bal).map(r=>`<tr><td>${r.계정명||''}</td><td>${acctName(r)}</td><td class="num">${(r.금일잔액||0).toLocaleString()}</td>`).join('');
- renderAgg(); renderDetail(); renderPL(); renderSettle(); renderAssets(); renderDept(); renderBalTrend(); renderClose();
+ renderAgg(); renderDetail(); renderPL(); renderSettle(); renderAssets(); renderDept(); renderBalTrend(); renderClose(); renderSales();
+}
+const SALES_TEAM={'영업팀':['김성주','성기민','조성건'],'쇼핑몰팀':['김해련','김민지']};
+function salesTeamOf(n){for(const t in SALES_TEAM)if(SALES_TEAM[t].includes(n))return t;return '기타';}
+function renderSales(){
+ const box=document.getElementById('sales_box'); if(!box)return;
+ const sd=D.영업손익||{};
+ const keys=(P&&P.keys)||(D.current_month?[D.current_month]:[]);
+ const sp=document.getElementById('sales_period'); if(sp)sp.textContent=(P&&P.label)?('· '+P.label):'';
+ let deals=[];
+ keys.forEach(k=>{const m=sd[k]; if(m&&m.전표)deals.push(...m.전표);});
+ if(!deals.length){box.innerHTML='<div class="muted" style="padding:14px">해당 기간 판매 데이터가 없습니다. (영업 손익은 2026년 7월부터 집계됩니다)</div>';return;}
+ const G={};
+ deals.forEach(d=>{const t=salesTeamOf(d.담당자||''),e=d.담당자||'(미지정)',c=d.거래처||'(미지정)';
+  ((G[t]=G[t]||{})[e]=G[t][e]||{})[c]=G[t][e][c]||{매출:0,공급가:0,원가:0,이익:0,미입력품목:[],원가미입력:0};
+  const o=G[t][e][c]; o.매출+=d.매출||0;o.공급가+=d.공급가||0;o.원가+=d.원가||0;o.이익+=d.이익||0;o.원가미입력+=d.원가미입력||0; if(d.미입력품목)o.미입력품목.push(...d.미입력품목);});
+ window._sm=[]; let html='';
+ ['영업팀','쇼핑몰팀','기타'].forEach(team=>{
+  if(!G[team])return;
+  let TM=0,TS=0,TC=0,TP=0;
+  Object.values(G[team]).forEach(cs=>Object.values(cs).forEach(o=>{TM+=o.매출;TS+=o.공급가;TC+=o.원가;TP+=o.이익;}));
+  const tr=TS?Math.round(TP/TS*100):0, icon=team==='영업팀'?'💼':team==='쇼핑몰팀'?'🛒':'📁';
+  html+=`<div style="margin-top:16px"><div style="font-weight:700;font-size:15px;background:#f5f3ff;padding:9px 12px;border-radius:8px;border-left:4px solid #5b21b6;display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px"><span>${icon} ${team}</span><span style="color:#374151;font-weight:600">매출 ${won(TM)} · 이익 ${won(TP)} (${tr}%)</span></div>`;
+  Object.keys(G[team]).forEach(emp=>{
+   const cs=G[team][emp]; let eM=0,eS=0,eC=0,eP=0,eK=0;
+   Object.values(cs).forEach(o=>{eM+=o.매출;eS+=o.공급가;eC+=o.원가;eP+=o.이익;eK+=o.원가미입력;});
+   const er=eS?Math.round(eP/eS*100):0;
+   html+=`<div style="margin:11px 0 3px;font-weight:600">▸ ${emp} <span class="muted" style="font-weight:500">— 매출 ${won(eM)} · 원가 ${won(eC)} · 이익 ${won(eP)} (${er}%)${eK?` · <span style="color:#dc2626">🔴 원가확인 ${eK}품목</span>`:''}</span></div>`;
+   html+='<table><thead><tr><th>거래처</th><th class="num">매출</th><th class="num">원가</th><th class="num">이익</th><th class="num">이익율</th><th style="width:90px">원가확인</th></tr></thead><tbody>';
+   Object.entries(cs).sort((a,b)=>b[1].매출-a[1].매출).forEach(([cust,o])=>{
+    const r=o.공급가?Math.round(o.이익/o.공급가*100):0;
+    let flag='<span class="muted">✓</span>';
+    if(o.원가미입력){const i=window._sm.push(o.미입력품목)-1;flag=`<span style="color:#dc2626;cursor:pointer;text-decoration:underline" onclick="alert('원가 미입력 품목 ('+window._sm[${i}].length+'개):\\n\\n• '+window._sm[${i}].join('\\n• '))">🔴 ${o.원가미입력}개</span>`;}
+    html+=`<tr><td style="white-space:normal">${cust}</td><td class="num">${o.매출.toLocaleString()}</td><td class="num">${o.원가.toLocaleString()}</td><td class="num">${o.이익.toLocaleString()}</td><td class="num">${r}%</td><td>${flag}</td></tr>`;
+   });
+   html+='</tbody></table>';
+  });
+  html+='</div>';
+ });
+ box.innerHTML=html;
 }
 let closeDim='순익';
 function renderClose(){
