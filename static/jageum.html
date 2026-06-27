@@ -365,14 +365,20 @@ function renderSales(){
  const sd=D.영업손익||{};
  const keys=(P&&P.keys)||(D.current_month?[D.current_month]:[]);
  const sp=document.getElementById('sales_period'); if(sp)sp.textContent=(P&&P.label)?('· '+P.label):'';
+ const watch=M.체크목록||[], done=M.체크완료||{};
+ let editor='<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 12px;margin-bottom:12px">'
+  +'<div style="font-weight:600;color:#1d4ed8;margin-bottom:6px">🔵 경리 체크 품목·거래처 <span class="muted" style="font-weight:400">— 선금·수량파악 까다로운 것 등록 (여기 적은 게 견적 품목/거래처에 있으면 파란색으로 떠요)</span></div>'
+  +'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">'+(watch.length?watch.map((w,i)=>`<span style="background:#dbeafe;border-radius:14px;padding:3px 10px;font-size:12px">${w} <a onclick="svRemoveWatch(${i})" style="cursor:pointer;color:#2563eb">✕</a></span>`).join(''):'<span class="muted" style="font-size:12px">아직 없음 — 아래에 추가하세요</span>')+'</div>'
+  +'<input id="sv_watch_in" placeholder="거래처명 또는 품목명 (예: 식기세척기, 꼬챙이)" style="padding:6px 10px;border:1px solid #93c5fd;border-radius:7px;font-size:13px;width:300px" onkeydown="if(event.key===\'Enter\')svAddWatch()"> <button onclick="svAddWatch()" style="background:#2563eb;color:#fff;border:none;border-radius:7px;padding:6px 14px;cursor:pointer;font-size:13px">+ 추가</button></div>';
  let deals=[];
  keys.forEach(k=>{const m=sd[k]; if(m&&m.전표)deals.push(...m.전표);});
- if(!deals.length){box.innerHTML='<div class="muted" style="padding:14px">해당 기간 판매 데이터가 없습니다. (영업 손익은 2026년 7월부터 집계됩니다)</div>';return;}
+ if(!deals.length){box.innerHTML=editor+'<div class="muted" style="padding:14px">해당 기간 판매 데이터가 없습니다. (영업 손익은 2026년 7월부터 집계됩니다)</div>';return;}
  const G={};
  deals.forEach(d=>{const t=salesTeamOf(d.담당자||''),e=d.담당자||'(미지정)',c=d.거래처||'(미지정)';
-  ((G[t]=G[t]||{})[e]=G[t][e]||{})[c]=G[t][e][c]||{매출:0,공급가:0,원가:0,이익:0,미입력품목:[],원가미입력:0};
-  const o=G[t][e][c]; o.매출+=d.매출||0;o.공급가+=d.공급가||0;o.원가+=d.원가||0;o.이익+=d.이익||0;o.원가미입력+=d.원가미입력||0; if(d.미입력품목)o.미입력품목.push(...d.미입력품목);});
- window._sm=[]; let html='';
+  ((G[t]=G[t]||{})[e]=G[t][e]||{})[c]=G[t][e][c]||{매출:0,공급가:0,원가:0,이익:0,미입력품목:[],원가미입력:0,품목텍스트:''};
+  const o=G[t][e][c]; o.매출+=d.매출||0;o.공급가+=d.공급가||0;o.원가+=d.원가||0;o.이익+=d.이익||0;o.원가미입력+=d.원가미입력||0; if(d.미입력품목)o.미입력품목.push(...d.미입력품목);
+  o.품목텍스트+=' '+(d.품목요약||'')+' '+((d.품목들||[]).join(' '))+' '+((d.미입력품목||[]).join(' '));});
+ window._sm=[]; window._ck=[]; let html='';
  ['영업팀','쇼핑몰팀','기타'].forEach(team=>{
   if(!G[team])return;
   let TM=0,TS=0,TC=0,TP=0;
@@ -384,19 +390,28 @@ function renderSales(){
    Object.values(cs).forEach(o=>{eM+=o.매출;eS+=o.공급가;eC+=o.원가;eP+=o.이익;eK+=o.원가미입력;});
    const er=eS?Math.round(eP/eS*100):0;
    html+=`<div style="margin:11px 0 3px;font-weight:600">▸ ${emp} <span class="muted" style="font-weight:500">— 매출 ${won(eM)} · 원가 ${won(eC)} · 이익 ${won(eP)} (${er}%)${eK?` · <span style="color:#dc2626">🔴 원가확인 ${eK}품목</span>`:''}</span></div>`;
-   html+='<table><thead><tr><th>거래처</th><th class="num">매출</th><th class="num">원가</th><th class="num">이익</th><th class="num">이익율</th><th style="width:90px">원가확인</th></tr></thead><tbody>';
+   html+='<table><thead><tr><th>거래처</th><th class="num">매출</th><th class="num">원가</th><th class="num">이익</th><th class="num">이익율</th><th style="width:78px">원가확인</th><th style="width:78px">경리체크</th></tr></thead><tbody>';
    Object.entries(cs).sort((a,b)=>b[1].매출-a[1].매출).forEach(([cust,o])=>{
     const r=o.공급가?Math.round(o.이익/o.공급가*100):0;
     let flag='<span class="muted">✓</span>';
     if(o.원가미입력){const i=window._sm.push(o.미입력품목)-1;flag=`<span style="color:#dc2626;cursor:pointer;text-decoration:underline" onclick="alert('원가 미입력 품목 ('+window._sm[${i}].length+'개):\\n\\n• '+window._sm[${i}].join('\\n• '))">🔴 ${o.원가미입력}개</span>`;}
-    html+=`<tr><td style="white-space:normal">${cust}</td><td class="num">${o.매출.toLocaleString()}</td><td class="num">${o.원가.toLocaleString()}</td><td class="num">${o.이익.toLocaleString()}</td><td class="num">${r}%</td><td>${flag}</td></tr>`;
+    const hay=cust+' '+(o.품목텍스트||'');
+    const hit=watch.find(w=>w&&hay.indexOf(w)>=0);
+    let rowStyle='', chk='<span class="muted" style="font-size:11px">-</span>';
+    if(hit){const key=keys.join(',')+'|'+emp+'|'+cust; const ki=window._ck.push(key)-1;
+     if(done[key]){rowStyle='background:#f3f4f6;color:#6b7280'; chk=`<span style="cursor:pointer;color:#16a34a" onclick="svToggleDone(${ki})">✅완료</span>`;}
+     else{rowStyle='background:#eff6ff'; chk=`<span style="cursor:pointer;color:#2563eb;font-weight:600" onclick="svToggleDone(${ki})">🔵확인</span>`;}}
+    html+=`<tr style="${rowStyle}"><td style="white-space:normal">${cust}${hit?` <span style="font-size:11px;color:#2563eb">🔵${hit}</span>`:''}</td><td class="num">${o.매출.toLocaleString()}</td><td class="num">${o.원가.toLocaleString()}</td><td class="num">${o.이익.toLocaleString()}</td><td class="num">${r}%</td><td>${flag}</td><td>${chk}</td></tr>`;
    });
    html+='</tbody></table>';
   });
   html+='</div>';
  });
- box.innerHTML=html;
+ box.innerHTML=editor+html;
 }
+function svAddWatch(){const el=document.getElementById('sv_watch_in');if(!el)return;const v=el.value.trim();if(!v)return;M.체크목록=M.체크목록||[];if(!M.체크목록.includes(v))M.체크목록.push(v);saveManual();renderSales();}
+function svRemoveWatch(i){if(M.체크목록){M.체크목록.splice(i,1);saveManual();renderSales();}}
+function svToggleDone(i){const key=(window._ck||[])[i];if(!key)return;M.체크완료=M.체크완료||{};M.체크완료[key]=!M.체크완료[key];saveManual();renderSales();}
 let closeDim='순익';
 function renderClose(){
  const ml=D.months_list||[]; if(!ml.length||!D.months) return;
