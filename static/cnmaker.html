@@ -63,6 +63,16 @@ button.go:disabled{background:#d1a0a3;cursor:not-allowed}
      <div class="note">네이버·쿠팡은 자동 수집이 막혀있어, 상품 이미지를 직접 올리면 → AI가 분석해 부자주방 스타일로 만들어드립니다.</div>
    </div>
 
+   <div style="display:flex;gap:14px;align-items:center;margin:12px 0 6px;flex-wrap:wrap">
+     <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:14px">
+       <input type="radio" name="cat" id="cat_kitchen" value="kitchen" checked style="width:18px;height:18px">
+       <span>🍳 <b>주방기구</b> <span style="color:#9ca3af;font-size:12px">(부자주방 로고·빨강 스타일)</span></span>
+     </label>
+     <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:14px">
+       <input type="radio" name="cat" id="cat_other" value="other" style="width:18px;height:18px">
+       <span>📦 <b>기타 제품</b> <span style="color:#9ca3af;font-size:12px">(원본 톤 살려 색만 변형, 로고 없음)</span></span>
+     </label>
+   </div>
    <button class="go" id="go" onclick="go()" style="margin-top:6px">상세페이지 만들기 🚀</button>
    <div id="err"></div>
  </div>
@@ -111,16 +121,17 @@ function renderThumbs(){
 }
 function go(){
   document.getElementById('err').innerHTML='';
+  const category=document.getElementById('cat_kitchen').checked?'kitchen':'other';
   if(mode==='url'){
     const url=document.getElementById('url').value.trim();
     if(!url.startsWith('http')){return fail('상품 URL을 넣어주세요.');}
     begin();
-    fetch('/cnmaker/api/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})})
+    fetch('/cnmaker/api/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url,category})})
       .then(r=>r.json()).then(d=>d.error?fail(d.error):(job=d.job_id,poll())).catch(()=>fail('요청 실패'));
   } else {
     if(!files.length){return fail('상품 이미지를 1장 이상 올려주세요.');}
     begin();
-    fetch('/cnmaker/api/start_imgs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({images:files,title:document.getElementById('title').value.trim()})})
+    fetch('/cnmaker/api/start_imgs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({images:files,title:document.getElementById('title').value.trim(),category})})
       .then(r=>r.json()).then(d=>d.error?fail(d.error):(job=d.job_id,poll())).catch(()=>fail('요청 실패'));
   }
 }
