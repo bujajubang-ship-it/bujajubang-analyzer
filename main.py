@@ -848,6 +848,102 @@ async def jageum_manual(request: Request):
     return JSONResponse({"ok": True})
 
 
+# ===== 사장님 개인 자산 (boss 전용) =====
+JAGEUM_PERSONAL_FILE = Path("jageum_personal.json")
+_NV_H = {"User-Agent": "Mozilla/5.0", "Referer": "https://m.stock.naver.com/"}
+
+def _num(s):
+    try:
+        return float(str(s).replace(",", ""))
+    except Exception:
+        return None
+
+def _boss_only(request: Request) -> bool:
+    return _jageum_role(request) == "boss"
+
+@app.get("/jageum/api/personal")
+def jageum_personal_get(request: Request):
+    if not _boss_only(request):
+        return _AUTH401
+    d = {}
+    if JAGEUM_PERSONAL_FILE.exists():
+        try:
+            d = json.loads(JAGEUM_PERSONAL_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            d = {}
+    return JSONResponse(d)
+
+@app.post("/jageum/api/personal")
+async def jageum_personal_post(request: Request):
+    if not _boss_only(request):
+        return _AUTH401
+    body = await request.body()
+    JAGEUM_PERSONAL_FILE.write_text(body.decode("utf-8"), encoding="utf-8")
+    return JSONResponse({"ok": True})
+
+async def _nv_price(client, market, code):
+    """market: 'KR'(6자리코드) / 'US'(reutersCode 예 TSLA.O). 현재가 숫자 반환."""
+    try:
+        if market == "KR":
+            r = await client.get(f"https://m.stock.naver.com/api/stock/{code}/integration")
+            dt = r.json().get("dealTrendInfos") or []
+            return _num(dt[-1].get("closePrice")) if dt else None
+        else:
+            r = await client.get(f"https://api.stock.naver.com/stock/{code}/basic")
+            return _num(r.json().get("closePrice"))
+    except Exception:
+        return None
+
+@app.get("/jageum/api/personal/prices")
+async def jageum_personal_prices(request: Request):
+    if not _boss_only(request):
+        return _AUTH401
+    d = {}
+    if JAGEUM_PERSONAL_FILE.exists():
+        try:
+            d = json.loads(JAGEUM_PERSONAL_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            d = {}
+    stocks = d.get("stocks") or []
+    prices, fx = {}, None
+    async with httpx.AsyncClient(headers=_NV_H, timeout=15) as c:
+        try:
+            r = await c.get("https://m.stock.naver.com/api/json/marketindex/marketIndexExchangeListJson.nhn")
+            for it in r.json()["result"]["normalList"]:
+                if it.get("reutersCode") == "FX_USDKRW" or it.get("exchangeCode") == "FX_USDKRW":
+                    fx = _num(it.get("closePrice")); break
+        except Exception:
+            pass
+        for s in stocks:
+            code = s.get("code")
+            if code and code not in prices:
+                prices[code] = await _nv_price(c, s.get("market", "KR"), code)
+    return JSONResponse({"fx_usdkrw": fx, "prices": prices})
+
+@app.get("/jageum/api/personal/search")
+async def jageum_personal_search(request: Request, q: str = ""):
+    if not _boss_only(request):
+        return _AUTH401
+    q = (q or "").strip()
+    if not q:
+        return JSONResponse({"items": []})
+    items = []
+    try:
+        async with httpx.AsyncClient(headers=_NV_H, timeout=12) as c:
+            r = await c.get("https://m.stock.naver.com/front-api/search/autoComplete",
+                            params={"query": q, "target": "stock"})
+            for it in (r.json().get("result") or {}).get("items", [])[:8]:
+                tc = it.get("typeCode", "")
+                kr = tc in ("KOSPI", "KOSDAQ")
+                items.append({"name": it.get("name"),
+                              "code": it.get("code") if kr else it.get("reutersCode"),
+                              "market": "KR" if kr else "US",
+                              "typeName": it.get("typeName") or tc})
+    except Exception:
+        pass
+    return JSONResponse({"items": items})
+
+
 # ===== 자금 대시보드 AI 채팅 + 결재함 =====
 JAGEUM_APPROVALS_FILE = Path("jageum_approvals.json")
 
