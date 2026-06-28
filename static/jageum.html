@@ -802,12 +802,25 @@ function renderLife(){
 }
 function renderPast(){
   const card=document.getElementById('life_past_card'), box=document.getElementById('life_past');
-  const past=LIFE.과거||[];
-  if(!past.length){if(card)card.style.display='none';return;}
+  const past=LIFE.과거||[], sum=LIFE.과거요약;
+  if(!past.length && !sum){if(card)card.style.display='none';return;}
   if(card)card.style.display='';
+  let h='';
+  if(sum){
+    h+=`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px;margin-bottom:14px">
+      <div style="font-weight:700;margin-bottom:6px">🧭 내 생각의 지도 <span class="muted" style="font-weight:400;font-size:11px">(AI가 과거 글 분석)</span></div>
+      <div style="font-size:14px;line-height:1.6;margin-bottom:10px">${esc(sum.한줄요약||'')}</div>`;
+    (sum.핵심주제||[]).forEach(t=>{h+=`<details style="border-top:1px solid #d1fae5;padding:7px 0"><summary style="cursor:pointer;font-weight:600;font-size:13.5px">${esc(t.주제)} <span class="muted" style="font-weight:400;font-size:11px">${(t.키워드||[]).map(k=>'#'+esc(k)).join(' ')}</span></summary><div class="muted" style="font-size:13px;margin-top:5px;line-height:1.6">${esc(t.설명)}</div></details>`;});
+    if((sum.가치관||[]).length)h+=`<div style="margin-top:10px;font-size:13px;line-height:1.7"><b>핵심 가치관:</b> ${(sum.가치관||[]).map(v=>esc(v)).join(' · ')}</div>`;
+    if(sum.변화흐름)h+=`<div style="margin-top:8px;font-size:13px;color:#374151;line-height:1.6"><b>1년의 흐름:</b> ${esc(sum.변화흐름)}</div>`;
+    h+=`</div>`;
+  }
   const q=(document.getElementById('past_search')?.value||'').trim();
-  const rows=q?past.filter(p=>((p.title||'')+(p.body||'')+(p.date||'')+((p.tags||[]).join(''))).includes(q)):past;
-  if(box)box.innerHTML=rows.map(p=>`<details style="border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;margin-bottom:8px"><summary style="cursor:pointer;font-weight:600">${esc(p.title)} <span class="muted" style="font-weight:400;font-size:12px">${p.date||''} ${(p.tags||[]).map(t=>'#'+t).join(' ')}</span></summary><div style="white-space:pre-wrap;margin-top:8px;font-size:13.5px;line-height:1.6;color:#374151">${esc(p.body)}</div></details>`).join('')||'<div class="muted">검색 결과 없음</div>';
+  const rows=q?past.filter(p=>((p.title||'')+(p.body||'')+(p.date||'')).includes(q)):past;
+  h+=`<div class="muted" style="font-size:12px;margin:4px 0 8px">📝 과거 글 ${past.length}편${q?` · 검색 ${rows.length}편`:''} <span style="font-size:11px">(클릭하면 펼쳐져요)</span></div>`;
+  h+=rows.slice(0,120).map(p=>`<details style="border:1px solid #e5e7eb;border-radius:8px;padding:9px 12px;margin-bottom:7px"><summary style="cursor:pointer;font-weight:600;font-size:13.5px">${esc(p.title)} <span class="muted" style="font-weight:400;font-size:12px">${p.date||''}</span></summary><div style="white-space:pre-wrap;margin-top:8px;font-size:13.5px;line-height:1.65;color:#374151">${esc(p.body)}</div></details>`).join('')||'<div class="muted" style="padding:6px">검색 결과 없음</div>';
+  if(rows.length>120)h+=`<div class="muted" style="font-size:12px">…상위 120편 표시 (검색으로 좁혀보세요)</div>`;
+  if(box)box.innerHTML=h;
 }
 // ── 법인카드 사용 (경리 관리) ──
 let chCard=null;
