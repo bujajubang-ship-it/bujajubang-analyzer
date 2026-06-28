@@ -458,7 +458,8 @@ function renderGoal(){
   const cur=window._ptot||0;
   const g=PRS.목표저축||{증분목표:500000000,목표일:'2027-07',시작액:cur,시작일:_todayYMD(),예시:true};
   const inc=+g.증분목표||0, base=(g.시작액!=null)?+g.시작액:cur, tdate=g.목표일||'2027-07';
-  const target=base+inc, saved=cur-base, left=Math.max(0,target-cur);
+  let saved=cur-base; if(Math.abs(saved)<10000)saved=0;  // 시세 미세변동 노이즈 0 처리
+  const target=base+inc, left=Math.max(0,target-cur);
   const mo=Math.max(1,_monthsTo(tdate)), per=left/mo;
   const pct=inc?(saved/inc*100):0, pctc=Math.max(0,Math.min(100,pct));
   document.getElementById('goal_head').innerHTML=
