@@ -165,10 +165,9 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
  <div class="card" id="chat_card" style="border-top:3px solid #5b21b6">
    <h2>💬 자금 AI 비서 <span class="muted big">— 경리·사장님이 AI와 실무 협의</span></h2>
    <div class="note">실제 자금 데이터를 보고 답합니다. 기능 수정이 필요하면 AI가 사장님께 결재 요청을 올립니다.</div>
-   <div style="display:flex;gap:8px;margin-bottom:8px">
-     <select id="chat_who" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px">
-       <option>경리</option><option>사장님</option></select>
-     <span class="muted" style="font-size:12px;align-self:center">로 대화</span>
+   <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+     <span id="chat_who_label" style="background:#f5f3ff;color:#5b21b6;border-radius:7px;padding:6px 12px;font-size:13px;font-weight:700">…</span>
+     <span class="muted" style="font-size:12px">계정으로 대화 중 <span style="font-size:11px">(로그인 계정 기준 자동)</span></span>
    </div>
    <div id="chat_log" style="max-height:360px;overflow:auto;border:1px solid #eef0f4;border-radius:10px;padding:12px;background:#fafbfc;margin-bottom:10px"></div>
    <div style="display:flex;gap:8px">
@@ -246,6 +245,7 @@ let MYROLE='';
 function logout(){fetch('/jageum/api/logout',{method:'POST'}).then(()=>location.href='/jageum/login');}
 function load(){fetch('/jageum/api/data').then(r=>{if(r.status===401){location.href='/jageum/login';return null;}return r.json();}).then(d=>{if(!d)return;D=d;M=d.수동입력||{};MYROLE=d._role||'';
   document.getElementById('whoami').textContent = MYROLE==='boss'?'👑 대표님':(MYROLE==='staff'?'🧑‍💼 경리':'');
+  {const _wl=document.getElementById('chat_who_label'); if(_wl)_wl.textContent=MYROLE==='boss'?'👑 사장님':(MYROLE==='staff'?'🧑‍💼 경리':'게스트');}
   if(MYROLE==='boss'){document.getElementById('approval_card').style.display='';loadApprovals();}
   initPeriod()}).catch(()=>{period.textContent='데이터 없음'})}
 // ===== 편집 모달 =====
@@ -650,7 +650,7 @@ function chatSend(){
  const t=chat_in.value.trim(); if(!t)return;
  chat_in.value=''; chatMsgs.push({role:'user',content:t}); chatRender();
  chat_btn.disabled=true; chatMsgs.push({role:'assistant',content:'…'}); chatRender();
- fetch('/jageum/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:chatMsgs.filter(m=>m.content!=='…'),who:chat_who.value})})
+ fetch('/jageum/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:chatMsgs.filter(m=>m.content!=='…')})})
   .then(r=>r.json()).then(d=>{
     chatMsgs.pop();
     if(d.error){chatMsgs.push({role:'assistant',content:'⚠️ '+d.error});}

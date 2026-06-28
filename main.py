@@ -916,7 +916,8 @@ async def jageum_chat(request: Request):
         return _AUTH401
     data = await request.json()
     messages = data.get("messages", [])  # [{role, content}]
-    who = (data.get("who") or "경리").strip()
+    # who는 클라이언트 값이 아니라 로그인 계정(역할)으로 강제 — 사칭 방지
+    who = "사장님" if _jageum_role(request) == "boss" else "경리"
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key:
         return JSONResponse({"error": "ANTHROPIC_API_KEY 미설정"}, status_code=500)
