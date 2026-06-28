@@ -653,7 +653,7 @@ function stkChartRange(days,btn){
     const fmt=v=>isUS?('$'+(Math.round(v*100)/100).toLocaleString()):('₩'+Math.round(v).toLocaleString());
     pe.innerHTML=`현재 <b style="color:#1f2937;font-size:15px">${fmt(last)}</b> &nbsp;·&nbsp; 이 기간 <span style="color:${up?'#dc2626':'#2563eb'};font-weight:600">${up?'+':''}${fmt(chg)} (${up?'+':''}${chgp.toFixed(1)}%)</span>`;
     if(chStk)chStk.destroy();
-    chStk=new Chart(document.getElementById('stkChartCanvas'),{type:'line',data:{labels,datasets:[{data,borderColor:up?'#dc2626':'#2563eb',backgroundColor:up?'rgba(220,38,38,.07)':'rgba(37,99,235,.07)',fill:true,tension:.2,pointRadius:0,borderWidth:2}]},options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:cx=>fmt(cx.parsed.y)}}},scales:{x:{ticks:{maxTicksLimit:6,font:{size:10}},grid:{display:false}},y:{ticks:{font:{size:10},callback:v=>isUS?('$'+v):(v>=10000?(v/10000).toFixed(0)+'만':Math.round(v).toLocaleString())}}}}});
+    chStk=new Chart(document.getElementById('stkChartCanvas'),{type:'line',data:{labels,datasets:[{data,borderColor:up?'#dc2626':'#2563eb',backgroundColor:up?'rgba(220,38,38,.07)':'rgba(37,99,235,.07)',fill:true,tension:.2,pointRadius:0,borderWidth:2}]},options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:cx=>fmt(cx.parsed.y)}}},scales:{x:{ticks:{maxTicksLimit:6,font:{size:10}},grid:{display:false}},y:{ticks:{font:{size:10},maxTicksLimit:6,callback:v=>isUS?('$'+v):(v>=10000?(v/10000).toFixed(1)+'만':Math.round(v).toLocaleString())}}}}});
   }).catch(()=>{pe.textContent='오류가 났어요.';});
 }
 function persAddOther(){persOthers.push({유형:'부동산',이름:'',금액:0});persRender();}
