@@ -463,8 +463,8 @@ function render(){
  const incAll=(P&&P.증가)||D.자금의증가||[], decAll=(P&&P.감소)||D.자금의감소||[], bal=(P&&P.현황)||D.자금현황||[];
  const inc=incAll.filter(real);
  const _isSolar=r=>/한국전력|한전경산|태양광|전력판매/.test((r.거래처명||'')+(r.적요||''));
- const solar=inc.filter(_isSolar), incBiz=inc.filter(r=>!_isSolar(r));
- const tsolar=sum(solar,x=>x.금액);
+ const incBiz=inc.filter(r=>!_isSolar(r));
+ const tsolar=((P&&P.keys)||[D.current_month]).reduce((s,k)=>s+(((D.태양광)||{})[k]||0),0);
  const decReal=decAll.filter(real);
  const opex=decReal.filter(isOpex);
  const own=decReal.filter(r=>cat(r.상대계정명)[1]==='영업외'&&!isInvest(r));   // 대표/개인·세금
