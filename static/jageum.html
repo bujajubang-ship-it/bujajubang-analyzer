@@ -96,6 +96,20 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    <div id="personal_box"></div>
  </div>
 
+ <div class="card" id="goal_card" style="display:none;border-top:3px solid #7c3aed">
+   <h2 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">🎯 저축 목표 <span class="muted big">— 개인 총자산 연동</span>
+     <button onclick="goalEdit()" style="margin-left:auto;border:none;background:#7c3aed;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:13px">🎯 목표 수정</button></h2>
+   <div id="goal_edit" style="display:none;gap:8px;align-items:center;flex-wrap:wrap;background:#faf5ff;padding:10px;border-radius:8px;margin-bottom:10px">
+     <span style="font-size:13px">더 모을 금액</span><input id="goal_amt" style="padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;width:160px;text-align:right" oninput="this.value=(+this.value.replace(/[^0-9]/g,'')||0).toLocaleString()"> <span style="font-size:13px">원</span>
+     <span style="font-size:13px;margin-left:8px">목표시기</span><input id="goal_date" placeholder="2027-07" style="padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;width:100px">
+     <button onclick="goalSave()" style="border:none;background:#7c3aed;color:#fff;border-radius:7px;padding:7px 16px;cursor:pointer;font-weight:600">저장</button>
+   </div>
+   <div id="goal_head" style="margin-bottom:8px"></div>
+   <div id="goal_bar" style="margin-bottom:12px"></div>
+   <div id="goal_stats" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px"></div>
+   <canvas id="goalChart" height="90"></canvas>
+ </div>
+
  <div class="kpis">
   <div class="kpi in"><div class="l">영업 입금 (매출정산)</div><div class="v" id="k_in">-</div><div class="s">내부이체 제외</div></div>
   <div class="kpi out"><div class="l">영업 지출</div><div class="v" id="k_out">-</div><div class="s">내부이체 제외</div></div>
@@ -432,7 +446,47 @@ function renderPersonal(){
     <div><div class="muted" style="font-size:12px">주식 평가액</div><div style="font-weight:700">${won(evalK)} <span style="font-size:12px;color:${col(plK)}">(${plK>=0?'+':''}${won(plK)} · ${rr>=0?'+':''}${rr}%)</span></div></div>
     <div style="text-align:right"><div class="muted" style="font-size:12px">개인 총자산</div><div style="font-weight:800;font-size:19px;color:#7c3aed">${won(total)}</div></div></div>`;
   box.innerHTML=h;
+  window._ptot=total; renderGoal();
 }
+// ── 🎯 저축 목표 (증분: 지금부터 N억 더 모으기, 개인 총자산 연동) ──
+let chGoal=null;
+function _monthsTo(ym){const now=new Date();const a=(ym||'').split('-');return (+a[0]-now.getFullYear())*12+(+a[1]-(now.getMonth()+1));}
+function _todayYMD(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function renderGoal(){
+  const card=document.getElementById('goal_card'); if(!card||MYROLE!=='boss')return;
+  card.style.display='';
+  const cur=window._ptot||0;
+  const g=PRS.목표저축||{증분목표:500000000,목표일:'2027-07',시작액:cur,시작일:_todayYMD(),예시:true};
+  const inc=+g.증분목표||0, base=(g.시작액!=null)?+g.시작액:cur, tdate=g.목표일||'2027-07';
+  const target=base+inc, saved=cur-base, left=Math.max(0,target-cur);
+  const mo=Math.max(1,_monthsTo(tdate)), per=left/mo;
+  const pct=inc?(saved/inc*100):0, pctc=Math.max(0,Math.min(100,pct));
+  document.getElementById('goal_head').innerHTML=
+    `지금까지 <b style="font-size:20px;color:${saved>=0?'#16a34a':'#dc2626'}">${saved>=0?'+':''}${won(saved)}</b> 모음 <span class="muted">/ 목표 +${won(inc)}</span> `
+    +`<b style="color:#7c3aed">${pct.toFixed(1)}%</b>`
+    +(g.예시?' <span style="background:#fef3c7;color:#b45309;border-radius:6px;padding:1px 7px;font-size:11px">예시</span>':'');
+  document.getElementById('goal_bar').innerHTML=`<div style="height:16px;background:#ede9fe;border-radius:9px;overflow:hidden"><div style="height:100%;width:${pctc}%;background:linear-gradient(90deg,#a78bfa,#7c3aed);border-radius:9px"></div></div>`;
+  const ym=tdate.split('-'),tlabel=ym[0]+'년 '+(+ym[1])+'월';
+  document.getElementById('goal_stats').innerHTML=
+    `<div style="flex:1;min-width:120px"><div class="muted" style="font-size:12px">목표시기</div><div style="font-weight:700">${tlabel} · ${mo}개월</div></div>`
+    +`<div style="flex:1;min-width:120px"><div class="muted" style="font-size:12px">목표까지 남은 금액</div><div style="font-weight:700">${won(left)}</div></div>`
+    +`<div style="flex:1;min-width:120px"><div class="muted" style="font-size:12px">매월 필요 저축</div><div style="font-weight:700;color:#dc2626">${won(per)}</div></div>`;
+  const labels=[],traj=[],nowl=[];
+  for(let i=0;i<=mo;i++){const d=new Date();d.setMonth(d.getMonth()+i);labels.push((d.getFullYear()%100)+'.'+(d.getMonth()+1));traj.push(Math.round(base+inc*i/mo));nowl.push(cur);}
+  if(chGoal)chGoal.destroy();
+  chGoal=new Chart(document.getElementById('goalChart'),{type:'line',data:{labels,datasets:[
+    {label:'목표 궤도',data:traj,borderColor:'#7c3aed',backgroundColor:'rgba(124,58,237,.08)',fill:true,tension:.3,pointRadius:0,borderWidth:2},
+    {label:'현재 자산',data:nowl,borderColor:'#9ca3af',borderDash:[5,4],pointRadius:0,borderWidth:2,fill:false}
+  ]},options:{plugins:{legend:{position:'top'},tooltip:{callbacks:{label:c=>c.dataset.label+' '+won(c.parsed.y)}}},scales:{y:{ticks:{callback:v=>(v/1e8).toFixed(1)+'억'}}}}});
+}
+function goalEdit(){const g=PRS.목표저축||{증분목표:500000000,목표일:'2027-07'};
+  document.getElementById('goal_amt').value=(+g.증분목표||0).toLocaleString();
+  document.getElementById('goal_date').value=g.목표일||'2027-07';
+  const e=document.getElementById('goal_edit');e.style.display=e.style.display==='none'?'flex':'none';}
+function goalSave(){const amt=+document.getElementById('goal_amt').value.replace(/[^0-9]/g,'')||0;
+  const dt=(document.getElementById('goal_date').value||'').trim()||'2027-07';
+  PRS.목표저축={증분목표:amt,목표일:dt,시작액:(window._ptot||0),시작일:_todayYMD()};
+  fetch('/jageum/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(PRS)}).then(()=>{document.getElementById('goal_edit').style.display='none';renderGoal();});}
 let persStocks=[],persOthers=[],_persT=null;
 function openPersonal(){persStocks=JSON.parse(JSON.stringify(PRS.stocks||[]));persOthers=JSON.parse(JSON.stringify(PRS.기타자산||[]));persRender();document.getElementById('pers_modal').style.display='flex';}
 function closePersonal(){document.getElementById('pers_modal').style.display='none';document.getElementById('pers_sresult').style.display='none';}
