@@ -301,7 +301,11 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
      <h2>✍️ 인생 노트 <span class="muted big">— 생각·방향·아이디어를 계속 적어요</span></h2>
      <input id="life_title" class="search" placeholder="제목 (예: 올해의 방향, 새 사업 아이디어…)" style="margin-bottom:8px">
      <textarea id="life_body" placeholder="오늘의 생각, 인생의 방향, 떠오른 아이디어를 자유롭게…" style="width:100%;min-height:120px;padding:12px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;resize:vertical"></textarea>
-     <div style="margin-top:8px"><button onclick="lifeAdd()" style="background:#16a34a;color:#fff;border:none;border-radius:9px;padding:10px 22px;font-weight:700;cursor:pointer">+ 기록 남기기</button></div>
+     <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+       <button onclick="lifeAdd()" style="background:#16a34a;color:#fff;border:none;border-radius:9px;padding:10px 22px;font-weight:700;cursor:pointer">+ 기록 남기기</button>
+       <button onclick="lifeCompare()" style="background:#fff;color:#16a34a;border:1.5px solid #16a34a;border-radius:9px;padding:10px 18px;font-weight:700;cursor:pointer">🔗 과거와 비교</button>
+     </div>
+     <div id="life_compare" style="display:none;margin-top:12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px"></div>
      <div id="life_entries" style="margin-top:16px"></div>
    </div>
    <div class="card" id="life_past_card" style="border-top:3px solid #16a34a;display:none">
@@ -787,6 +791,21 @@ function lifeAdd(){
   saveLife();renderLife();
 }
 function lifeDel(id){if(!confirm('이 기록 삭제할까요?'))return;LIFE.글=(LIFE.글||[]).filter(e=>e.id!==id);saveLife();renderLife();}
+function lifeCompare(){
+  const t=document.getElementById('life_title').value.trim(), b=document.getElementById('life_body').value.trim();
+  if(!t&&!b){alert('비교할 내용을 적어주세요.');return;}
+  const box=document.getElementById('life_compare'); box.style.display='block';
+  box.innerHTML='<span class="spin"></span> 과거 200편·생각의 지도와 비교 중… (Opus 분석, 10~25초)';
+  fetch('/jageum/api/life/compare',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:t,text:b})}).then(r=>r.json()).then(d=>{
+    if(d.error){box.innerHTML='<div class="err">'+esc(d.error)+'</div>';return;}
+    const bd={'일관':'🟢 과거와 일관돼요','발전':'🔵 과거에서 발전했어요','변화':'🟡 생각이 변했어요','새로움':'🟣 새로운 영역이에요'}[d.정합성]||('· '+esc(d.정합성||''));
+    let h=`<div style="font-weight:700;font-size:15px;margin-bottom:4px">${bd}</div><div style="font-size:14px;margin-bottom:8px">${esc(d.한줄||'')}</div>`;
+    if((d.연결주제||[]).length)h+=`<div style="font-size:13px;margin-bottom:6px"><b>연결 주제:</b> ${(d.연결주제||[]).map(x=>esc(x)).join(' · ')}</div>`;
+    if((d.관련과거글||[]).length)h+='<div style="font-size:13px"><b>관련 과거 글:</b><ul style="margin:4px 0 0;padding-left:18px;line-height:1.6">'+(d.관련과거글||[]).map(p=>`<li><b>${esc(p.title||'')}</b> <span class="muted">${p.date||''}</span> — ${esc(p.연결||'')}</li>`).join('')+'</ul></div>';
+    if(d.코멘트)h+=`<div style="margin-top:10px;padding:9px 11px;background:#fff;border-radius:8px;font-size:13.5px;line-height:1.65">💬 ${esc(d.코멘트)}</div>`;
+    box.innerHTML=h;
+  }).catch(()=>{box.innerHTML='<div class="err">비교 중 오류가 났어요.</div>';});
+}
 function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function renderLife(){
   // 비전보드

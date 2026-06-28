@@ -969,6 +969,61 @@ async def jageum_life_post(request: Request):
     JAGEUM_LIFE_FILE.write_text(body.decode("utf-8"), encoding="utf-8")
     return JSONResponse({"ok": True})
 
+@app.post("/jageum/api/life/compare")
+async def jageum_life_compare(request: Request):
+    if not _boss_only(request):
+        return _AUTH401
+    data = await request.json()
+    text = (data.get("text") or "").strip()
+    title = (data.get("title") or "").strip()
+    if not text and not title:
+        return JSONResponse({"error": "내용을 적어주세요."})
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return JSONResponse({"error": "AI 키 미설정"}, status_code=500)
+    life = {}
+    if JAGEUM_LIFE_FILE.exists():
+        try:
+            life = json.loads(JAGEUM_LIFE_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    past = life.get("과거", []) or []
+    summ = life.get("과거요약", {}) or {}
+    titles = "\n".join(f"{p.get('date','')} | {p.get('title','')}" for p in past[:320])
+    prompt = f"""너는 이 사람의 '인생 방향 코치'야. 이 사람이 2025년에 쓴 블로그 200편을 분석한 '생각의 지도'와 전체 글 제목 목록이 아래에 있어.
+
+[생각의 지도]
+{json.dumps(summ, ensure_ascii=False)}
+
+[과거 글 제목 목록 (날짜 | 제목)]
+{titles}
+
+[지금 새로 쓴 글]
+제목: {title}
+내용: {text}
+
+이 새 글이 과거의 고민·방향·가치관과 얼마나 맞아떨어지는지 분석해줘. 아래 JSON만 출력(코드블록 없이 순수 JSON):
+{{"정합성":"일관" 또는 "발전" 또는 "변화" 또는 "새로움",
+ "한줄":"한 문장 평가",
+ "연결주제":["생각의지도 핵심주제 중 연결되는 것 1-3개"],
+ "관련과거글":[{{"date":"YYYY-MM-DD","title":"실제 목록의 제목","연결":"어떻게 통하는지 또는 달라졌는지 한 문장"}}],
+ "코멘트":"과거 맥락에서 본 통찰·조언 2-3문장. 응원하되 솔직하게."}}
+관련과거글은 위 목록에 실제로 있는 것만, 가장 관련 깊은 2-4개."""
+    body = {"model": "claude-opus-4-8", "max_tokens": 1500,
+            "messages": [{"role": "user", "content": prompt}]}
+    headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
+    try:
+        async with httpx.AsyncClient(timeout=120) as c:
+            r = await c.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
+            r.raise_for_status()
+            d = r.json()
+            txt = "".join(b.get("text", "") for b in d.get("content", []) if b.get("type") == "text")
+        txt = re.sub(r"```[a-z]*", "", txt).strip("`\n ")
+        s, e = txt.find("{"), txt.rfind("}")
+        return JSONResponse(json.loads(txt[s:e+1]))
+    except Exception as ex:
+        return JSONResponse({"error": f"비교 실패: {ex}"}, status_code=500)
+
 @app.get("/jageum/api/personal/chart")
 async def jageum_personal_chart(request: Request, market: str = "KR", code: str = "", days: int = 120):
     if not _boss_only(request):
