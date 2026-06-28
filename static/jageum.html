@@ -448,25 +448,27 @@ function renderPersonal(){
     const ev=(cur!=null)?cur*s.qty*r:null, buy=(s.avg||0)*s.qty*r;
     const pl=(cur!=null)?(cur-(s.avg||0))*s.qty*r:null;
     const rate=(s.avg&&cur!=null)?((cur-s.avg)/s.avg*100):null;
-    if(ev!=null){evalK+=ev;buyK+=buy;plK+=(pl||0);}
-    (isUS?ovs:dom).push({s,cur,isUS,ev,pl,rate});
+    buyK+=buy; if(ev!=null){evalK+=ev;plK+=(pl||0);}
+    (isUS?ovs:dom).push({s,cur,isUS,ev,buy,pl,rate});
   });
   let othK=0; others.forEach(o=>othK+=(+o.금액||0));
   const total=evalK+othK, rr=buyK?Math.round(plK/buyK*1000)/10:0;
   document.getElementById('personal_sum').textContent='· 총 '+won(total)+(fx?(' · $환율 '+Math.round(fx).toLocaleString()):'');
   const col=v=>v>=0?'#dc2626':'#2563eb';
   const stkRow=x=>{
+    const avg=x.isUS?_usd(x.s.avg):(x.s.avg||0).toLocaleString();
     const cur=x.cur==null?'<span class="muted">…</span>':(x.isUS?_usd(x.cur):x.cur.toLocaleString());
+    const buy=won(x.buy);
     const ev=x.ev==null?'-':won(x.ev);
     const pl=x.pl==null?'-':`<span style="color:${col(x.pl)}">${x.pl>=0?'+':''}${won(x.pl)}</span>`;
-    const rt=x.rate==null?'-':`<span style="color:${col(x.rate)}">${x.rate>=0?'+':''}${x.rate.toFixed(1)}%</span>`;
-    return `<tr><td style="white-space:normal">${x.s.name}<div class="muted" style="font-size:11px">${(x.s.qty||0).toLocaleString()}주 · 평단 ${x.isUS?_usd(x.s.avg):(x.s.avg||0).toLocaleString()}</div></td><td class="num">${cur}</td><td class="num">${ev}</td><td class="num">${pl}</td><td class="num">${rt}</td></tr>`;
+    const rt=x.rate==null?'-':`<span style="color:${col(x.rate)};font-weight:600">${x.rate>=0?'+':''}${x.rate.toFixed(2)}%</span>`;
+    return `<tr><td style="white-space:nowrap">${x.s.name}<div class="muted" style="font-size:11px">${(x.s.qty||0).toLocaleString()}주</div></td><td class="num">${avg}</td><td class="num">${cur}</td><td class="num">${buy}</td><td class="num">${ev}</td><td class="num">${pl}</td><td class="num">${rt}</td></tr>`;
   };
-  const tbl=(t,rows)=>rows.length?`<div style="font-weight:600;margin:10px 0 4px">${t}</div><div class="scroll"><table style="width:100%"><thead><tr><th>종목</th><th class="num">현재가</th><th class="num">평가액(원)</th><th class="num">평가손익</th><th class="num">수익률</th></tr></thead><tbody>${rows.map(stkRow).join('')}</tbody></table></div>`:'';
+  const tbl=(t,rows)=>rows.length?`<div style="font-weight:600;margin:10px 0 4px">${t}</div><div class="scroll"><table style="width:100%;font-size:13px"><thead><tr><th>종목</th><th class="num">평단</th><th class="num">현재가</th><th class="num">매입금액</th><th class="num">평가금액</th><th class="num">평가손익</th><th class="num">수익률</th></tr></thead><tbody>${rows.map(stkRow).join('')}</tbody></table></div>`:'';
   let h=tbl('🇰🇷 국내주식',dom)+tbl('🇺🇸 해외주식',ovs);
   if(others.length) h+=`<div style="font-weight:600;margin:12px 0 4px">🏠 부동산 · 💵 현금성</div><div class="scroll"><table style="width:100%"><tbody>`+others.map(o=>`<tr><td>${o.유형==='부동산'?'🏠':'💵'} ${o.이름||''}</td><td class="num">${won(+o.금액||0)}</td></tr>`).join('')+`</tbody></table></div>`;
   h+=`<div style="margin-top:12px;padding:12px 14px;background:#f5f3ff;border-radius:10px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px">
-    <div><div class="muted" style="font-size:12px">주식 평가액</div><div style="font-weight:700">${won(evalK)} <span style="font-size:12px;color:${col(plK)}">(${plK>=0?'+':''}${won(plK)} · ${rr>=0?'+':''}${rr}%)</span></div></div>
+    <div><div class="muted" style="font-size:12px">주식 평가액 <span style="font-size:11px">(매입 ${won(buyK)})</span></div><div style="font-weight:700">${won(evalK)} <span style="font-size:12px;color:${col(plK)}">(${plK>=0?'+':''}${won(plK)} · ${rr>=0?'+':''}${rr}%)</span></div></div>
     <div style="text-align:right"><div class="muted" style="font-size:12px">개인 총자산</div><div style="font-weight:800;font-size:19px;color:#7c3aed">${won(total)}</div></div></div>`;
   box.innerHTML=h;
   window._ptot=total; renderGoal(); if(window.renderTotal)renderTotal();

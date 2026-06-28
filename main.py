@@ -850,7 +850,7 @@ async def jageum_manual(request: Request):
 
 # ===== 사장님 개인 자산 (boss 전용) =====
 JAGEUM_PERSONAL_FILE = Path("jageum_personal.json")
-_NV_H = {"User-Agent": "Mozilla/5.0", "Referer": "https://m.stock.naver.com/"}
+_NV_H = {"User-Agent": "Mozilla/5.0", "Referer": "https://finance.naver.com/"}
 
 def _num(s):
     try:
@@ -882,12 +882,16 @@ async def jageum_personal_post(request: Request):
     return JSONResponse({"ok": True})
 
 async def _nv_price(client, market, code):
-    """market: 'KR'(6자리코드) / 'US'(reutersCode 예 TSLA.O). 현재가 숫자 반환."""
+    """market: 'KR'(6자리코드) / 'US'(reutersCode 예 TSLA.O). 실시간 현재가 숫자 반환."""
     try:
         if market == "KR":
-            r = await client.get(f"https://m.stock.naver.com/api/stock/{code}/integration")
-            dt = r.json().get("dealTrendInfos") or []
-            return _num(dt[-1].get("closePrice")) if dt else None
+            # 네이버 실시간 시세 폴링(HTS 현재가와 일치)
+            r = await client.get(f"https://polling.finance.naver.com/api/realtime/domestic/stock/{code}")
+            ds = r.json().get("datas") or []
+            if ds:
+                x = ds[0]
+                return _num(x.get("closePriceRaw") or x.get("closePrice"))
+            return None
         else:
             r = await client.get(f"https://api.stock.naver.com/stock/{code}/basic")
             return _num(r.json().get("closePrice"))
