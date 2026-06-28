@@ -78,6 +78,11 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
   <div class="kpi"><div class="l">📦 정산예정 (곧 입금)</div><div class="v" id="k_settle" style="color:#0891b2">-</div><div class="s">쿠팡+네이버 묶인 돈</div></div>
  </div>
 
+ <div class="card" id="acct_card" style="border-top:3px solid #2563eb">
+   <h2>📋 경리 체크리스트 <span class="muted big">— AI가 못 긁는 항목만 모았어요. 이것만 확인·수정하면 끝</span></h2>
+   <div id="acct_box"></div>
+ </div>
+
  <details class="card" id="pl_card" style="border-top:3px solid #5b21b6">
    <summary style="cursor:pointer;list-style:none;font-size:15px;font-weight:600;color:#1f2937">📊 손익계산서 (이카운트 발생주의) <span class="muted" style="font-weight:400;font-size:12px" id="pl_label">— 펼치기</span></summary>
    <div class="note" style="margin-top:8px">실제 번/쓴 것 기준 손익 (현금흐름과 다른 개념). 자주 보진 않는 참고용.</div>
@@ -356,7 +361,54 @@ function render(){
  // 잔액
  const bote=bal.filter(b=>(b.계정명||'').includes('보통예금'));
  document.querySelector('#t_bal tbody').innerHTML=(bote.length?bote:bal).map(r=>`<tr><td>${r.계정명||''}</td><td>${acctName(r)}</td><td class="num">${(r.금일잔액||0).toLocaleString()}</td>`).join('');
- renderAgg(); renderDetail(); renderPL(); renderSettle(); renderAssets(); renderDept(); renderBalTrend(); renderClose(); renderSales();
+ renderAgg(); renderDetail(); renderPL(); renderSettle(); renderAssets(); renderDept(); renderBalTrend(); renderClose(); renderSales(); renderAcct();
+}
+// ── 경리 체크리스트 (수기입력 항목 한곳에 모음 + 월별 확인) ──
+function _ymStr(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
+function acctConfirmedThisMonth(key){const v=(M.경리확인||{})[key]; return !!v && v.slice(0,7)===_ymStr(new Date());}
+function acctToggle(key){ M.경리확인=M.경리확인||{};
+ if(acctConfirmedThisMonth(key)){ delete M.경리확인[key]; }
+ else { const d=new Date(); M.경리확인[key]=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+ saveManual(); renderAcct();
+}
+function renderAcct(){
+ const box=document.getElementById('acct_box'); if(!box)return;
+ const items=[
+  {cat:'d',key:'미수금',icon:'🧾',name:'미수금 (B2B 받을 돈)',why:misuIsManual()?'수동 등록됨 (자동값 덮어쓰는 중)':'이카운트 자동값 사용 중 — 실제와 다르면 수정',val:won(sum(misuList(),x=>x.잔액||0)),edit:"openEdit('미수금')"},
+  {cat:'d',key:'선급금',icon:'🤝',name:'선급금 (거래처 선지급)',why:'입출금에 안 잡히는 선금 잔액',val:won(sum(SEONYZ(),x=>x.잔액||0)),edit:"openEdit('선급금')"},
+  {cat:'d',key:'카페24',icon:'🛍️',name:'카페24 묶인돈',why:'카페24는 정산 API가 없어 자동 불가 → 수동 입력 필수',val:won(cafe24Amt()),edit:"openEdit('카페24')"},
+  {cat:'d',key:'대출',icon:'💳',name:'대출 (부채)',why:'갚은 만큼 잔액 줄이기',val:won(sum(loanList(),x=>x.잔액||0)),edit:"openEdit('대출')"},
+  {cat:'d',key:'체크목록',icon:'🔵',name:'선금·수량 체크 품목/거래처',why:'까다로운 거래처·품목 등록 (아래 영업손익 카드)',val:((M.체크목록||[]).length)+'개 등록',edit:"document.getElementById('sales_card').scrollIntoView({behavior:'smooth',block:'start'})"},
+  {cat:'e',key:'출금프로젝트',icon:'🏷️',name:'출금 전표 프로젝트명 = 현장(거래처)명',why:'매출↔현장비용 연결 키 (전표 작성 시)',val:'이카운트에서',edit:null},
+  {cat:'e',key:'입금프로젝트',icon:'🏷️',name:'입금 전표 프로젝트명 = 현장명-담당자',why:'수금률·담당자 귀속 (전표 작성 시)',val:'이카운트에서',edit:null},
+ ];
+ const doneN=items.filter(it=>acctConfirmedThisMonth(it.key)).length;
+ const ymLabel=(new Date().getMonth()+1)+'월';
+ const allDone=doneN===items.length;
+ let h=`<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin:2px 0 12px">
+   <div class="muted" style="font-size:12.5px;line-height:1.5"><b>매달 한 번</b> 아래 항목만 확인·수정하면 → AI 자동수집 + 경리 확인 = 자산 집계 완성. 확인하면 ✅ 날짜가 찍혀요.</div>
+   <div style="font-weight:700;font-size:14px;white-space:nowrap;color:${allDone?'#16a34a':'#b45309'}">${ymLabel} 확인 ${doneN}/${items.length}${allDone?' ✅':''}</div></div>`;
+ const rowHtml=it=>{
+   const ok=acctConfirmedThisMonth(it.key);
+   const chk=ok
+     ?`<span onclick="acctToggle('${it.key}')" style="cursor:pointer;color:#16a34a;font-weight:700;white-space:nowrap">✅ ${(M.경리확인||{})[it.key].slice(5).replace('-','/')} 확인</span>`
+     :`<span onclick="acctToggle('${it.key}')" style="cursor:pointer;color:#fff;background:#f59e0b;border-radius:7px;padding:4px 10px;font-weight:700;white-space:nowrap">☐ 확인하기</span>`;
+   const editBtn=it.edit
+     ?`<button onclick="${it.edit}" style="border:none;background:#5b21b6;color:#fff;border-radius:7px;padding:5px 12px;cursor:pointer;font-size:12.5px">✏️ 수정</button>`
+     :`<span class="muted" style="font-size:11.5px">ERP 전표</span>`;
+   return `<tr style="${ok?'background:#f0fdf4':''}">
+     <td style="white-space:normal"><b>${it.icon} ${it.name}</b><div class="muted" style="font-size:11.5px">${it.why}</div></td>
+     <td class="num" style="white-space:nowrap;font-weight:600">${it.val}</td>
+     <td style="text-align:center">${editBtn}</td>
+     <td style="text-align:center">${chk}</td></tr>`;
+ };
+ h+='<div class="scroll"><table style="width:100%"><thead><tr><th>항목</th><th class="num">현재값</th><th style="text-align:center;width:84px">수정</th><th style="text-align:center;width:118px">확인</th></tr></thead><tbody>';
+ h+='<tr><td colspan="4" style="background:#faf5ff;font-weight:700;font-size:12.5px;color:#5b21b6">📝 대시보드에서 입력·수정</td></tr>';
+ h+=items.filter(i=>i.cat==='d').map(rowHtml).join('');
+ h+='<tr><td colspan="4" style="background:#eff6ff;font-weight:700;font-size:12.5px;color:#1d4ed8">🏷️ 이카운트 전표 작성 시 입력</td></tr>';
+ h+=items.filter(i=>i.cat==='e').map(rowHtml).join('');
+ h+='</tbody></table></div>';
+ box.innerHTML=h;
 }
 const SALES_TEAM={'영업팀':['김성주','성기민','조성건'],'쇼핑몰팀':['김해련','김민지']};
 function salesTeamOf(n){for(const t in SALES_TEAM)if(SALES_TEAM[t].includes(n))return t;return '기타';}
