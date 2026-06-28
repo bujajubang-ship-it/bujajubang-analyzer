@@ -204,6 +204,18 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    <div class="scroll" id="sales_box" style="overflow-x:auto;margin-top:8px"></div>
  </div>
 
+ <div class="card" id="card_card" style="border-top:3px solid #d97706;display:none">
+   <h2>💳 법인카드 사용 <span class="muted big" id="card_sum"></span></h2>
+   <div class="note">이카운트 카드매입조회 기반 · 🔴 <b>미분류</b> = 경리가 이카운트에서 카테고리(상대계정) 지정 필요</div>
+   <div class="kpis" id="card_kpis" style="margin-bottom:12px"></div>
+   <div class="note">월별 사용액</div>
+   <canvas id="cardMonthChart" height="80"></canvas>
+   <div class="grid2" style="margin-top:14px">
+     <div><div class="note" style="font-weight:600">카테고리별</div><div class="scroll" style="max-height:300px"><table id="t_cardcat"><thead><tr><th>카테고리</th><th class="num">금액</th><th>비중</th></tr></thead><tbody></tbody></table></div></div>
+     <div><div class="note" style="font-weight:600">사용 내역</div><input class="search" id="cardsearch" placeholder="가맹점·카테고리·날짜 검색" oninput="renderCardList()"><div class="scroll" style="max-height:260px"><table id="t_cardlist"><thead><tr><th>일자</th><th>카드</th><th>가맹점</th><th class="num">금액</th><th>분류</th></tr></thead><tbody></tbody></table></div><div class="muted" id="cardcount" style="font-size:12px;margin-top:6px"></div></div>
+   </div>
+ </div>
+
  <div class="card" id="baltrend_card">
    <h2>🏦 월말 통장 잔고 추이</h2>
    <div class="note">각 달 말일 기준 은행 잔액 (보통예금 계좌) · 잔고가 늘었는지 줄었는지 한눈에</div>
@@ -456,7 +468,7 @@ function render(){
  // 잔액
  const bote=bal.filter(b=>(b.계정명||'').includes('보통예금'));
  document.querySelector('#t_bal tbody').innerHTML=(bote.length?bote:bal).map(r=>`<tr><td>${r.계정명||''}</td><td>${acctName(r)}</td><td class="num">${(r.금일잔액||0).toLocaleString()}</td>`).join('');
- renderAgg(); renderDetail(); renderPL(); renderSettle(); renderAssets(); renderDept(); renderBalTrend(); renderClose(); renderSales(); renderAcct();
+ renderAgg(); renderDetail(); renderPL(); renderSettle(); renderAssets(); renderDept(); renderBalTrend(); renderClose(); renderSales(); renderAcct(); renderCards();
 }
 // ── 사장님 개인 자산 (boss 전용: 주식 실시간 + 부동산/현금) ──
 let PRS={}, PQ={fx_usdkrw:null,prices:{}};
@@ -676,6 +688,7 @@ function renderAcct(){
   {cat:'d',key:'카페24',icon:'🛍️',name:'카페24 묶인돈',why:'카페24는 정산 API가 없어 자동 불가 → 수동 입력 필수',val:won(cafe24Amt()),edit:"openEdit('카페24')"},
   {cat:'d',key:'대출',icon:'💳',name:'대출 (부채)',why:'갚은 만큼 잔액 줄이기',val:won(sum(loanList(),x=>x.잔액||0)),edit:"openEdit('대출')"},
   {cat:'d',key:'체크목록',icon:'🔵',name:'선금·수량 체크 품목/거래처',why:'까다로운 거래처·품목 등록 (아래 영업손익 카드)',val:((M.체크목록||[]).length)+'개 등록',edit:"document.getElementById('sales_card').scrollIntoView({behavior:'smooth',block:'start'})"},
+  {cat:'d',key:'법인카드',icon:'💳',name:'법인카드 미분류 분류'+((((D.법인카드||{}).미분류||{}).건수)?` (🔴${((D.법인카드||{}).미분류||{}).건수}건)`:''),why:'이카운트 카드매입조회에서 미분류 거래에 상대계정(카테고리) 지정',val:won((((D.법인카드||{}).미분류||{}).합)||0),edit:"document.getElementById('card_card').scrollIntoView({behavior:'smooth',block:'start'})"},
   {cat:'e',key:'출금프로젝트',icon:'🏷️',name:'출금 전표 프로젝트명 = 현장(거래처)명',why:'매출↔현장비용 연결 키 (전표 작성 시)',val:'이카운트에서',edit:null},
   {cat:'e',key:'입금프로젝트',icon:'🏷️',name:'입금 전표 프로젝트명 = 현장명-담당자',why:'수금률·담당자 귀속 (전표 작성 시)',val:'이카운트에서',edit:null},
  ];
@@ -706,6 +719,34 @@ function renderAcct(){
  h+=items.filter(i=>i.cat==='e').map(rowHtml).join('');
  h+='</tbody></table></div>';
  box.innerHTML=h;
+}
+// ── 법인카드 사용 (경리 관리) ──
+let chCard=null;
+function renderCards(){
+  const card=document.getElementById('card_card'); if(!card)return;
+  const C=D.법인카드;
+  if(!C||!C.내역||!C.내역.length){card.style.display='none';return;}
+  card.style.display='';
+  const months=Object.keys(C.월별||{}).sort();
+  const cm=months[months.length-1]||''; const tm=(C.월별||{})[cm]||{합:0,건수:0};
+  document.getElementById('card_sum').innerHTML=`· 전체 ${won(C.총사용)} (${C.건수}건) · ${cm?cm.slice(2)+' ':''}${won(tm.합)}`;
+  const co=C.카드사별||{};
+  let kp=Object.entries(co).filter(([k,v])=>v>0).map(([k,v])=>`<div class="kpi"><div class="l">${k}카드</div><div class="v" style="font-size:18px">${won(v)}</div></div>`).join('');
+  if(C.미분류&&C.미분류.합) kp+=`<div class="kpi" style="border:1px solid #fca5a5;background:#fef2f2"><div class="l">🔴 미분류</div><div class="v" style="font-size:18px;color:#dc2626">${won(C.미분류.합)}</div><div class="s">${C.미분류.건수}건 · 경리 분류 필요</div></div>`;
+  document.getElementById('card_kpis').innerHTML=kp;
+  if(chCard)chCard.destroy();
+  chCard=new Chart(document.getElementById('cardMonthChart'),{type:'bar',data:{labels:months.map(m=>m.slice(2)),datasets:[{data:months.map(m=>C.월별[m].합),backgroundColor:'#d97706'}]},options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>won(c.parsed.y)}}},scales:{y:{ticks:{callback:v=>(v/1e4).toLocaleString()+'만'}}}}});
+  const cat=C.카테고리별||{}, tot=C.총사용||1;
+  document.querySelector('#t_cardcat tbody').innerHTML=Object.entries(cat).slice(0,14).map(([k,v])=>`<tr><td>${k==='미분류'?'<span style="color:#dc2626">🔴 미분류</span>':k}</td><td class="num"${k==='미분류'?' style="color:#dc2626"':''}>${won(v)}</td><td class="muted">${Math.round(v/tot*100)}%</td></tr>`).join('');
+  renderCardList();
+}
+function renderCardList(){
+  const C=D.법인카드; if(!C)return;
+  const q=(document.getElementById('cardsearch').value||'').trim();
+  let rows=C.내역;
+  if(q) rows=rows.filter(r=>((r.m||'')+(r.c||'')+(r.cat||'')+(r.d||'')).includes(q));
+  document.querySelector('#t_cardlist tbody').innerHTML=rows.slice(0,200).map(r=>`<tr><td style="white-space:nowrap">${(r.d||'').slice(5)}</td><td style="white-space:nowrap">${r.co||''}</td><td style="white-space:normal">${r.m||''}</td><td class="num">${won(r.a||0)}</td><td>${r.cat==='미분류'?'<span style="color:#dc2626">🔴</span>':(r.cat||'')}</td></tr>`).join('');
+  document.getElementById('cardcount').textContent=`${rows.length}건${rows.length>200?' (최근 200 표시)':''}`;
 }
 const SALES_TEAM={'영업팀':['김성주','성기민','조성건'],'쇼핑몰팀':['김해련','김민지']};
 function salesTeamOf(n){for(const t in SALES_TEAM)if(SALES_TEAM[t].includes(n))return t;return '기타';}
