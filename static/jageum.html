@@ -100,11 +100,22 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
  </div><!--/view-biz-->
 
  <div id="view_personal" style="display:none">
+ <div class="card" id="personal_top" style="display:none;border-top:3px solid #7c3aed;text-align:center;padding:16px 18px">
+   <div class="muted" style="font-size:13px">👑 사장님 개인 순자산 <span style="font-size:11px">(사장님 계정에서만 보임)</span></div>
+   <div id="personal_net" style="font-size:32px;font-weight:800;color:#7c3aed;line-height:1.2">-</div>
+   <div class="muted" id="personal_net_sub" style="font-size:12.5px;margin-top:2px"></div>
+ </div>
  <div class="card" id="personal_card" style="display:none;border-top:3px solid #7c3aed">
-   <h2 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">💼 사장님 개인 자산 <span class="muted big" id="personal_sum"></span>
-     <button onclick="openPersonal()" style="margin-left:auto;border:none;background:#7c3aed;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:13px">✏️ 편집</button></h2>
-   <div class="note">주식 현재가·환율 <b>실시간 자동</b> · 부동산은 실거래가 기준(수동 보정 가능) · 사장님 계정에서만 보임</div>
+   <h2 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">📈 보유 주식 <span class="muted big" id="personal_sum"></span>
+     <button onclick="openPersonal()" style="margin-left:auto;border:none;background:#7c3aed;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:13px">✏️ 종목 편집</button></h2>
+   <div class="note">국내·해외 주식 현재가·환율 <b>실시간 자동</b> (증권사 HTS 잔고 기준)</div>
    <div id="personal_box"></div>
+ </div>
+ <div class="card" id="realestate_card" style="display:none;border-top:3px solid #0891b2">
+   <h2 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">🏠 부동산 · 💵 현금성 <span class="muted big" id="re_sum"></span>
+     <button onclick="openPersonal()" style="margin-left:auto;border:none;background:#0891b2;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:13px">✏️ 편집</button></h2>
+   <div class="note">부동산은 실거래가 기준 (수동 보정 가능)</div>
+   <div id="re_box"></div>
  </div>
 
  <div class="card" id="goal_card" style="display:none;border-top:3px solid #7c3aed">
@@ -453,24 +464,39 @@ function renderPersonal(){
   });
   let othK=0; others.forEach(o=>othK+=(+o.금액||0));
   const total=evalK+othK, rr=buyK?Math.round(plK/buyK*1000)/10:0;
-  document.getElementById('personal_sum').textContent='· 총 '+won(total)+(fx?(' · $환율 '+Math.round(fx).toLocaleString()):'');
   const col=v=>v>=0?'#dc2626':'#2563eb';
+  // ── 상단: 개인 순자산 ──
+  const pt=document.getElementById('personal_top'); if(pt)pt.style.display='';
+  const netEl=document.getElementById('personal_net'); if(netEl)netEl.textContent=won(total);
+  const sub=document.getElementById('personal_net_sub');
+  if(sub)sub.innerHTML=`📈 주식 ${won(evalK)} <span style="color:${col(plK)}">(${plK>=0?'+':''}${won(plK)})</span> &nbsp;·&nbsp; 🏠💵 부동산·현금 ${won(othK)}`;
+  // ── 주식 카드 ──
+  document.getElementById('personal_card').style.display='';
+  document.getElementById('personal_sum').textContent='· 평가 '+won(evalK)+(fx?(' · $환율 '+Math.round(fx).toLocaleString()):'');
   const stkRow=x=>{
     const avg=x.isUS?_usd(x.s.avg):(x.s.avg||0).toLocaleString();
     const cur=x.cur==null?'<span class="muted">…</span>':(x.isUS?_usd(x.cur):x.cur.toLocaleString());
-    const buy=won(x.buy);
     const ev=x.ev==null?'-':won(x.ev);
     const pl=x.pl==null?'-':`<span style="color:${col(x.pl)}">${x.pl>=0?'+':''}${won(x.pl)}</span>`;
     const rt=x.rate==null?'-':`<span style="color:${col(x.rate)};font-weight:600">${x.rate>=0?'+':''}${x.rate.toFixed(2)}%</span>`;
-    return `<tr><td style="white-space:nowrap">${x.s.name}<div class="muted" style="font-size:11px">${(x.s.qty||0).toLocaleString()}주</div></td><td class="num">${avg}</td><td class="num">${cur}</td><td class="num">${buy}</td><td class="num">${ev}</td><td class="num">${pl}</td><td class="num">${rt}</td></tr>`;
+    return `<tr><td style="white-space:nowrap;font-weight:600">${x.s.name}</td><td class="num" style="white-space:nowrap;font-weight:600">${(x.s.qty||0).toLocaleString()}<span class="muted" style="font-size:11px;font-weight:400"> 주</span></td><td class="num">${avg}</td><td class="num">${cur}</td><td class="num">${won(x.buy)}</td><td class="num">${ev}</td><td class="num">${pl}</td><td class="num">${rt}</td></tr>`;
   };
-  const tbl=(t,rows)=>rows.length?`<div style="font-weight:600;margin:10px 0 4px">${t}</div><div class="scroll"><table style="width:100%;font-size:13px"><thead><tr><th>종목</th><th class="num">평단</th><th class="num">현재가</th><th class="num">매입금액</th><th class="num">평가금액</th><th class="num">평가손익</th><th class="num">수익률</th></tr></thead><tbody>${rows.map(stkRow).join('')}</tbody></table></div>`:'';
-  let h=tbl('🇰🇷 국내주식',dom)+tbl('🇺🇸 해외주식',ovs);
-  if(others.length) h+=`<div style="font-weight:600;margin:12px 0 4px">🏠 부동산 · 💵 현금성</div><div class="scroll"><table style="width:100%"><tbody>`+others.map(o=>`<tr><td>${o.유형==='부동산'?'🏠':'💵'} ${o.이름||''}</td><td class="num">${won(+o.금액||0)}</td></tr>`).join('')+`</tbody></table></div>`;
-  h+=`<div style="margin-top:12px;padding:12px 14px;background:#f5f3ff;border-radius:10px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px">
-    <div><div class="muted" style="font-size:12px">주식 평가액 <span style="font-size:11px">(매입 ${won(buyK)})</span></div><div style="font-weight:700">${won(evalK)} <span style="font-size:12px;color:${col(plK)}">(${plK>=0?'+':''}${won(plK)} · ${rr>=0?'+':''}${rr}%)</span></div></div>
-    <div style="text-align:right"><div class="muted" style="font-size:12px">개인 총자산</div><div style="font-weight:800;font-size:19px;color:#7c3aed">${won(total)}</div></div></div>`;
-  box.innerHTML=h;
+  const tbl=(t,rows,first)=>rows.length?`<div style="font-weight:700;font-size:14px;margin:${first?'2':'20'}px 0 8px;${first?'':'padding-top:16px;border-top:1px solid #e9eaee;'}">${t}</div><div class="scroll"><table style="width:100%;font-size:13px"><thead><tr><th>종목</th><th class="num">보유</th><th class="num">평단</th><th class="num">현재가</th><th class="num">매입금액</th><th class="num">평가금액</th><th class="num">평가손익</th><th class="num">수익률</th></tr></thead><tbody>${rows.map(stkRow).join('')}</tbody></table></div>`:'';
+  let sh='', firstDone=false;
+  if(dom.length){sh+=tbl('🇰🇷 국내주식',dom,true);firstDone=true;}
+  if(ovs.length){sh+=tbl('🇺🇸 해외주식',ovs,!firstDone);}
+  if(!stocks.length)sh='<div class="muted" style="padding:8px">보유 종목이 없어요. 우측 상단 ✏️ 종목 편집에서 추가하세요.</div>';
+  sh+=`<div style="margin-top:14px;padding:12px 14px;background:#f5f3ff;border-radius:10px">
+    <div class="muted" style="font-size:12px">주식 평가액 <span style="font-size:11px">(매입 ${won(buyK)})</span></div>
+    <div style="font-weight:700;font-size:16px">${won(evalK)} <span style="font-size:13px;color:${col(plK)}">(${plK>=0?'+':''}${won(plK)} · ${rr>=0?'+':''}${rr}%)</span></div></div>`;
+  box.innerHTML=sh;
+  // ── 부동산·현금 카드 (분리) ──
+  const reCard=document.getElementById('realestate_card'); if(reCard)reCard.style.display='';
+  const reSum=document.getElementById('re_sum'); if(reSum)reSum.textContent='· 합계 '+won(othK);
+  const reBox=document.getElementById('re_box');
+  if(reBox)reBox.innerHTML = others.length
+    ? `<div class="scroll"><table style="width:100%;font-size:13.5px"><tbody>`+others.map(o=>`<tr><td style="white-space:normal;padding:10px 8px">${o.유형==='부동산'?'🏠':'💵'} ${o.이름||''}</td><td class="num" style="font-weight:700;padding:10px 8px">${won(+o.금액||0)}</td></tr>`).join('')+`</tbody></table></div>`
+    : `<div class="muted" style="padding:8px">등록된 부동산·현금성 자산이 없어요. 우측 상단 ✏️ 편집에서 추가하세요.</div>`;
   window._ptot=total; renderGoal(); if(window.renderTotal)renderTotal();
 }
 // ── 탭 (사업 / 개인 / 전체 합산) ──
