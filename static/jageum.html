@@ -50,6 +50,7 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    <button class="tabbtn on" data-v="biz" onclick="showTab('biz',this)">🏢 사업</button>
    <button class="tabbtn" data-v="personal" onclick="showTab('personal',this)">👑 개인자산</button>
    <button class="tabbtn" data-v="total" onclick="showTab('total',this)">📊 전체 합산</button>
+   <button class="tabbtn" data-v="life" onclick="showTab('life',this)">🌱 인생 노트</button>
  </div>
  <div id="period_bar"><div class="pbtns">
    <b style="margin-right:4px">📅 기간</b>
@@ -285,6 +286,29 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
      <h2>📊 전체 자산 합산 <span class="muted big">— 회사(법인) + 사장님 개인</span></h2>
      <div class="note">법인 순자산(실질자산 − 대출) + 개인 순자산(주식·부동산·현금)을 합친 그룹 전체 자산</div>
      <div id="total_box"></div>
+   </div>
+ </div>
+
+ <div id="view_life" style="display:none">
+   <div class="card" style="border-top:3px solid #16a34a">
+     <h2>🌅 비전보드 <span class="muted big">— 내가 그리는 미래 (사진 최대 15장)</span></h2>
+     <div class="note">이루고 싶은 모습·장면을 사진으로. 매일 보면서 방향을 잡아요.</div>
+     <div id="vb_drop" style="border:2px dashed #86efac;border-radius:12px;padding:18px;text-align:center;color:#16a34a;cursor:pointer;margin:10px 0;background:#f0fdf4">📷 사진 추가 (클릭 또는 드래그 · 최대 15장)</div>
+     <input type="file" id="vb_file" accept="image/*" multiple style="display:none">
+     <div id="vb_grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px"></div>
+   </div>
+   <div class="card" style="border-top:3px solid #16a34a">
+     <h2>✍️ 인생 노트 <span class="muted big">— 생각·방향·아이디어를 계속 적어요</span></h2>
+     <input id="life_title" class="search" placeholder="제목 (예: 올해의 방향, 새 사업 아이디어…)" style="margin-bottom:8px">
+     <textarea id="life_body" placeholder="오늘의 생각, 인생의 방향, 떠오른 아이디어를 자유롭게…" style="width:100%;min-height:120px;padding:12px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;resize:vertical"></textarea>
+     <div style="margin-top:8px"><button onclick="lifeAdd()" style="background:#16a34a;color:#fff;border:none;border-radius:9px;padding:10px 22px;font-weight:700;cursor:pointer">+ 기록 남기기</button></div>
+     <div id="life_entries" style="margin-top:16px"></div>
+   </div>
+   <div class="card" id="life_past_card" style="border-top:3px solid #16a34a;display:none">
+     <h2>📚 지난 블로그 기록 <span class="muted big">— 과거에 했던 고민·생각</span></h2>
+     <div class="note">PDF로 주신 블로그를 정리한 거예요. 새 글이 과거 고민과 맞아떨어지는지 비교해보세요.</div>
+     <input id="past_search" class="search" placeholder="과거 기록 검색 (키워드·주제)" oninput="renderPast()" style="margin:8px 0">
+     <div id="life_past"></div>
    </div>
  </div>
 
@@ -547,8 +571,10 @@ function showTab(v,btn){
   document.querySelectorAll('.view-biz').forEach(e=>e.style.display=(v==='biz')?'':'none');
   const vp=document.getElementById('view_personal'); if(vp)vp.style.display=(v==='personal')?'':'none';
   const vt=document.getElementById('view_total'); if(vt)vt.style.display=(v==='total')?'':'none';
+  const vl=document.getElementById('view_life'); if(vl)vl.style.display=(v==='life')?'':'none';
   const pb=document.getElementById('period_bar'); if(pb)pb.style.display=(v==='biz')?'':'none';
   if(v==='total')renderTotal();
+  if(v==='life')loadLife();
   window.scrollTo(0,0);
 }
 function renderTotal(){
@@ -719,6 +745,69 @@ function renderAcct(){
  h+=items.filter(i=>i.cat==='e').map(rowHtml).join('');
  h+='</tbody></table></div>';
  box.innerHTML=h;
+}
+// ── 🌱 인생 노트 (boss 전용: 비전보드 + 글쓰기 + 과거 블로그) ──
+let LIFE={비전보드:[],글:[],과거:[]}, _lifeLoaded=false;
+function loadLife(){
+  if(MYROLE!=='boss')return;
+  if(_lifeLoaded){renderLife();return;}
+  fetch('/jageum/api/life').then(r=>r.ok?r.json():{}).then(d=>{
+    LIFE=Object.assign({비전보드:[],글:[],과거:[]},d||{}); _lifeLoaded=true; renderLife(); bindVB();
+  }).catch(()=>{renderLife();});
+}
+function saveLife(){ fetch('/jageum/api/life',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(LIFE)}).then(()=>{}); }
+function _ymd(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function bindVB(){
+  const drop=document.getElementById('vb_drop'), f=document.getElementById('vb_file'); if(!drop||drop._b)return; drop._b=1;
+  drop.onclick=()=>f.click(); f.onchange=e=>vbFiles(e.target.files);
+  ['dragover','dragenter'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.style.background='#dcfce7'}));
+  ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.style.background='#f0fdf4'}));
+  drop.addEventListener('drop',e=>vbFiles(e.dataTransfer.files));
+}
+function vbFiles(fl){
+  [...fl].forEach(file=>{
+    if(!file.type.startsWith('image/'))return;
+    if((LIFE.비전보드||[]).length>=15){alert('비전보드는 최대 15장이에요.');return;}
+    const r=new FileReader();
+    r.onload=ev=>{const img=new Image();img.onload=()=>{
+      const max=820;let w=img.width,h=img.height;
+      if(w>h&&w>max){h=Math.round(h*max/w);w=max}else if(h>=w&&h>max){w=Math.round(w*max/h);h=max}
+      const cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(img,0,0,w,h);
+      LIFE.비전보드=LIFE.비전보드||[];LIFE.비전보드.push(cv.toDataURL('image/jpeg',0.82));saveLife();renderLife();
+    };img.src=ev.target.result;};
+    r.readAsDataURL(file);
+  });
+}
+function vbRemove(i){if(!confirm('이 사진 삭제할까요?'))return;LIFE.비전보드.splice(i,1);saveLife();renderLife();}
+function lifeAdd(){
+  const t=document.getElementById('life_title').value.trim(), b=document.getElementById('life_body').value.trim();
+  if(!t&&!b){alert('내용을 적어주세요.');return;}
+  LIFE.글=LIFE.글||[]; LIFE.글.unshift({id:Date.now(),date:_ymd(),title:t||'(무제)',body:b});
+  document.getElementById('life_title').value='';document.getElementById('life_body').value='';
+  saveLife();renderLife();
+}
+function lifeDel(id){if(!confirm('이 기록 삭제할까요?'))return;LIFE.글=(LIFE.글||[]).filter(e=>e.id!==id);saveLife();renderLife();}
+function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function renderLife(){
+  // 비전보드
+  const g=document.getElementById('vb_grid');
+  if(g)g.innerHTML=(LIFE.비전보드||[]).map((src,i)=>`<div style="position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;border:1px solid #d1fae5"><img src="${src}" style="width:100%;height:100%;object-fit:cover"><span onclick="vbRemove(${i})" style="position:absolute;top:3px;right:3px;background:rgba(0,0,0,.55);color:#fff;border-radius:50%;width:20px;height:20px;text-align:center;line-height:20px;cursor:pointer;font-size:13px">×</span></div>`).join('')
+    +((LIFE.비전보드||[]).length?'':'<div class="muted" style="grid-column:1/-1;padding:10px">아직 사진이 없어요. 위에서 추가하세요.</div>');
+  // 글
+  const e=document.getElementById('life_entries');
+  if(e)e.innerHTML=(LIFE.글||[]).length?(LIFE.글||[]).map(en=>`<div style="border-left:3px solid #16a34a;background:#f6fdf8;border-radius:8px;padding:12px 14px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;gap:8px"><b style="font-size:15px">${esc(en.title)}</b><span class="muted" style="font-size:12px;white-space:nowrap">${en.date} <a onclick="lifeDel(${en.id})" style="cursor:pointer;color:#dc2626">삭제</a></span></div>
+      <div style="white-space:pre-wrap;margin-top:6px;font-size:14px;line-height:1.6">${esc(en.body)}</div></div>`).join(''):'<div class="muted" style="padding:8px">첫 기록을 남겨보세요. 매일 쌓이면 생각의 흐름이 보여요.</div>';
+  renderPast();
+}
+function renderPast(){
+  const card=document.getElementById('life_past_card'), box=document.getElementById('life_past');
+  const past=LIFE.과거||[];
+  if(!past.length){if(card)card.style.display='none';return;}
+  if(card)card.style.display='';
+  const q=(document.getElementById('past_search')?.value||'').trim();
+  const rows=q?past.filter(p=>((p.title||'')+(p.body||'')+(p.date||'')+((p.tags||[]).join(''))).includes(q)):past;
+  if(box)box.innerHTML=rows.map(p=>`<details style="border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;margin-bottom:8px"><summary style="cursor:pointer;font-weight:600">${esc(p.title)} <span class="muted" style="font-weight:400;font-size:12px">${p.date||''} ${(p.tags||[]).map(t=>'#'+t).join(' ')}</span></summary><div style="white-space:pre-wrap;margin-top:8px;font-size:13.5px;line-height:1.6;color:#374151">${esc(p.body)}</div></details>`).join('')||'<div class="muted">검색 결과 없음</div>';
 }
 // ── 법인카드 사용 (경리 관리) ──
 let chCard=null;

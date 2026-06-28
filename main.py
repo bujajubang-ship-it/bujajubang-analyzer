@@ -947,6 +947,28 @@ async def jageum_personal_search(request: Request, q: str = ""):
         pass
     return JSONResponse({"items": items})
 
+JAGEUM_LIFE_FILE = Path("jageum_life.json")
+
+@app.get("/jageum/api/life")
+def jageum_life_get(request: Request):
+    if not _boss_only(request):
+        return _AUTH401
+    d = {}
+    if JAGEUM_LIFE_FILE.exists():
+        try:
+            d = json.loads(JAGEUM_LIFE_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            d = {}
+    return JSONResponse(d)
+
+@app.post("/jageum/api/life")
+async def jageum_life_post(request: Request):
+    if not _boss_only(request):
+        return _AUTH401
+    body = await request.body()
+    JAGEUM_LIFE_FILE.write_text(body.decode("utf-8"), encoding="utf-8")
+    return JSONResponse({"ok": True})
+
 @app.get("/jageum/api/personal/chart")
 async def jageum_personal_chart(request: Request, market: str = "KR", code: str = "", days: int = 120):
     if not _boss_only(request):
