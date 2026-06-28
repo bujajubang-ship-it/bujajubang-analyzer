@@ -39,9 +39,16 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
 #period_bar button{border:1px solid #d1d5db;background:#fff;padding:5px 11px;border-radius:7px;cursor:pointer;font-size:13px}
 #period_bar button.on{background:#5b21b6;color:#fff;border-color:#5b21b6}
 #period_bar select{padding:5px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:13px}
+.tabbtn{border:1px solid #d1d5db;background:#fff;padding:8px 16px;border-radius:9px;cursor:pointer;font-size:14px;font-weight:600;color:#374151}
+.tabbtn.on{background:#5b21b6;color:#fff;border-color:#5b21b6}
 </style></head><body>
 <div class="top"><h1>💰 부자홀딩스 자금 대시보드</h1><span class="sub" id="period">불러오는 중…</span><span class="sub" id="whoami" style="margin-left:auto"></span><button onclick="logout()" style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:7px;padding:6px 14px;cursor:pointer;font-size:13px">로그아웃</button></div>
 <div class="wrap">
+ <div id="tabbar" style="display:none;justify-content:flex-end;gap:8px;margin-bottom:14px">
+   <button class="tabbtn on" data-v="biz" onclick="showTab('biz',this)">🏢 사업</button>
+   <button class="tabbtn" data-v="personal" onclick="showTab('personal',this)">👑 개인자산</button>
+   <button class="tabbtn" data-v="total" onclick="showTab('total',this)">📊 전체 합산</button>
+ </div>
  <div id="period_bar"><div class="pbtns">
    <b style="margin-right:4px">📅 기간</b>
    <button data-p="this">이번달</button><button data-p="last">지난달</button>
@@ -83,12 +90,16 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
      </div>
    </div>
  </div>
+ <div class="view-biz">
  <div class="card" id="asset_panel">
    <div class="muted" style="font-size:13px">💎 실질 총자산 <span style="font-size:11px">(오늘 기준 · 통장+곧 들어올 돈+받을 돈+선급+투자)</span></div>
    <div id="asset_total" style="font-size:34px;font-weight:800;color:#5b21b6;line-height:1.2">-</div>
    <div id="asset_net" style="font-size:14px;color:#374151;margin-top:2px"></div>
    <div class="asset-items" id="asset_items"></div>
  </div>
+ </div><!--/view-biz-->
+
+ <div id="view_personal" style="display:none">
  <div class="card" id="personal_card" style="display:none;border-top:3px solid #7c3aed">
    <h2 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">💼 사장님 개인 자산 <span class="muted big" id="personal_sum"></span>
      <button onclick="openPersonal()" style="margin-left:auto;border:none;background:#7c3aed;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:13px">✏️ 편집</button></h2>
@@ -109,7 +120,9 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    <div id="goal_stats" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px"></div>
    <canvas id="goalChart" height="90"></canvas>
  </div>
+ </div><!--/view_personal-->
 
+ <div class="view-biz">
  <div class="kpis">
   <div class="kpi in"><div class="l">영업 입금 (매출정산)</div><div class="v" id="k_in">-</div><div class="s">내부이체 제외</div></div>
   <div class="kpi out"><div class="l">영업 지출</div><div class="v" id="k_out">-</div><div class="s">내부이체 제외</div></div>
@@ -222,6 +235,15 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    <div class="note">AI가 올린 기능 수정 요청입니다. 사장님이 승인하면 개발자(클로드코드)가 반영합니다.</div>
    <div id="appr_list"></div>
  </div>
+ </div><!--/view-biz-->
+
+ <div id="view_total" style="display:none">
+   <div class="card" style="border-top:3px solid #0891b2">
+     <h2>📊 전체 자산 합산 <span class="muted big">— 회사(법인) + 사장님 개인</span></h2>
+     <div class="note">법인 순자산(실질자산 − 대출) + 개인 순자산(주식·부동산·현금)을 합친 그룹 전체 자산</div>
+     <div id="total_box"></div>
+   </div>
+ </div>
 
  <div class="muted" style="font-size:12px;text-align:center;padding:10px">이카운트 자금일보 자동 수집 · 매일 아침 8시 갱신 · 내부이체(대체)는 영업수치에서 제외</div>
 </div>
@@ -287,7 +309,8 @@ function logout(){fetch('/jageum/api/logout',{method:'POST'}).then(()=>location.
 function load(){fetch('/jageum/api/data').then(r=>{if(r.status===401){location.href='/jageum/login';return null;}return r.json();}).then(d=>{if(!d)return;D=d;M=d.수동입력||{};MYROLE=d._role||'';
   document.getElementById('whoami').textContent = MYROLE==='boss'?'👑 대표님':(MYROLE==='staff'?'🧑‍💼 경리':'');
   {const _wl=document.getElementById('chat_who_label'); if(_wl)_wl.textContent=MYROLE==='boss'?'👑 사장님':(MYROLE==='staff'?'🧑‍💼 경리':'게스트');}
-  if(MYROLE==='boss'){document.getElementById('approval_card').style.display='';loadApprovals();loadPersonal();}
+  if(MYROLE==='boss'){document.getElementById('approval_card').style.display='';loadApprovals();loadPersonal();
+    document.getElementById('tabbar').style.display='flex';showTab('biz');}
   initPeriod()}).catch(()=>{period.textContent='데이터 없음'})}
 // ===== 편집 모달 =====
 const EM_CFG={
@@ -446,7 +469,38 @@ function renderPersonal(){
     <div><div class="muted" style="font-size:12px">주식 평가액</div><div style="font-weight:700">${won(evalK)} <span style="font-size:12px;color:${col(plK)}">(${plK>=0?'+':''}${won(plK)} · ${rr>=0?'+':''}${rr}%)</span></div></div>
     <div style="text-align:right"><div class="muted" style="font-size:12px">개인 총자산</div><div style="font-weight:800;font-size:19px;color:#7c3aed">${won(total)}</div></div></div>`;
   box.innerHTML=h;
-  window._ptot=total; renderGoal();
+  window._ptot=total; renderGoal(); if(window.renderTotal)renderTotal();
+}
+// ── 탭 (사업 / 개인 / 전체 합산) ──
+function showTab(v,btn){
+  document.querySelectorAll('#tabbar .tabbtn').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
+  document.querySelectorAll('.view-biz').forEach(e=>e.style.display=(v==='biz')?'':'none');
+  const vp=document.getElementById('view_personal'); if(vp)vp.style.display=(v==='personal')?'':'none';
+  const vt=document.getElementById('view_total'); if(vt)vt.style.display=(v==='total')?'':'none';
+  const pb=document.getElementById('period_bar'); if(pb)pb.style.display=(v==='biz')?'':'none';
+  if(v==='total')renderTotal();
+  window.scrollTo(0,0);
+}
+function renderTotal(){
+  const el=document.getElementById('total_box'); if(!el)return;
+  const biz=window._bizNet||0, per=window._ptot||0, grand=biz+per;
+  el.innerHTML=`<div style="text-align:center;padding:16px 0 18px">
+      <div class="muted" style="font-size:13px">그룹 전체 순자산</div>
+      <div style="font-size:36px;font-weight:800;color:#0891b2;line-height:1.2">${won(grand)}</div></div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <div style="flex:1;min-width:200px;background:#f5f3ff;border-radius:10px;padding:14px">
+        <div class="muted" style="font-size:13px">🏢 회사(법인) 순자산</div>
+        <div style="font-size:22px;font-weight:700;color:#5b21b6">${won(biz)}</div>
+        <div class="muted" style="font-size:11px">실질자산 − 대출 · 사업 탭에서 상세</div></div>
+      <div style="flex:1;min-width:200px;background:#faf5ff;border-radius:10px;padding:14px">
+        <div class="muted" style="font-size:13px">👑 사장님 개인 순자산</div>
+        <div style="font-size:22px;font-weight:700;color:#7c3aed">${won(per)}</div>
+        <div class="muted" style="font-size:11px">주식+부동산+현금 · 개인자산 탭에서 상세</div></div>
+    </div>
+    <div style="margin-top:12px;height:14px;border-radius:8px;overflow:hidden;display:flex">
+      <div style="background:#5b21b6;width:${grand?biz/grand*100:50}%"></div>
+      <div style="background:#7c3aed;width:${grand?per/grand*100:50}%"></div></div>
+    <div class="muted" style="font-size:11px;margin-top:5px">보라=회사 ${grand?Math.round(biz/grand*100):0}% · 연보라=개인 ${grand?Math.round(per/grand*100):0}%</div>`;
 }
 // ── 🎯 저축 목표 (증분: 지금부터 N억 더 모으기, 개인 총자산 연동) ──
 let chGoal=null;
@@ -728,6 +782,8 @@ function renderAssets(){
  const loans=loanList(), loan=sum(loans,x=>x.잔액||0);
  const total=cash+settle+misu+seonyz+invest+gov;
  const net=total-loan;
+ window._bizTotal=total; window._bizNet=net; window._bizLoan=loan;
+ if(window.renderTotal)renderTotal();
  asset_total.textContent=won(total);
  document.getElementById('asset_net').innerHTML='− 대출(부채) '+won(loan)+'  =  <b style="color:#059669;font-size:17px">순자산 '+won(net)+'</b>';
  const D2=(arr)=>arr.map(([k,v])=>`<div><span>${k}</span><b style="color:#1f2937">${(v||0).toLocaleString()}</b></div>`).join('')||'<div>-</div>';
