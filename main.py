@@ -947,6 +947,30 @@ async def jageum_personal_search(request: Request, q: str = ""):
         pass
     return JSONResponse({"items": items})
 
+@app.get("/jageum/api/personal/chart")
+async def jageum_personal_chart(request: Request, market: str = "KR", code: str = "", days: int = 120):
+    if not _boss_only(request):
+        return _AUTH401
+    import datetime as _dt
+    days = max(7, min(int(days or 120), 800))
+    end = _dt.date.today()
+    start = end - _dt.timedelta(days=days)
+    s, e = start.strftime("%Y%m%d"), end.strftime("%Y%m%d")
+    seg = "domestic" if market == "KR" else "foreign"
+    url = f"https://api.stock.naver.com/chart/{seg}/item/{code}/day?startDateTime={s}&endDateTime={e}"
+    pts = []
+    try:
+        async with httpx.AsyncClient(headers=_NV_H, timeout=15) as c:
+            r = await c.get(url)
+            for row in r.json():
+                d = str(row.get("localDate") or "")
+                cp = _num(row.get("closePrice"))
+                if len(d) == 8 and cp is not None:
+                    pts.append({"d": f"{d[2:4]}.{d[4:6]}.{d[6:8]}", "c": cp})
+    except Exception:
+        pass
+    return JSONResponse({"points": pts})
+
 
 # ===== 자금 대시보드 AI 채팅 + 결재함 =====
 JAGEUM_APPROVALS_FILE = Path("jageum_approvals.json")
