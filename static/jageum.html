@@ -83,6 +83,9 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
      <div style="font-weight:700;margin:16px 0 6px">🏠 부동산 · 💵 현금성</div>
      <div style="overflow-x:auto"><table id="pers_oth_tbl" style="width:100%;font-size:13px"></table></div>
      <button onclick="persAddOther()" style="margin-top:6px;border:1px dashed #c4b5fd;background:#faf5ff;color:#7c3aed;border-radius:7px;padding:6px 12px;cursor:pointer;font-size:13px">+ 부동산/현금 추가</button>
+     <div style="font-weight:700;margin:16px 0 6px">➖ 부채 <span class="muted" style="font-weight:400;font-size:12px">전세보증금·주택담보대출 등 (자산에서 차감)</span></div>
+     <div style="overflow-x:auto"><table id="pers_liab_tbl" style="width:100%;font-size:13px"></table></div>
+     <button onclick="persAddLiab()" style="margin-top:6px;border:1px dashed #fca5a5;background:#fef2f2;color:#b91c1c;border-radius:7px;padding:6px 12px;cursor:pointer;font-size:13px">+ 부채 추가</button>
      <div style="display:flex;gap:8px;margin-top:16px">
        <div style="flex:1"></div>
        <button onclick="closePersonal()" style="border:1px solid #d1d5db;background:#fff;border-radius:8px;padding:8px 16px;cursor:pointer">취소</button>
@@ -463,13 +466,14 @@ function renderPersonal(){
     (isUS?ovs:dom).push({s,cur,isUS,ev,buy,pl,rate});
   });
   let othK=0; others.forEach(o=>othK+=(+o.금액||0));
-  const total=evalK+othK, rr=buyK?Math.round(plK/buyK*1000)/10:0;
+  const liabs=PRS.기타부채||[]; let liabK=0; liabs.forEach(l=>liabK+=(+l.금액||0));
+  const assetsK=evalK+othK, total=assetsK-liabK, rr=buyK?Math.round(plK/buyK*1000)/10:0;
   const col=v=>v>=0?'#dc2626':'#2563eb';
-  // ── 상단: 개인 순자산 ──
+  // ── 상단: 개인 순자산 (자산 − 부채) ──
   const pt=document.getElementById('personal_top'); if(pt)pt.style.display='';
   const netEl=document.getElementById('personal_net'); if(netEl)netEl.textContent=won(total);
   const sub=document.getElementById('personal_net_sub');
-  if(sub)sub.innerHTML=`📈 주식 ${won(evalK)} <span style="color:${col(plK)}">(${plK>=0?'+':''}${won(plK)})</span> &nbsp;·&nbsp; 🏠💵 부동산·현금 ${won(othK)}`;
+  if(sub)sub.innerHTML=`📈 주식 ${won(evalK)} · 🏠💵 부동산·현금 ${won(othK)}${liabK?` · <span style="color:#dc2626">➖ 부채 ${won(liabK)}</span>`:''}`;
   // ── 주식 카드 ──
   document.getElementById('personal_card').style.display='';
   document.getElementById('personal_sum').textContent='· 평가 '+won(evalK)+(fx?(' · $환율 '+Math.round(fx).toLocaleString()):'');
@@ -490,13 +494,21 @@ function renderPersonal(){
     <div class="muted" style="font-size:12px">주식 평가액 <span style="font-size:11px">(매입 ${won(buyK)})</span></div>
     <div style="font-weight:700;font-size:16px">${won(evalK)} <span style="font-size:13px;color:${col(plK)}">(${plK>=0?'+':''}${won(plK)} · ${rr>=0?'+':''}${rr}%)</span></div></div>`;
   box.innerHTML=sh;
-  // ── 부동산·현금 카드 (분리) ──
+  // ── 부동산·현금·부채 카드 (분리) ──
   const reCard=document.getElementById('realestate_card'); if(reCard)reCard.style.display='';
-  const reSum=document.getElementById('re_sum'); if(reSum)reSum.textContent='· 합계 '+won(othK);
+  const reNet=othK-liabK;
+  const reSum=document.getElementById('re_sum'); if(reSum)reSum.textContent='· 순 '+won(reNet);
   const reBox=document.getElementById('re_box');
-  if(reBox)reBox.innerHTML = others.length
-    ? `<div class="scroll"><table style="width:100%;font-size:13.5px"><tbody>`+others.map(o=>`<tr><td style="white-space:normal;padding:10px 8px">${o.유형==='부동산'?'🏠':'💵'} ${o.이름||''}</td><td class="num" style="font-weight:700;padding:10px 8px">${won(+o.금액||0)}</td></tr>`).join('')+`</tbody></table></div>`
-    : `<div class="muted" style="padding:8px">등록된 부동산·현금성 자산이 없어요. 우측 상단 ✏️ 편집에서 추가하세요.</div>`;
+  if(reBox){
+    const aRows=others.map(o=>`<tr><td style="white-space:normal;padding:9px 8px">${o.유형==='부동산'?'🏠':'💵'} ${o.이름||''}</td><td class="num" style="font-weight:700;padding:9px 8px">${won(+o.금액||0)}</td></tr>`).join('');
+    const lRows=liabs.map(l=>`<tr><td style="white-space:normal;padding:9px 8px;color:#b91c1c">➖ ${l.이름||l.유형||'부채'}</td><td class="num" style="font-weight:700;padding:9px 8px;color:#2563eb">-${won(+l.금액||0)}</td></tr>`).join('');
+    let rh='';
+    if(others.length) rh+=`<div style="font-weight:700;font-size:13.5px;margin:2px 0 6px">자산</div><div class="scroll"><table style="width:100%;font-size:13.5px"><tbody>${aRows}</tbody></table></div>`;
+    if(liabs.length) rh+=`<div style="font-weight:700;font-size:13.5px;margin:16px 0 6px;padding-top:13px;border-top:1px solid #e9eaee">부채 <span class="muted" style="font-weight:400;font-size:11px">전세보증금·대출 등</span></div><div class="scroll"><table style="width:100%;font-size:13.5px"><tbody>${lRows}</tbody></table></div>`;
+    if(!others.length&&!liabs.length) rh=`<div class="muted" style="padding:8px">등록된 부동산·현금·부채가 없어요. 우측 상단 ✏️ 편집에서 추가하세요.</div>`;
+    else rh+=`<div style="margin-top:13px;padding:11px 14px;background:#ecfeff;border-radius:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px"><span class="muted" style="font-size:12px">부동산·현금 순자산 (자산 − 부채)</span><b style="font-size:17px;color:#0891b2">${won(reNet)}</b></div>`;
+    reBox.innerHTML=rh;
+  }
   window._ptot=total; renderGoal(); if(window.renderTotal)renderTotal();
 }
 // ── 탭 (사업 / 개인 / 전체 합산) ──
@@ -570,8 +582,8 @@ function goalSave(){const amt=+document.getElementById('goal_amt').value.replace
   const dt=(document.getElementById('goal_date').value||'').trim()||'2027-07';
   PRS.목표저축={증분목표:amt,목표일:dt,시작액:(window._ptot||0),시작일:_todayYMD()};
   fetch('/jageum/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(PRS)}).then(()=>{document.getElementById('goal_edit').style.display='none';renderGoal();});}
-let persStocks=[],persOthers=[],_persT=null;
-function openPersonal(){persStocks=JSON.parse(JSON.stringify(PRS.stocks||[]));persOthers=JSON.parse(JSON.stringify(PRS.기타자산||[]));persRender();document.getElementById('pers_modal').style.display='flex';}
+let persStocks=[],persOthers=[],persLiabs=[],_persT=null;
+function openPersonal(){persStocks=JSON.parse(JSON.stringify(PRS.stocks||[]));persOthers=JSON.parse(JSON.stringify(PRS.기타자산||[]));persLiabs=JSON.parse(JSON.stringify(PRS.기타부채||[]));persRender();document.getElementById('pers_modal').style.display='flex';}
 function closePersonal(){document.getElementById('pers_modal').style.display='none';document.getElementById('pers_sresult').style.display='none';}
 function persRender(){
   let h='<thead><tr><th>종목</th><th>시장</th><th class="num">수량</th><th class="num">평단</th><th></th></tr></thead><tbody>';
@@ -586,7 +598,14 @@ function persRender(){
     <td><input value="${(+x.금액||0).toLocaleString()}" oninput="persOthers[${i}].금액=(+this.value.replace(/[^0-9]/g,'')||0);this.value=persOthers[${i}].금액.toLocaleString()" style="width:130px;padding:4px;border:1px solid #d1d5db;border-radius:6px;text-align:right"></td>
     <td><button onclick="persOthers.splice(${i},1);persRender()" style="border:none;background:#fee2e2;color:#b91c1c;border-radius:6px;padding:3px 8px;cursor:pointer">삭제</button></td></tr>`).join('');
   document.getElementById('pers_oth_tbl').innerHTML=o+'</tbody>';
+  let L='<thead><tr><th>유형</th><th>이름</th><th class="num">금액(원)</th><th></th></tr></thead><tbody>';
+  L+=persLiabs.map((x,i)=>`<tr><td><select onchange="persLiabs[${i}].유형=this.value" style="padding:4px;border:1px solid #d1d5db;border-radius:6px"><option ${x.유형==='전세보증금'?'selected':''}>전세보증금</option><option ${x.유형==='대출'?'selected':''}>대출</option><option ${x.유형==='기타'?'selected':''}>기타</option></select></td>
+    <td><input value="${(x.이름||'').replace(/"/g,'&quot;')}" oninput="persLiabs[${i}].이름=this.value" style="width:170px;padding:4px;border:1px solid #d1d5db;border-radius:6px"></td>
+    <td><input value="${(+x.금액||0).toLocaleString()}" oninput="persLiabs[${i}].금액=(+this.value.replace(/[^0-9]/g,'')||0);this.value=persLiabs[${i}].금액.toLocaleString()" style="width:130px;padding:4px;border:1px solid #d1d5db;border-radius:6px;text-align:right"></td>
+    <td><button onclick="persLiabs.splice(${i},1);persRender()" style="border:none;background:#fee2e2;color:#b91c1c;border-radius:6px;padding:3px 8px;cursor:pointer">삭제</button></td></tr>`).join('');
+  document.getElementById('pers_liab_tbl').innerHTML=L+'</tbody>';
 }
+function persAddLiab(){persLiabs.push({유형:'대출',이름:'',금액:0});persRender();}
 function persSearch(q){clearTimeout(_persT);const box=document.getElementById('pers_sresult');
   if(!q.trim()){box.style.display='none';return;}
   _persT=setTimeout(()=>{fetch('/jageum/api/personal/search?q='+encodeURIComponent(q)).then(r=>r.json()).then(d=>{
@@ -596,7 +615,7 @@ function persSearch(q){clearTimeout(_persT);const box=document.getElementById('p
 }
 function persPick(i){const it=(window._psr||[])[i];if(!it)return;persStocks.push({name:it.name,code:it.code,market:it.market,qty:0,avg:0});document.getElementById('pers_search').value='';document.getElementById('pers_sresult').style.display='none';persRender();}
 function persAddOther(){persOthers.push({유형:'부동산',이름:'',금액:0});persRender();}
-function persSave(){const body=Object.assign({},PRS,{stocks:persStocks.filter(s=>s.code),기타자산:persOthers.filter(o=>(o.이름||'').trim()||o.금액)});
+function persSave(){const body=Object.assign({},PRS,{stocks:persStocks.filter(s=>s.code),기타자산:persOthers.filter(o=>(o.이름||'').trim()||o.금액),기타부채:persLiabs.filter(l=>(l.이름||'').trim()||l.금액)});
   fetch('/jageum/api/personal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(()=>{closePersonal();loadPersonal();});}
 
 // ── 경리 체크리스트 (수기입력 항목 한곳에 모음 + 월별 확인) ──
