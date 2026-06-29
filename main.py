@@ -1024,6 +1024,59 @@ async def jageum_life_compare(request: Request):
     except Exception as ex:
         return JSONResponse({"error": f"비교 실패: {ex}"}, status_code=500)
 
+@app.post("/jageum/api/life/chat")
+async def jageum_life_chat(request: Request):
+    if not _boss_only(request):
+        return _AUTH401
+    data = await request.json()
+    messages = data.get("messages", [])
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return JSONResponse({"error": "AI 키 미설정"}, status_code=500)
+    life = {}
+    if JAGEUM_LIFE_FILE.exists():
+        try:
+            life = json.loads(JAGEUM_LIFE_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    summ = life.get("과거요약", {}) or {}
+    past = life.get("과거", []) or []
+    notes = life.get("글", []) or []
+    # 최근 인생노트 글 본문(맥락), 과거 블로그는 제목+요약으로 압축
+    note_ctx = "\n".join(f"- [{n.get('date','')}] {n.get('title','')}: {(n.get('body','') or '')[:300]}" for n in notes[:25])
+    past_titles = "\n".join(f"{p.get('date','')} | {p.get('title','')}" for p in past[:200])
+    system = f"""너는 이 사람의 가장 가까운 친구이자 인생 고민 상담가야. 이 사람을 누구보다 깊이 안다.
+이 사람은 '부자주방'(업소용 주방기기 셀러) 유튜버·사업가이고, 자영업 시장을 바꾸는 기술기업을 꿈꾼다.
+
+[이 사람의 생각의 지도 — 2025년 블로그 200편 AI 분석]
+{json.dumps(summ, ensure_ascii=False)}
+
+[과거에 쓴 글 제목들 (날짜 | 제목) — 필요하면 구체적으로 인용]
+{past_titles}
+
+[최근 인생노트에 직접 적은 생각들]
+{note_ctx or "(아직 없음)"}
+
+[대화 원칙]
+- 똑똑하고 솔직한 친구처럼. 가볍게 공감만 하지 말고, 이 사람의 과거 고민·가치관(원띵·선택과집중·대체불가능성·자기단련·큰비전)과 연결해서 깊이 있게 대화해.
+- 과거에 비슷한 고민을 했으면 "예전에 ○○ 글에서 이런 얘기 했었잖아" 식으로 자연스럽게 짚어줘.
+- 결론을 강요하지 말고, 좋은 질문으로 스스로 답을 찾게 도와. 필요할 땐 직설적인 조언도.
+- 따뜻하지만 통찰 있게. 존댓말 대신 친근한 반말~해요체 섞어서 친구처럼.
+- 사업 자금 얘기가 아니라 인생·방향·내면 고민에 집중해."""
+    body = {"model": "claude-opus-4-8", "max_tokens": 2000, "system": system,
+            "messages": [{"role": m["role"], "content": m["content"]} for m in messages[-20:]]}
+    headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
+    try:
+        async with httpx.AsyncClient(timeout=120) as c:
+            r = await c.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
+            if r.status_code != 200:
+                return JSONResponse({"error": f"AI 오류: {r.text[:200]}"}, status_code=500)
+            rd = r.json()
+        text = "".join(b.get("text", "") for b in rd.get("content", []) if b.get("type") == "text")
+        return JSONResponse({"reply": text})
+    except Exception as ex:
+        return JSONResponse({"error": f"오류: {ex}"}, status_code=500)
+
 @app.get("/jageum/api/personal/chart")
 async def jageum_personal_chart(request: Request, market: str = "KR", code: str = "", days: int = 120):
     if not _boss_only(request):

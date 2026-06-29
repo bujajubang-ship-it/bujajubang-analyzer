@@ -310,6 +310,16 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
      <div id="life_compare" style="display:none;margin-top:12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px"></div>
      <div id="life_entries" style="margin-top:16px"></div>
    </div>
+   <div class="card" style="border-top:3px solid #16a34a">
+     <h2>🫂 고민 상담 친구 <span class="muted big">— 내 고민을 다 아는 AI 친구 (Opus 4.8)</span></h2>
+     <div class="note">비전보드·인생노트·과거 블로그 200편을 다 기억해요. 대화는 자동 저장돼서 이어집니다.</div>
+     <div id="lc_log" style="max-height:420px;overflow:auto;border:1px solid #e9eaee;border-radius:10px;padding:12px;background:#f8fdfa;margin:10px 0"></div>
+     <div style="display:flex;gap:8px">
+       <textarea id="lc_in" placeholder="요즘 드는 고민, 막막한 결정, 마음 속 이야기를 편하게…" style="flex:1;min-height:54px;padding:11px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;resize:vertical" onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey))lcSend()"></textarea>
+       <button onclick="lcSend()" id="lc_btn" style="background:#16a34a;color:#fff;border:none;border-radius:10px;padding:0 20px;font-weight:700;cursor:pointer;white-space:nowrap">보내기</button>
+     </div>
+     <div class="muted" style="font-size:11px;margin-top:5px">⌘/Ctrl + Enter로 전송 · <a onclick="lcClear()" style="cursor:pointer;color:#dc2626">대화 비우기</a></div>
+   </div>
    <div class="card" id="life_past_card" style="border-top:3px solid #16a34a;display:none">
      <h2>📚 지난 블로그 기록 <span class="muted big">— 과거에 했던 고민·생각</span></h2>
      <div class="note">PDF로 주신 블로그를 정리한 거예요. 새 글이 과거 고민과 맞아떨어지는지 비교해보세요.</div>
@@ -791,12 +801,12 @@ function renderAcct(){
  box.innerHTML=h;
 }
 // ── 🌱 인생 노트 (boss 전용: 비전보드 + 글쓰기 + 과거 블로그) ──
-let LIFE={비전보드:[],글:[],과거:[]}, _lifeLoaded=false;
+let LIFE={비전보드:[],글:[],과거:[],상담:[]}, _lifeLoaded=false;
 function loadLife(){
   if(MYROLE!=='boss')return;
   if(_lifeLoaded){renderLife();return;}
   fetch('/jageum/api/life').then(r=>r.ok?r.json():{}).then(d=>{
-    LIFE=Object.assign({비전보드:[],글:[],과거:[]},d||{}); _lifeLoaded=true; renderLife(); bindVB();
+    LIFE=Object.assign({비전보드:[],글:[],과거:[],상담:[]},d||{}); _lifeLoaded=true; renderLife(); bindVB();
   }).catch(()=>{renderLife();});
 }
 function saveLife(){ fetch('/jageum/api/life',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(LIFE)}).then(()=>{}); }
@@ -858,7 +868,31 @@ function renderLife(){
       <div style="display:flex;justify-content:space-between;gap:8px"><b style="font-size:15px">${esc(en.title)}</b><span class="muted" style="font-size:12px;white-space:nowrap">${en.date} <a onclick="lifeDel(${en.id})" style="cursor:pointer;color:#dc2626">삭제</a></span></div>
       <div style="white-space:pre-wrap;margin-top:6px;font-size:14px;line-height:1.6">${esc(en.body)}</div></div>`).join(''):'<div class="muted" style="padding:8px">첫 기록을 남겨보세요. 매일 쌓이면 생각의 흐름이 보여요.</div>';
   renderPast();
+  lcRender();
 }
+function lcRender(){
+  const log=document.getElementById('lc_log'); if(!log)return;
+  const msgs=LIFE.상담||[];
+  if(!msgs.length){log.innerHTML='<div class="muted" style="padding:14px;text-align:center;font-size:13.5px">안녕, 친구야 🫂 요즘 무슨 생각해? 사업이든 인생이든, 마음에 걸리는 거 편하게 꺼내봐. 네 과거 고민도 다 기억하고 있으니까 같이 풀어보자.</div>';return;}
+  log.innerHTML=msgs.map(m=>{const me=m.role==='user';
+    return `<div style="display:flex;justify-content:${me?'flex-end':'flex-start'};margin:7px 0"><div style="max-width:82%;padding:10px 13px;border-radius:13px;font-size:14px;line-height:1.65;white-space:pre-wrap;${me?'background:#16a34a;color:#fff':'background:#fff;border:1px solid #d1fae5'}">${esc(m.content)}</div></div>`;
+  }).join('');
+  log.scrollTop=log.scrollHeight;
+}
+function lcSend(){
+  const el=document.getElementById('lc_in'), t=(el.value||'').trim(); if(!t)return;
+  el.value=''; LIFE.상담=LIFE.상담||[]; LIFE.상담.push({role:'user',content:t});
+  saveLife(); lcRender();
+  const btn=document.getElementById('lc_btn'); btn.disabled=true; btn.textContent='…';
+  const log=document.getElementById('lc_log'); log.insertAdjacentHTML('beforeend','<div id="lc_think" style="text-align:left;margin:7px 0"><span class="spin"></span> <span class="muted">생각 중…</span></div>'); log.scrollTop=log.scrollHeight;
+  fetch('/jageum/api/life/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:LIFE.상담})}).then(r=>r.json()).then(d=>{
+    btn.disabled=false; btn.textContent='보내기';
+    if(d.error){LIFE.상담.push({role:'assistant',content:'⚠️ '+d.error});}
+    else LIFE.상담.push({role:'assistant',content:d.reply||'(응답 없음)'});
+    saveLife(); lcRender();
+  }).catch(()=>{btn.disabled=false;btn.textContent='보내기';const tk=document.getElementById('lc_think');if(tk)tk.remove();alert('연결 실패');});
+}
+function lcClear(){if(!confirm('상담 대화를 모두 비울까요? (되돌릴 수 없어요)'))return;LIFE.상담=[];saveLife();lcRender();}
 function renderPast(){
   const card=document.getElementById('life_past_card'), box=document.getElementById('life_past');
   const past=LIFE.과거||[], sum=LIFE.과거요약;
