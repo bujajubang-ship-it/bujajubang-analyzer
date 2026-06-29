@@ -837,10 +837,16 @@ function loadLife(){
   if(MYROLE!=='boss')return;
   if(_lifeLoaded){renderLife();return;}
   fetch('/jageum/api/life').then(r=>r.ok?r.json():{}).then(d=>{
-    LIFE=Object.assign({비전보드:[],글:[],과거:[],상담:[]},d||{}); _lifeLoaded=true; renderLife(); bindVB();
+    LIFE=Object.assign({비전보드:[],글:[],과거:[],상담:[]},d||{}); _pastCount=(LIFE.과거||[]).length; _lifeLoaded=true; renderLife(); bindVB();
   }).catch(()=>{renderLife();});
 }
-function saveLife(){ fetch('/jageum/api/life',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(LIFE)}).then(()=>{}); }
+let _pastCount=0;  // 로드 시점 과거 글 수 기억 (유실 가드)
+function saveLife(){
+  if(!_lifeLoaded){return;}  // 아직 서버에서 안 불러왔으면 저장 금지(빈 LIFE 덮어쓰기 방지)
+  // 과거 200편이 갑자기 비면 비정상 → 저장 차단
+  if(_pastCount>0 && (!LIFE.과거 || LIFE.과거.length===0)){ console.warn('과거 데이터 유실 방지: 저장 취소'); return; }
+  fetch('/jageum/api/life',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(LIFE)}).then(()=>{});
+}
 function _ymd(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function bindVB(){
   const drop=document.getElementById('vb_drop'), f=document.getElementById('vb_file'); if(!drop||drop._b)return; drop._b=1;
