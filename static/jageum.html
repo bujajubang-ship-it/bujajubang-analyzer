@@ -446,6 +446,7 @@ function emRender(){ const cfg=EM_CFG[emKey];
  document.getElementById('em_table').innerHTML=h;
 }
 function emAddRow(){emRows.push({거래처:'',잔액:0,일자:'',비고:''});emRender();}
+function _todayStr(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function emSave(){ const cfg=EM_CFG[emKey];
  if(cfg.single){ M[emKey]=emRows[0].잔액||0; }
  else {
@@ -453,8 +454,11 @@ function emSave(){ const cfg=EM_CFG[emKey];
    if(emKey==='미수금' && clean.length===0){ delete M['미수금']; }  // 비우면 자동값 복귀
    else M[emKey]=clean;
  }
+ M.수정일=M.수정일||{}; M.수정일[emKey]=_todayStr();  // 이 항목 수기수정 날짜 기록
  saveManual(); closeEdit(); render();
 }
+function manualDate(key){return (M.수정일||{})[key]||'';}
+function _dateBadge(key){const d=manualDate(key);return d?` <span class="muted" style="font-size:11px;font-weight:400">✏️${d.slice(5)} 기준</span>`:'';}
 function ym2label(k){const a=k.split("-");return a[0]+"년 "+(+a[1])+"월";}
 function buildP(keys,label){
   const inc=[],dec=[];
@@ -770,9 +774,11 @@ function renderAcct(){
    const editBtn=it.edit
      ?`<button onclick="${it.edit}" style="border:none;background:#5b21b6;color:#fff;border-radius:7px;padding:5px 12px;cursor:pointer;font-size:12.5px">✏️ 수정</button>`
      :`<span class="muted" style="font-size:11.5px">ERP 전표</span>`;
+   const md=manualDate(it.key);
+   const dateLine=md?`<div style="font-size:11px;color:#7c3aed;font-weight:600">📌 ${md} 입력</div>`:(['미수금','선급금','카페24','대출'].includes(it.key)?`<div style="font-size:11px;color:#9ca3af">미수정(자동/기본값)</div>`:'');
    return `<tr style="${ok?'background:#f0fdf4':''}">
      <td style="white-space:normal"><b>${it.icon} ${it.name}</b><div class="muted" style="font-size:11.5px">${it.why}</div></td>
-     <td class="num" style="white-space:nowrap;font-weight:600">${it.val}</td>
+     <td class="num" style="white-space:nowrap;font-weight:600">${it.val}${dateLine}</td>
      <td style="text-align:center">${editBtn}</td>
      <td style="text-align:center">${chk}</td></tr>`;
  };

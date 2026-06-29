@@ -1109,6 +1109,31 @@ def _jageum_summary() -> str:
         lines.append(f"[정산예정] 쿠팡 {cou//10000}만, 네이버 {nav//10000}만")
     if d.get("미수금"):
         lines.append(f"[미수금] {d['미수금'].get('total',0)//10000}만")
+    # 경리 수기입력 항목 + 최종수정일 (AI가 '언제 기준 얼마'를 안내할 수 있게)
+    man = {}
+    if JAGEUM_MANUAL_FILE.exists():
+        try:
+            man = json.loads(JAGEUM_MANUAL_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            man = {}
+    md = man.get("수정일", {}) or {}
+    def _sum_rows(v):
+        try:
+            return sum((x.get("잔액") or 0) for x in v) if isinstance(v, list) else (v or 0)
+        except Exception:
+            return 0
+    manual_lines = []
+    for key, label in [("미수금","미수금(B2B 받을 돈)"), ("선급금","선급금(거래처 선지급)"),
+                       ("카페24","카페24 묶인돈"), ("대출","대출 잔액")]:
+        if key in man:
+            amt = _sum_rows(man[key])
+            when = md.get(key, "")
+            manual_lines.append(f"  - {label}: {amt//10000}만" + (f" ({when} 경리 수정 기준)" if when else " (수정일 미기록)"))
+        elif key in md:
+            manual_lines.append(f"  - {label}: ({md[key]} 확인)")
+    if manual_lines:
+        lines.append("[경리 수기입력 현황 — 이카운트로 자동조회 안 되는 항목, 경리가 직접 입력. '언제 기준 얼마'를 물으면 아래 수정일로 답하세요]")
+        lines.extend(manual_lines)
     return "\n".join(lines)
 
 @app.post("/jageum/api/chat")
