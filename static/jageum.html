@@ -384,7 +384,34 @@ function load(){fetch('/jageum/api/data').then(r=>{if(r.status===401){location.h
   {const _wl=document.getElementById('chat_who_label'); if(_wl)_wl.textContent=MYROLE==='boss'?'👑 사장님':(MYROLE==='staff'?'🧑‍💼 경리':'게스트');}
   if(MYROLE==='boss'){document.getElementById('approval_card').style.display='';loadApprovals();loadPersonal();
     document.getElementById('tabbar').style.display='flex';showTab('biz');}
+  chatWelcome();
   initPeriod()}).catch(()=>{period.textContent='데이터 없음'})}
+function chatWelcome(){
+  if(chatMsgs.length)return;
+  if(MYROLE==='staff'){
+    const unc=((D.법인카드||{}).미분류||{});
+    chatMsgs.push({role:'assistant',content:
+`안녕하세요 경리님 🧑‍💼 어제 사장님과 최종 정리한 **경리 업무**를 안내드릴게요. 매달 이것만 챙기면 돼요.
+
+📋 **대시보드에서 입력·수정** (체크리스트 카드 → 끝나면 '확인하기')
+ ① 미수금 — 이카운트 자동값이 기본, 실제와 다르면 수정
+ ② 선급금 — 입출금에 안 잡히는 거래처 선지급 잔액
+ ③ 카페24 묶인돈 — 정산 API가 없어 직접 입력(필수)
+ ④ 대출 — 갚은 만큼 잔액 줄이기
+ ⑤ 선금·수량 체크 거래처/품목 등록
+ ⑥ 💳 법인카드 미분류 분류${unc.건수?` — 지금 🔴${unc.건수}건(${won(unc.합||0)}) 분류 필요`:''}
+
+🏷️ **이카운트 전표 작성 시**
+ ⑦ 출금 전표 프로젝트명 = 현장(거래처)명
+ ⑧ 입금 전표 프로젝트명 = '현장명-담당자'
+
+각 항목을 "어떻게 하는 거예요?" 하고 물어보시면 단계별로 알려드릴게요. 예: "법인카드 미분류 어떻게 분류해요?"`});
+    chatRender();
+  } else if(MYROLE==='boss'){
+    chatMsgs.push({role:'assistant',content:'대표님 👑 회사 자금·경리 업무·개인 자산까지 무엇이든 물어보세요. 기능 수정이 필요하면 결재 요청을 올려드릴게요.'});
+    chatRender();
+  }
+}
 // ===== 편집 모달 =====
 const EM_CFG={
  '미수금':{title:'🧾 미수금 편집 (B2B 받을 돈)',note:'거래처·금액·받을예정일. 저장하면 이카운트 자동값 대신 이 목록을 씁니다. 전부 비우고 저장하면 다시 자동값으로 돌아갑니다.',cols:['거래처','잔액','일자','비고'],seedFn:()=>misuList()},
