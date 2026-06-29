@@ -384,6 +384,7 @@ function load(){fetch('/jageum/api/data').then(r=>{if(r.status===401){location.h
   {const _wl=document.getElementById('chat_who_label'); if(_wl)_wl.textContent=MYROLE==='boss'?'👑 사장님':(MYROLE==='staff'?'🧑‍💼 경리':'게스트');}
   if(MYROLE==='boss'){document.getElementById('approval_card').style.display='';loadApprovals();loadPersonal();
     document.getElementById('tabbar').style.display='flex';showTab('biz');}
+  if(MYROLE!=='boss'){const tb=document.getElementById('tabbar');if(tb)tb.remove();}  // 경리: 개인 탭 DOM 제거(보안)
   chatWelcome();
   initPeriod()}).catch(()=>{period.textContent='데이터 없음'})}
 function chatWelcome(){
