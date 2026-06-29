@@ -1113,7 +1113,9 @@ async def jageum_personal_chart(request: Request, market: str = "KR", code: str 
                 d = str(row.get("localDate") or "")
                 cp = _num(row.get("closePrice"))
                 if len(d) == 8 and cp is not None:
-                    pts.append({"d": f"{d[2:4]}.{d[4:6]}.{d[6:8]}", "c": cp})
+                    pts.append({"d": f"{d[2:4]}.{d[4:6]}.{d[6:8]}", "c": cp,
+                                "o": _num(row.get("openPrice")), "h": _num(row.get("highPrice")),
+                                "l": _num(row.get("lowPrice"))})
     except Exception:
         pass
     return JSONResponse({"points": pts})

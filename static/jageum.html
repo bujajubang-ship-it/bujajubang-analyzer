@@ -107,6 +107,9 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
        <button class="rangebtn" data-d="30" onclick="stkChartRange(30,this)">1개월</button>
        <button class="rangebtn on" data-d="120" onclick="stkChartRange(120,this)">3개월</button>
        <button class="rangebtn" data-d="365" onclick="stkChartRange(365,this)">1년</button>
+       <span style="flex:1"></span>
+       <button class="rangebtn on" id="stk_type_line" onclick="stkSetType('line',this)">📈 라인</button>
+       <button class="rangebtn" id="stk_type_candle" onclick="stkSetType('candle',this)">🕯 캔들</button>
      </div>
      <canvas id="stkChartCanvas" height="220"></canvas>
    </div>
@@ -726,28 +729,53 @@ function persSearch(q){clearTimeout(_persT);const box=document.getElementById('p
 }
 function persPick(i){const it=(window._psr||[])[i];if(!it)return;persStocks.push({name:it.name,code:it.code,market:it.market,qty:0,avg:0});document.getElementById('pers_search').value='';document.getElementById('pers_sresult').style.display='none';persRender();}
 // ── 종목 주가 차트 ──
-let chStk=null, _stkCtx={};
+let chStk=null, _stkCtx={}, _stkType='line', _stkPts=[];
 function openStockChart(code,market,name,isUS){
   _stkCtx={code,market,name,isUS:!!isUS};
   document.getElementById('stk_chart_title').textContent=name;
   document.getElementById('stk_chart_modal').style.display='flex';
-  document.querySelectorAll('#stk_chart_modal .rangebtn').forEach(b=>b.classList.toggle('on',b.dataset.d==='120'));
+  document.querySelectorAll('#stk_chart_modal .rangebtn[data-d]').forEach(b=>b.classList.toggle('on',b.dataset.d==='120'));
   stkChartRange(120);
 }
 function closeStkChart(){document.getElementById('stk_chart_modal').style.display='none';if(chStk){chStk.destroy();chStk=null;}}
+function stkSetType(t,btn){
+  _stkType=t;
+  document.getElementById('stk_type_line').classList.toggle('on',t==='line');
+  document.getElementById('stk_type_candle').classList.toggle('on',t==='candle');
+  if(_stkPts.length)stkDraw();
+}
 function stkChartRange(days,btn){
-  if(btn){document.querySelectorAll('#stk_chart_modal .rangebtn').forEach(b=>b.classList.remove('on'));btn.classList.add('on');}
-  const c=_stkCtx, isUS=c.isUS;
+  if(btn){document.querySelectorAll('#stk_chart_modal .rangebtn[data-d]').forEach(b=>b.classList.remove('on'));btn.classList.add('on');}
+  const c=_stkCtx;
   const pe=document.getElementById('stk_chart_price'); pe.textContent='불러오는 중…';
   fetch(`/jageum/api/personal/chart?market=${c.market}&code=${encodeURIComponent(c.code)}&days=${days}`).then(r=>r.json()).then(d=>{
-    const pts=d.points||[]; if(!pts.length){pe.textContent='차트 데이터를 불러오지 못했어요.';if(chStk){chStk.destroy();chStk=null;}return;}
-    const labels=pts.map(p=>p.d), data=pts.map(p=>p.c);
-    const first=data[0], last=data[data.length-1], chg=last-first, chgp=first?(chg/first*100):0, up=chg>=0;
-    const fmt=v=>isUS?('$'+(Math.round(v*100)/100).toLocaleString()):('₩'+Math.round(v).toLocaleString());
-    pe.innerHTML=`현재 <b style="color:#1f2937;font-size:15px">${fmt(last)}</b> &nbsp;·&nbsp; 이 기간 <span style="color:${up?'#dc2626':'#2563eb'};font-weight:600">${up?'+':''}${fmt(chg)} (${up?'+':''}${chgp.toFixed(1)}%)</span>`;
-    if(chStk)chStk.destroy();
-    chStk=new Chart(document.getElementById('stkChartCanvas'),{type:'line',data:{labels,datasets:[{data,borderColor:up?'#dc2626':'#2563eb',backgroundColor:up?'rgba(220,38,38,.07)':'rgba(37,99,235,.07)',fill:true,tension:.2,pointRadius:0,borderWidth:2}]},options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:cx=>fmt(cx.parsed.y)}}},scales:{x:{ticks:{maxTicksLimit:6,font:{size:10}},grid:{display:false}},y:{ticks:{font:{size:10},maxTicksLimit:6,callback:v=>isUS?('$'+v):(v>=10000?(v/10000).toFixed(1)+'만':Math.round(v).toLocaleString())}}}}});
+    _stkPts=d.points||[]; if(!_stkPts.length){pe.textContent='차트 데이터를 불러오지 못했어요.';if(chStk){chStk.destroy();chStk=null;}return;}
+    stkDraw();
   }).catch(()=>{pe.textContent='오류가 났어요.';});
+}
+function stkDraw(){
+  const isUS=_stkCtx.isUS, pts=_stkPts;
+  const labels=pts.map(p=>p.d), data=pts.map(p=>p.c);
+  const first=data[0], last=data[data.length-1], chg=last-first, chgp=first?(chg/first*100):0, up=chg>=0;
+  const fmt=v=>isUS?('$'+(Math.round(v*100)/100).toLocaleString()):('₩'+Math.round(v).toLocaleString());
+  document.getElementById('stk_chart_price').innerHTML=`현재 <b style="color:#1f2937;font-size:15px">${fmt(last)}</b> &nbsp;·&nbsp; 이 기간 <span style="color:${up?'#dc2626':'#2563eb'};font-weight:600">${up?'+':''}${fmt(chg)} (${up?'+':''}${chgp.toFixed(1)}%)</span>`;
+  const yTick={font:{size:10},maxTicksLimit:6,callback:v=>isUS?('$'+v):(v>=10000?(v/10000).toFixed(1)+'만':Math.round(v).toLocaleString())};
+  const xCfg={ticks:{maxTicksLimit:6,font:{size:10}},grid:{display:false}};
+  if(chStk)chStk.destroy();
+  const cv=document.getElementById('stkChartCanvas');
+  if(_stkType==='line'){
+    chStk=new Chart(cv,{type:'line',data:{labels,datasets:[{data,borderColor:up?'#dc2626':'#2563eb',backgroundColor:up?'rgba(220,38,38,.07)':'rgba(37,99,235,.07)',fill:true,tension:.2,pointRadius:0,borderWidth:2}]},options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:cx=>fmt(cx.parsed.y)}}},scales:{x:xCfg,y:{ticks:yTick}}}});
+  } else {
+    // 캔들: 몸통(시가↔종가 floating bar) + 심지(저가↔고가 얇은 bar)
+    const RED='#dc2626',BLUE='#2563eb';
+    const body=pts.map(p=>{const o=p.o||p.c,c2=p.c;return [o,c2];});
+    const wick=pts.map(p=>[p.l||Math.min(p.o||p.c,p.c),p.h||Math.max(p.o||p.c,p.c)]);
+    const colors=pts.map(p=>((p.c>=(p.o||p.c))?RED:BLUE));
+    chStk=new Chart(cv,{data:{labels,datasets:[
+      {type:'bar',label:'심지',data:wick,backgroundColor:colors,barThickness:1.5,grouped:false,order:1},
+      {type:'bar',label:'몸통',data:body,backgroundColor:colors,borderColor:colors,borderWidth:1,barPercentage:0.6,grouped:false,order:2}
+    ]},options:{plugins:{legend:{display:false},tooltip:{callbacks:{title:items=>labels[items[0].dataIndex],label:it=>{const p=pts[it.dataIndex];return [`시 ${fmt(p.o||p.c)}`,`고 ${fmt(p.h||p.c)}`,`저 ${fmt(p.l||p.c)}`,`종 ${fmt(p.c)}`];}}}},scales:{x:xCfg,y:{ticks:yTick,beginAtZero:false}}}});
+  }
 }
 function persAddOther(){persOthers.push({유형:'부동산',이름:'',금액:0});persRender();}
 function persSave(){const body=Object.assign({},PRS,{stocks:persStocks.filter(s=>s.code),기타자산:persOthers.filter(o=>(o.이름||'').trim()||o.금액),기타부채:persLiabs.filter(l=>(l.이름||'').trim()||l.금액)});
