@@ -881,22 +881,36 @@ async def jageum_personal_post(request: Request):
     JAGEUM_PERSONAL_FILE.write_text(body.decode("utf-8"), encoding="utf-8")
     return JSONResponse({"ok": True})
 
-async def _nv_price(client, market, code):
-    """market: 'KR'(6자리코드) / 'US'(reutersCode 예 TSLA.O). 실시간 현재가 숫자 반환."""
+async def _nv_quote(client, market, code):
+    """현재가 + 전일대비 등락 반환: {price, change, rate} (rate=%, 부호 포함)."""
     try:
         if market == "KR":
-            # 네이버 실시간 시세 폴링(HTS 현재가와 일치)
             r = await client.get(f"https://polling.finance.naver.com/api/realtime/domestic/stock/{code}")
             ds = r.json().get("datas") or []
-            if ds:
-                x = ds[0]
-                return _num(x.get("closePriceRaw") or x.get("closePrice"))
-            return None
+            if not ds:
+                return None
+            x = ds[0]
+            up = (x.get("compareToPreviousPrice") or {}).get("code") in ("2", "1")  # 상승/상한
+            chg = _num(x.get("compareToPreviousClosePriceRaw"))
+            rate = _num2(x.get("fluctuationsRatioRaw"))
+            return {"price": _num(x.get("closePriceRaw") or x.get("closePrice")),
+                    "change": chg if up else -abs(chg), "rate": rate if up else -abs(rate)}
         else:
             r = await client.get(f"https://api.stock.naver.com/stock/{code}/basic")
-            return _num(r.json().get("closePrice"))
+            j = r.json()
+            up = (j.get("compareToPreviousPrice") or {}).get("code") in ("2", "1")
+            chg = _num2(j.get("compareToPreviousClosePrice"))
+            rate = _num2(j.get("fluctuationsRatio"))
+            return {"price": _num2(j.get("closePrice")),
+                    "change": chg if up else -abs(chg), "rate": rate if up else -abs(rate)}
     except Exception:
         return None
+
+def _num2(s):
+    try:
+        return float(str(s).replace(",", ""))
+    except Exception:
+        return 0
 
 @app.get("/jageum/api/personal/prices")
 async def jageum_personal_prices(request: Request):
@@ -909,7 +923,7 @@ async def jageum_personal_prices(request: Request):
         except Exception:
             d = {}
     stocks = d.get("stocks") or []
-    prices, fx = {}, None
+    prices, quotes, fx = {}, {}, None
     async with httpx.AsyncClient(headers=_NV_H, timeout=15) as c:
         try:
             r = await c.get("https://m.stock.naver.com/api/json/marketindex/marketIndexExchangeListJson.nhn")
@@ -921,8 +935,11 @@ async def jageum_personal_prices(request: Request):
         for s in stocks:
             code = s.get("code")
             if code and code not in prices:
-                prices[code] = await _nv_price(c, s.get("market", "KR"), code)
-    return JSONResponse({"fx_usdkrw": fx, "prices": prices})
+                q = await _nv_quote(c, s.get("market", "KR"), code)
+                prices[code] = (q or {}).get("price") if q else None
+                if q:
+                    quotes[code] = q
+    return JSONResponse({"fx_usdkrw": fx, "prices": prices, "quotes": quotes})
 
 @app.get("/jageum/api/personal/search")
 async def jageum_personal_search(request: Request, q: str = ""):

@@ -568,7 +568,8 @@ function renderPersonal(){
     const pl=(cur!=null)?(cur-(s.avg||0))*s.qty*r:null;
     const rate=(s.avg&&cur!=null)?((cur-s.avg)/s.avg*100):null;
     buyK+=buy; if(ev!=null){evalK+=ev;plK+=(pl||0);}
-    (isUS?ovs:dom).push({s,cur,isUS,ev,buy,pl,rate});
+    const q=(PQ.quotes||{})[s.code];
+    (isUS?ovs:dom).push({s,cur,isUS,ev,buy,pl,rate,q});
   });
   let othK=0; others.forEach(o=>othK+=(+o.금액||0));
   const liabs=PRS.기타부채||[]; let liabK=0; liabs.forEach(l=>liabK+=(+l.금액||0));
@@ -584,7 +585,9 @@ function renderPersonal(){
   document.getElementById('personal_sum').textContent='· 평가 '+won(evalK)+(fx?(' · $환율 '+Math.round(fx).toLocaleString()):'');
   const stkRow=x=>{
     const avg=x.isUS?_usd(x.s.avg):(x.s.avg||0).toLocaleString();
-    const cur=x.cur==null?'<span class="muted">…</span>':(x.isUS?_usd(x.cur):x.cur.toLocaleString());
+    let cur=x.cur==null?'<span class="muted">…</span>':(x.isUS?_usd(x.cur):x.cur.toLocaleString());
+    if(x.q&&x.q.rate!=null){const up=x.q.rate>=0,c2=up?'#dc2626':'#2563eb',ar=up?'▲':'▼';
+      cur+=`<div style="font-size:11px;color:${c2};font-weight:600;white-space:nowrap">${ar} ${Math.abs(x.q.rate).toFixed(2)}%</div>`;}
     const ev=x.ev==null?'-':won(x.ev);
     const pl=x.pl==null?'-':`<span style="color:${col(x.pl)}">${x.pl>=0?'+':''}${won(x.pl)}</span>`;
     const rt=x.rate==null?'-':`<span style="color:${col(x.rate)};font-weight:600">${x.rate>=0?'+':''}${x.rate.toFixed(2)}%</span>`;
