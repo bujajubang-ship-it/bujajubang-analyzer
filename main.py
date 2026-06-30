@@ -1342,9 +1342,12 @@ async def cnmaker_status(job: str):
         return JSONResponse(r.json(), status_code=r.status_code)
 
 @app.get("/cnmaker/api/result")
-async def cnmaker_result(job: str):
+async def cnmaker_result(job: str, thumb: str = ""):
+    params = {"job": job}
+    if thumb:
+        params["thumb"] = "1"
     async with httpx.AsyncClient(timeout=60) as client:
-        r = await client.get(f"{CNMAKER_BASE}/cnmaker/result", params={"job": job})
+        r = await client.get(f"{CNMAKER_BASE}/cnmaker/result", params=params)
         return Response(content=r.content, media_type="image/jpeg")
 
 
