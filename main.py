@@ -1341,6 +1341,12 @@ async def cnmaker_status(job: str):
                              params={"job": job}, headers={"x-secret": CNMAKER_SECRET})
         return JSONResponse(r.json(), status_code=r.status_code)
 
+@app.get("/cnmaker/api/history")
+async def cnmaker_history():
+    async with httpx.AsyncClient(timeout=20) as client:
+        r = await client.get(f"{CNMAKER_BASE}/cnmaker/history", headers={"x-secret": CNMAKER_SECRET})
+        return JSONResponse(r.json(), status_code=r.status_code)
+
 @app.get("/cnmaker/api/result")
 async def cnmaker_result(job: str, thumb: str = ""):
     params = {"job": job}

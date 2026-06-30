@@ -37,6 +37,12 @@ button.go:disabled{background:#d1a0a3;cursor:not-allowed}
 .err{background:#fef2f2;color:#b91c1c;padding:12px 14px;border-radius:8px;font-size:13px;margin-top:10px}
 .copybox{background:#faf5ff;border-radius:10px;padding:14px;margin-top:14px;text-align:left;font-size:13px;line-height:1.8}
 .copybox b{color:#D70010}
+.hrow{display:flex;align-items:center;gap:12px;padding:10px;border:1px solid #eee;border-radius:10px;margin-bottom:8px}
+.hrow .hinfo{flex:1;min-width:0}
+.hrow .hname{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hrow .hts{font-size:12px;color:#9ca3af}
+.hrow a{font-size:12px;text-decoration:none;background:#1f2937;color:#fff;border-radius:7px;padding:6px 10px;white-space:nowrap}
+.hrow a.t{background:#0891b2}
 </style></head><body>
 <div class="top"><h1>🏭 CN메이커 — 부자주방 상세페이지 자동생성</h1></div>
 <div class="wrap">
@@ -97,6 +103,12 @@ button.go:disabled{background:#d1a0a3;cursor:not-allowed}
    <div style="font-weight:700;margin:14px 0 6px">📄 상세페이지</div>
    <img id="rimg">
    <div><a class="dlbtn" id="dl" download="상세페이지.jpg">⬇️ 상세페이지 다운로드</a></div>
+ </div>
+
+ <div class="card" id="historycard">
+   <h2 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">🕘 생성 히스토리 <span class="note" style="margin:0">— 이전에 만든 상세페이지를 다시 받을 수 있어요</span>
+     <button onclick="loadHistory()" style="margin-left:auto;border:1px solid #d1d5db;background:#fff;border-radius:8px;padding:5px 12px;cursor:pointer;font-size:13px">🔄 새로고침</button></h2>
+   <div id="historylist" class="note">불러오는 중…</div>
  </div>
 </div>
 <script>
@@ -165,6 +177,21 @@ function done(d){for(let i=1;i<=4;i++){const e=document.getElementById('s'+i);e.
   const t=Date.now();
   const s='/cnmaker/api/result?job='+job+'&t='+t;document.getElementById('rimg').src=s;document.getElementById('dl').href=s;
   if(d.thumb){const ts='/cnmaker/api/result?job='+job+'&thumb=1&t='+t;document.getElementById('thumbbox').style.display='block';document.getElementById('thumbimg').src=ts;document.getElementById('dlthumb').href=ts;}
-  document.getElementById('result').scrollIntoView({behavior:'smooth'});}
+  document.getElementById('result').scrollIntoView({behavior:'smooth'});loadHistory();}
 function fail(msg){if(timer)clearInterval(timer);document.getElementById('go').disabled=false;document.getElementById('err').innerHTML='<div class=err>'+msg+'</div>';}
+function loadHistory(){
+  fetch('/cnmaker/api/history').then(r=>r.json()).then(d=>{
+    const items=(d.items||[]); const box=document.getElementById('historylist');
+    if(!items.length){box.innerHTML='<div class="note">아직 생성한 상세페이지가 없어요.</div>';return;}
+    box.innerHTML=items.map(h=>{
+      const det='/cnmaker/api/result?job='+h.job;
+      const thb='/cnmaker/api/result?job='+h.job+'&thumb=1';
+      return `<div class="hrow"><div class="hinfo"><div class="hname">${(h.product_name||'(제목없음)').replace(/</g,'&lt;')}</div><div class="hts">${h.ts||''} · ${h.src||''}</div></div>`
+        +`<a href="${det}" download="상세_${h.job}.jpg" target="_blank">상세 ⬇</a>`
+        +(h.thumb?`<a class="t" href="${thb}" download="대표_${h.job}.jpg" target="_blank">대표 ⬇</a>`:'')
+        +`</div>`;
+    }).join('');
+  }).catch(()=>{document.getElementById('historylist').innerHTML='<div class="note">히스토리를 불러오지 못했어요.</div>';});
+}
+loadHistory();
 </script></body></html>
