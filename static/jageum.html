@@ -432,7 +432,9 @@ const EM_CFG={
  '선급금':{title:'🤝 선급금 편집 (거래처 선지급)',note:'거래처·남은금액·지급일·비고(언제 나갔는지/내용).',cols:['거래처','잔액','일자','비고'],seedFn:()=>SEONYZ()},
  '대출':{title:'💳 대출(부채) 편집',note:'기관명·잔액. 갚으면 잔액 줄이세요.',cols:['거래처','잔액','일자','비고'],seedFn:()=>loanList()},
  '카페24':{title:'🛍️ 카페24 묶인돈 편집',note:'cafe24payments 정산예정금액. API 구매확정전 추정(참고): '+(()=>cafe24Auto().toLocaleString())()+'원',cols:['금액'],single:true,seedFn:()=>cafe24Amt()},
+ '태양광수동':{title:'☀️ 태양광 수익 입력 (한전 입금)',note:'한전경산지사 전력판매 입금을 월별로 입력. 거래처칸에 월(예: 2026-07), 금액칸에 입금액. 하나은행 기업자유예금은 자동수집이 안 돼서 경리가 직접 입력해요.',cols:['거래처','잔액','일자','비고'],seedFn:()=>solarManualList()},
 };
+function solarManualList(){const m=M.태양광수동||{};return Object.entries(m).map(([ym,amt])=>({거래처:ym,잔액:amt,일자:'',비고:'태양광 수익'}));}
 let emKey=null, emRows=[];
 function openEdit(key){ emKey=key; const cfg=EM_CFG[key];
  document.getElementById('em_title').textContent=cfg.title;
@@ -462,6 +464,10 @@ function emAddRow(){emRows.push({거래처:'',잔액:0,일자:'',비고:''});emR
 function _todayStr(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function emSave(){ const cfg=EM_CFG[emKey];
  if(cfg.single){ M[emKey]=emRows[0].잔액||0; }
+ else if(emKey==='태양광수동'){  // 거래처=월(YYYY-MM), 잔액=금액 → {월:금액} 맵
+   const map={}; emRows.forEach(r=>{const ym=(r.거래처||'').trim(); if(ym&&r.잔액)map[ym]=r.잔액;});
+   M.태양광수동=map;
+ }
  else {
    const clean=emRows.filter(r=>(r.거래처||'').trim()||r.잔액);
    if(emKey==='미수금' && clean.length===0){ delete M['미수금']; }  // 비우면 자동값 복귀
@@ -509,7 +515,8 @@ function render(){
  const inc=incAll.filter(real);
  const _isSolar=r=>/한국전력|한전경산|태양광|전력판매/.test((r.거래처명||'')+(r.적요||''));
  const incBiz=inc.filter(r=>!_isSolar(r));
- const tsolar=((P&&P.keys)||[D.current_month]).reduce((s,k)=>s+(((D.태양광)||{})[k]||0),0);
+ const _solarManual=M.태양광수동||{};  // 경리 수동입력 {YYYY-MM: 금액}
+ const tsolar=((P&&P.keys)||[D.current_month]).reduce((s,k)=>s+(((D.태양광)||{})[k]||0)+(+(_solarManual[k]||0)),0);
  const decReal=decAll.filter(real);
  const opex=decReal.filter(isOpex);
  const own=decReal.filter(r=>cat(r.상대계정명)[1]==='영업외'&&!isInvest(r));   // 대표/개인·세금
@@ -797,6 +804,7 @@ function renderAcct(){
   {cat:'d',key:'카페24',icon:'🛍️',name:'카페24 묶인돈',why:'카페24는 정산 API가 없어 자동 불가 → 수동 입력 필수',val:won(cafe24Amt()),edit:"openEdit('카페24')"},
   {cat:'d',key:'대출',icon:'💳',name:'대출 (부채)',why:'갚은 만큼 잔액 줄이기',val:won(sum(loanList(),x=>x.잔액||0)),edit:"openEdit('대출')"},
   {cat:'d',key:'체크목록',icon:'🔵',name:'선금·수량 체크 품목/거래처',why:'까다로운 거래처·품목 등록 (아래 영업손익 카드)',val:((M.체크목록||[]).length)+'개 등록',edit:"document.getElementById('sales_card').scrollIntoView({behavior:'smooth',block:'start'})"},
+  {cat:'d',key:'태양광수동',icon:'☀️',name:'태양광 수익 입력 (한전 입금)',why:'하나은행 기업자유예금은 자동수집 안 돼요 → 한전경산지사 입금을 월별로 직접 입력',val:won(Object.values(M.태양광수동||{}).reduce((s,v)=>s+(+v||0),0)),edit:"openEdit('태양광수동')"},
   {cat:'d',key:'법인카드',icon:'💳',name:'법인카드 미분류 분류'+((((D.법인카드||{}).미분류||{}).건수)?` (🔴${((D.법인카드||{}).미분류||{}).건수}건)`:''),why:'이카운트 카드매입조회에서 미분류 거래에 상대계정(카테고리) 지정',val:won((((D.법인카드||{}).미분류||{}).합)||0),edit:"document.getElementById('card_card').scrollIntoView({behavior:'smooth',block:'start'})"},
   {cat:'e',key:'출금프로젝트',icon:'🏷️',name:'출금 전표 프로젝트명 = 현장(거래처)명',why:'매출↔현장비용 연결 키 (전표 작성 시)',val:'이카운트에서',edit:null},
   {cat:'e',key:'입금프로젝트',icon:'🏷️',name:'입금 전표 프로젝트명 = 현장명-담당자',why:'수금률·담당자 귀속 (전표 작성 시)',val:'이카운트에서',edit:null},
