@@ -179,19 +179,36 @@ function done(d){for(let i=1;i<=4;i++){const e=document.getElementById('s'+i);e.
   if(d.thumb){const ts='/cnmaker/api/result?job='+job+'&thumb=1&t='+t;document.getElementById('thumbbox').style.display='block';document.getElementById('thumbimg').src=ts;document.getElementById('dlthumb').href=ts;}
   document.getElementById('result').scrollIntoView({behavior:'smooth'});loadHistory();}
 function fail(msg){if(timer)clearInterval(timer);document.getElementById('go').disabled=false;document.getElementById('err').innerHTML='<div class=err>'+msg+'</div>';}
+let _histItems=[], _histFilter='전체';
+const SRC_LABEL={'cninsider':'🟠 CN인사이더','cafe24':'🟣 카페24','이미지업로드':'🖼️ 이미지업로드'};
+function histSetFilter(f){_histFilter=f;renderHistory();}
 function loadHistory(){
   fetch('/cnmaker/api/history').then(r=>r.json()).then(d=>{
-    const items=(d.items||[]); const box=document.getElementById('historylist');
-    if(!items.length){box.innerHTML='<div class="note">아직 생성한 상세페이지가 없어요.</div>';return;}
-    box.innerHTML=items.map(h=>{
-      const det='/cnmaker/api/result?job='+h.job;
-      const thb='/cnmaker/api/result?job='+h.job+'&thumb=1';
-      return `<div class="hrow"><div class="hinfo"><div class="hname">${(h.product_name||'(제목없음)').replace(/</g,'&lt;')}</div><div class="hts">${h.ts||''} · ${h.src||''}</div></div>`
-        +`<a href="${det}" download="상세_${h.job}.jpg" target="_blank">상세 ⬇</a>`
-        +(h.thumb?`<a class="t" href="${thb}" download="대표_${h.job}.jpg" target="_blank">대표 ⬇</a>`:'')
-        +`</div>`;
-    }).join('');
+    _histItems=(d.items||[]); renderHistory();
   }).catch(()=>{document.getElementById('historylist').innerHTML='<div class="note">히스토리를 불러오지 못했어요.</div>';});
+}
+function renderHistory(){
+  const box=document.getElementById('historylist');
+  if(!_histItems.length){box.innerHTML='<div class="note">아직 생성한 상세페이지가 없어요.</div>';return;}
+  // 소스별 개수
+  const cnt={}; _histItems.forEach(h=>{const s=h.src||'기타';cnt[s]=(cnt[s]||0)+1;});
+  const srcs=['전체',...Object.keys(cnt).sort()];
+  if(!srcs.includes(_histFilter))_histFilter='전체';
+  const tabs=srcs.map(s=>{
+    const on=s===_histFilter, n=s==='전체'?_histItems.length:cnt[s];
+    const label=s==='전체'?'🗂 전체':(SRC_LABEL[s]||s);
+    return `<button onclick="histSetFilter('${s}')" style="border:1.5px solid ${on?'#D70010':'#e5e7eb'};background:${on?'#fff5f5':'#fff'};color:${on?'#D70010':'#374151'};border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13px;font-weight:600">${label} <span style="font-weight:400;font-size:11px">${n}</span></button>`;
+  }).join(' ');
+  const rows=(_histFilter==='전체'?_histItems:_histItems.filter(h=>h.src===_histFilter));
+  const list=rows.map(h=>{
+    const det='/cnmaker/api/result?job='+h.job;
+    const thb='/cnmaker/api/result?job='+h.job+'&thumb=1';
+    return `<div class="hrow"><div class="hinfo"><div class="hname">${(h.product_name||'(제목없음)').replace(/</g,'&lt;')}</div><div class="hts">${h.ts||''} · ${SRC_LABEL[h.src]||h.src||''}</div></div>`
+      +`<a href="${det}" download="상세_${h.job}.jpg" target="_blank">상세 ⬇</a>`
+      +(h.thumb?`<a class="t" href="${thb}" download="대표_${h.job}.jpg" target="_blank">대표 ⬇</a>`:'')
+      +`</div>`;
+  }).join('');
+  box.innerHTML=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${tabs}</div>`+list;
 }
 loadHistory();
 </script></body></html>
