@@ -99,8 +99,8 @@ def make_dummy(keyword: str):
 
 @app.get("/")
 async def root(request: Request):
-    # 소싱 사이트도 자금 대시보드와 동일 로그인(사장/직원)으로 전체 잠금
-    if not _jageum_auth(request):
+    # 소싱 사이트 전체 잠금 — 사장·경리·소싱직원 로그인 허용
+    if not _site_auth(request):
         return FileResponse("static/site_login.html", headers={"Cache-Control": "no-store"})
     return FileResponse("static/index.html", headers={"Cache-Control": "no-store"})
 
@@ -766,6 +766,9 @@ JAGEUM_INGEST_SECRET = os.getenv("JAGEUM_INGEST_SECRET", "bj-ecount-2026-ingest"
 # 사장님(대표) 계정 — 결재함 권한
 JAGEUM_BOSS_USER = os.getenv("JAGEUM_BOSS_USER", "성건1248")
 JAGEUM_BOSS_PASS = os.getenv("JAGEUM_BOSS_PASS", "313131")
+# 소싱직원 계정 — 소싱 사이트(/, /cnmaker)만 접근, 자금 대시보드는 못 봄
+SOURCING_USER = os.getenv("SOURCING_USER", "sourcing")
+SOURCING_PASS = os.getenv("SOURCING_PASS", "3030")
 
 import hashlib, hmac, time
 _JAGEUM_SECRET = os.getenv("JAGEUM_TOKEN_SECRET", "bj-jageum-token-2026")
@@ -789,14 +792,19 @@ def _check_token(tok: str) -> str:
     return ""
 
 def _jageum_role(request: Request) -> str:
-    """'boss' / 'staff' / '' — 쿠키 세션 토큰만 인정 (Basic Auth 자동통과 방지)"""
+    """'boss' / 'staff' / 'sourcing' / '' — 쿠키 세션 토큰만 인정"""
     tok = request.cookies.get("jg_session", "")
     if tok:
         return _check_token(tok)
     return ""
 
 def _jageum_auth(request: Request) -> bool:
-    return _jageum_role(request) != ""
+    # 자금 대시보드: 사장·경리만 (소싱직원 제외)
+    return _jageum_role(request) in ("boss", "staff")
+
+def _site_auth(request: Request) -> bool:
+    # 소싱 사이트(/·/cnmaker): 로그인한 모두 (사장·경리·소싱직원)
+    return _jageum_role(request) in ("boss", "staff", "sourcing")
 
 _AUTH401 = JSONResponse({"error": "로그인 필요"}, status_code=401)
 
@@ -820,6 +828,8 @@ async def jageum_login(request: Request):
         role = "boss"
     elif u == JAGEUM_USER and p == JAGEUM_PASS:
         role = "staff"
+    elif u == SOURCING_USER and p == SOURCING_PASS:
+        role = "sourcing"
     if not role:
         return JSONResponse({"error": "아이디 또는 비밀번호가 맞지 않습니다"}, status_code=401)
     resp = JSONResponse({"ok": True, "role": role})
@@ -1487,7 +1497,7 @@ CNMAKER_SECRET = os.getenv("CNMAKER_SECRET", "bj-cnmaker-2026")
 
 @app.get("/cnmaker")
 def cnmaker_page(request: Request):
-    if not _jageum_auth(request):
+    if not _site_auth(request):
         return FileResponse("static/site_login.html", headers={"Cache-Control": "no-store"})
     return FileResponse("static/cnmaker.html", headers={"Cache-Control": "no-store"})
 

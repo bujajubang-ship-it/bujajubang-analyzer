@@ -1913,7 +1913,7 @@ function loadMe(){
   fetch('/api/me').then(r=>r.json()).then(d=>{
     SITE_ROLE = d.role || '';
     const who = document.getElementById('site-who');
-    if (who) who.textContent = SITE_ROLE === 'boss' ? '👑 사장님' : (SITE_ROLE === 'staff' ? '👤 직원' : '');
+    if (who) who.textContent = SITE_ROLE === 'boss' ? '👑 사장님' : (SITE_ROLE === 'sourcing' ? '👤 소싱직원' : (SITE_ROLE === 'staff' ? '👤 경리' : ''));
     if (SITE_ROLE === 'boss') {
       const card = document.getElementById('site-approvals-card');
       if (card) card.style.display = 'block';
