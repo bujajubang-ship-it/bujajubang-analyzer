@@ -27,12 +27,15 @@ function switchPage(page) {
   const isSearch    = page === 'search';
   const isSourcing  = page === 'sourcing';
   const isPagemaker = page === 'pagemaker';
+  const isCnmaker   = page === 'cnmaker';
 
   const navTracker = document.getElementById('nav-tracker');
   if (navTracker) navTracker.classList.toggle('active', isTracker);
   document.getElementById('nav-search').classList.toggle('active', isSearch);
   document.getElementById('nav-sourcing').classList.toggle('active', isSourcing);
   document.getElementById('nav-pagemaker').classList.toggle('active', isPagemaker);
+  const navCn = document.getElementById('nav-cnmaker');
+  if (navCn) navCn.classList.toggle('active', isCnmaker);
 
   const _trk = document.getElementById('tracker-section');
   if (_trk) _trk.classList.toggle('hidden', !isTracker);
@@ -41,6 +44,14 @@ function switchPage(page) {
   document.getElementById('result-section').classList.toggle('hidden', !isSearch || currentSection !== 'result');
   document.getElementById('sourcing-page').classList.toggle('hidden', !isSourcing);
   document.getElementById('pagemaker-page').classList.toggle('hidden', !isPagemaker);
+  const _cn = document.getElementById('cnmaker-page');
+  if (_cn) {
+    _cn.classList.toggle('hidden', !isCnmaker);
+    if (isCnmaker) {  // iframe 지연 로딩 (처음 열 때만)
+      const fr = document.getElementById('cnmaker-frame');
+      if (fr && !fr.src) fr.src = '/cnmaker';
+    }
+  }
   document.getElementById('header-search').style.display = isSearch && currentSection !== 'hero' ? 'flex' : 'none';
 
   if (isTracker) loadTracker();
