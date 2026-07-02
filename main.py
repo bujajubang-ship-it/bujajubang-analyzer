@@ -767,7 +767,7 @@ JAGEUM_INGEST_SECRET = os.getenv("JAGEUM_INGEST_SECRET", "bj-ecount-2026-ingest"
 JAGEUM_BOSS_USER = os.getenv("JAGEUM_BOSS_USER", "성건1248")
 JAGEUM_BOSS_PASS = os.getenv("JAGEUM_BOSS_PASS", "313131")
 # 소싱직원 계정 — 소싱 사이트(/, /cnmaker)만 접근, 자금 대시보드는 못 봄
-SOURCING_USER = os.getenv("SOURCING_USER", "sourcing")
+SOURCING_USER = os.getenv("SOURCING_USER", "buja2")
 SOURCING_PASS = os.getenv("SOURCING_PASS", "3030")
 
 import hashlib, hmac, time
