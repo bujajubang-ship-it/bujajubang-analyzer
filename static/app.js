@@ -1905,3 +1905,71 @@ function renderTracker() {
 
 // 초기 로드 — 메인 진입 시 '쿠팡 품목 진행상황'을 기본 페이지로 (app.js는 body 끝 로드라 DOM 준비됨)
 switchPage('tracker');
+
+// ===== AI 개선 상담 + 결재함 =====
+let SITE_ROLE = '';
+const _siteChat = [];
+function loadMe(){
+  fetch('/api/me').then(r=>r.json()).then(d=>{
+    SITE_ROLE = d.role || '';
+    const who = document.getElementById('site-who');
+    if (who) who.textContent = SITE_ROLE === 'boss' ? '👑 사장님' : (SITE_ROLE === 'staff' ? '👤 직원' : '');
+    if (SITE_ROLE === 'boss') {
+      const card = document.getElementById('site-approvals-card');
+      if (card) card.style.display = 'block';
+      loadSiteApprovals();
+    }
+  }).catch(()=>{});
+}
+function _siteBubble(role, text){
+  const log = document.getElementById('site-chat-log');
+  const mine = role === 'user';
+  const div = document.createElement('div');
+  div.style.cssText = 'margin:8px 0;display:flex;'+(mine?'justify-content:flex-end':'justify-content:flex-start');
+  div.innerHTML = `<div style="max-width:78%;white-space:pre-wrap;line-height:1.5;font-size:14px;padding:10px 13px;border-radius:12px;${mine?'background:#D70010;color:#fff':'background:#fff;border:1px solid #e5e7eb;color:#1f2937'}">${(text||'').replace(/</g,'&lt;')}</div>`;
+  log.appendChild(div); log.scrollTop = log.scrollHeight;
+  return div;
+}
+function siteChatSend(){
+  const inp = document.getElementById('site-chat-in');
+  const btn = document.getElementById('site-chat-btn');
+  const msg = (inp.value||'').trim();
+  if (!msg) return;
+  inp.value=''; btn.disabled=true;
+  _siteChat.push({role:'user', content:msg}); _siteBubble('user', msg);
+  const wait = _siteBubble('assistant', '…');
+  fetch('/api/site_chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:_siteChat})})
+    .then(r=>r.json()).then(d=>{
+      if (d.error){ wait.querySelector('div').textContent='⚠️ '+d.error; btn.disabled=false; return; }
+      wait.querySelector('div').textContent = d.reply || '(응답 없음)';
+      _siteChat.push({role:'assistant', content:d.reply||''});
+      if (d.approval){
+        const b=_siteBubble('assistant', `📋 대표 결재요청 등록됨 #${d.approval.id}\n"${d.approval.title}" — ${d.approval.desc}`);
+        b.querySelector('div').style.background='#fff7ed'; b.querySelector('div').style.borderColor='#fdba74';
+        if (SITE_ROLE==='boss') loadSiteApprovals();
+      }
+      btn.disabled=false;
+    }).catch(()=>{ wait.querySelector('div').textContent='⚠️ 연결 실패'; btn.disabled=false; });
+}
+function loadSiteApprovals(){
+  fetch('/api/site_approvals').then(r=>r.json()).then(d=>{
+    const box=document.getElementById('site-approvals-list');
+    if (!box) return;
+    const items=(d.items||[]).slice().reverse();
+    if (!items.length){ box.innerHTML='<div style="color:#9ca3af">대기 중인 결재 요청이 없어요.</div>'; return; }
+    box.innerHTML=items.map(a=>{
+      const st=a.status||'대기';
+      const color=st==='승인'?'#16a34a':(st==='반려'?'#b91c1c':'#d97706');
+      const acts=st==='대기'?`<button onclick="siteApprovalAct(${a.id},'approve')" style="background:#16a34a;color:#fff;border:none;border-radius:7px;padding:6px 12px;cursor:pointer;font-size:13px;font-weight:600">승인</button> <button onclick="siteApprovalAct(${a.id},'reject')" style="background:#fee2e2;color:#b91c1c;border:none;border-radius:7px;padding:6px 12px;cursor:pointer;font-size:13px;font-weight:600">반려</button>`:`<span style="color:${color};font-weight:700">${st}</span>`;
+      return `<div style="display:flex;align-items:center;gap:12px;padding:10px;border:1px solid #eee;border-radius:10px;margin-bottom:8px"><div style="flex:1;min-width:0"><div style="font-weight:600;font-size:14px">${(a.title||'').replace(/</g,'&lt;')}</div><div style="font-size:12px;color:#9ca3af">${(a.desc||'').replace(/</g,'&lt;')} · ${a.who||''}</div></div>${acts}</div>`;
+    }).join('');
+  }).catch(()=>{});
+}
+function siteApprovalAct(id, action){
+  fetch('/api/site_approvals/'+id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})})
+    .then(r=>r.json()).then(()=>loadSiteApprovals()).catch(()=>{});
+}
+function siteLogout(){
+  fetch('/jageum/api/logout',{method:'POST'}).then(()=>{location.href='/';}).catch(()=>{location.href='/';});
+}
+loadMe();

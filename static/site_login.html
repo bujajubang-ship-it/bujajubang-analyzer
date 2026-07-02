@@ -1,0 +1,41 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>부자홀딩스 소싱 분석기 — 로그인</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,'Pretendard','Malgun Gothic',sans-serif;background:linear-gradient(135deg,#b91c1c,#ef4444);min-height:100vh;display:flex;align-items:center;justify-content:center;color:#1f2937}
+.box{background:#fff;border-radius:18px;padding:38px 32px;width:340px;box-shadow:0 10px 40px rgba(0,0,0,.25)}
+.logo{text-align:center;font-size:24px;font-weight:800;color:#b91c1c;margin-bottom:6px}
+.sub{text-align:center;color:#9ca3af;font-size:13px;margin-bottom:26px}
+label{font-size:13px;color:#6b7280;font-weight:600;display:block;margin-bottom:6px}
+input{width:100%;padding:13px 14px;border:2px solid #e5e7eb;border-radius:10px;font-size:15px;margin-bottom:16px}
+input:focus{outline:none;border-color:#b91c1c}
+button{width:100%;background:#b91c1c;color:#fff;border:none;border-radius:10px;padding:14px;font-size:15px;font-weight:700;cursor:pointer}
+button:disabled{background:#e0a3a3}
+.err{background:#fef2f2;color:#b91c1c;padding:11px 13px;border-radius:8px;font-size:13px;margin-bottom:14px;display:none}
+</style></head><body>
+<div class="box">
+  <div class="logo">🛍️ 부자홀딩스</div>
+  <div class="sub">소싱 분석기 로그인</div>
+  <div class="err" id="err"></div>
+  <label>아이디</label>
+  <input id="id" placeholder="아이디" autocomplete="off">
+  <label>비밀번호</label>
+  <input id="pw" type="password" placeholder="비밀번호" autocomplete="new-password">
+  <button id="btn" onclick="login()">로그인</button>
+</div>
+<script>
+function login(){
+  const id=document.getElementById('id').value.trim();
+  const pw=document.getElementById('pw').value;
+  const err=document.getElementById('err');
+  err.style.display='none';
+  document.getElementById('btn').disabled=true;
+  fetch('/jageum/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,pw})})
+    .then(r=>r.json().then(d=>({ok:r.ok,d})))
+    .then(({ok,d})=>{
+      if(ok&&d.ok){location.href='/';}
+      else{err.textContent=d.error||'로그인 실패';err.style.display='block';document.getElementById('btn').disabled=false;}
+    }).catch(()=>{err.textContent='연결 실패';err.style.display='block';document.getElementById('btn').disabled=false;});
+}
+document.getElementById('pw').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
+document.getElementById('id').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('pw').focus();});
+</script></body></html>

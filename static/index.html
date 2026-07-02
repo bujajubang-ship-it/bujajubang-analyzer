@@ -753,6 +753,28 @@
     <iframe id="cnmaker-frame" title="CN메이커" style="width:100%;height:calc(100vh - 130px);min-height:600px;border:1px solid #e5e7eb;border-radius:12px;background:#fff"></iframe>
   </section>
 
+  <!-- ── AI 개선 상담 + 결재함 (하단) ── -->
+  <section id="site-ai" style="max-width:1100px;margin:28px auto 40px;padding:0 16px">
+    <!-- 결재함 (사장님 전용) -->
+    <div id="site-approvals-card" style="display:none;background:#fff;border:1px solid #e5e7eb;border-top:3px solid #D70010;border-radius:14px;padding:18px 20px;margin-bottom:18px">
+      <h2 style="margin:0 0 4px;font-size:18px">🗂 결재함 <span style="font-size:13px;color:#9ca3af;font-weight:400">— 직원이 올린 코드·기능 변경 요청 (승인하면 개발 진행)</span></h2>
+      <div id="site-approvals-list" style="margin-top:12px;font-size:14px;color:#9ca3af">불러오는 중…</div>
+    </div>
+    <!-- AI 채팅 -->
+    <div style="background:#fff;border:1px solid #e5e7eb;border-top:3px solid #D70010;border-radius:14px;padding:18px 20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <h2 style="margin:0;font-size:18px">🤖 AI 개선 상담 <span style="font-size:13px;color:#9ca3af;font-weight:400">— 사이트·소싱·쿠팡 사업 개선을 Opus 4.8과 상담</span></h2>
+        <div style="font-size:12px;color:#9ca3af"><span id="site-who"></span> <a href="#" onclick="siteLogout();return false;" style="color:#b91c1c;text-decoration:none;margin-left:8px">로그아웃</a></div>
+      </div>
+      <div id="site-chat-log" style="max-height:420px;overflow:auto;border:1px solid #eef0f3;border-radius:10px;padding:12px;background:#fafbfc;margin:12px 0"></div>
+      <div style="display:flex;gap:8px">
+        <textarea id="site-chat-in" placeholder="예: 소싱 추천 탭에 마진 계산기를 넣고 싶어요 / 키워드 분석 결과를 엑셀로 받고 싶어요…" style="flex:1;min-height:54px;padding:11px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;resize:vertical" onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey))siteChatSend()"></textarea>
+        <button onclick="siteChatSend()" id="site-chat-btn" style="background:#D70010;color:#fff;border:none;border-radius:10px;padding:0 20px;font-weight:700;cursor:pointer;white-space:nowrap">보내기</button>
+      </div>
+      <div style="font-size:12px;color:#9ca3af;margin-top:6px">💡 개발이 필요한 안이 정리되면 <b>대표 결재요청</b>으로 올라가요. (Ctrl/⌘+Enter로 전송)</div>
+    </div>
+  </section>
+
   <!-- ── Memo FAB + Panel ── -->
   <button class="memo-fab" id="memo-fab" onclick="toggleMemoPanel()">📝 내 메모</button>
 
@@ -766,7 +788,7 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-  <script src="/static/app.js?v=20260702a"></script>
+  <script src="/static/app.js?v=20260702b"></script>
   <!-- 마진/ROAS 계산기 (React 18 + htm, 빌드 없음) -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>

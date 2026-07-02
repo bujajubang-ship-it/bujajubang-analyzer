@@ -98,8 +98,15 @@ def make_dummy(keyword: str):
 
 
 @app.get("/")
-async def root():
+async def root(request: Request):
+    # 소싱 사이트도 자금 대시보드와 동일 로그인(사장/직원)으로 전체 잠금
+    if not _jageum_auth(request):
+        return FileResponse("static/site_login.html", headers={"Cache-Control": "no-store"})
     return FileResponse("static/index.html", headers={"Cache-Control": "no-store"})
+
+@app.get("/api/me")
+async def api_me(request: Request):
+    return JSONResponse({"role": _jageum_role(request)})
 
 
 @app.get("/api/health")
@@ -828,16 +835,44 @@ async def jageum_logout():
 
 JAGEUM_MANUAL_FILE = data_path("jageum_manual.json")
 
+# ===== 영구 백업 (Lightsail KV) — Render 무료플랜은 재배포/재시작 시 런타임 파일이 초기화되므로,
+#       결재·수동입력을 항상 켜진 Lightsail 서버에 자동 백업하고, 로컬이 비면 복원한다. =====
+_KV_BASE = os.getenv("CNMAKER_BASE", "http://43.200.232.189")
+_KV_SECRET = os.getenv("CNMAKER_SECRET", "bj-cnmaker-2026")
+def _kv_backup(key, obj):
+    try:
+        httpx.post(f"{_KV_BASE}/kv/{key}", json=obj, headers={"x-secret": _KV_SECRET}, timeout=6)
+    except Exception:
+        pass
+def _kv_restore(key):
+    try:
+        r = httpx.get(f"{_KV_BASE}/kv/{key}", headers={"x-secret": _KV_SECRET}, timeout=6)
+        if r.status_code == 200:
+            return r.json().get("data")
+    except Exception:
+        pass
+    return None
+def _load_manual():
+    if JAGEUM_MANUAL_FILE.exists():
+        try:
+            return json.loads(JAGEUM_MANUAL_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+    data = _kv_restore("jageum_manual")   # 로컬 없음(재배포 초기화) → Lightsail 백업 복원
+    if isinstance(data, dict):
+        try:
+            JAGEUM_MANUAL_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+        return data
+    return {}
+
 @app.get("/jageum/api/data")
 def jageum_data(request: Request):
     if not _jageum_auth(request):
         return _AUTH401
     d = json.loads(JAGEUM_FILE.read_text(encoding="utf-8")) if JAGEUM_FILE.exists() else {"period": "", "자금현황": [], "자금의증가": [], "자금의감소": []}
-    if JAGEUM_MANUAL_FILE.exists():
-        try:
-            d["수동입력"] = json.loads(JAGEUM_MANUAL_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            d["수동입력"] = {}
+    d["수동입력"] = _load_manual()
     d["_role"] = _jageum_role(request)
     return JSONResponse(d)
 
@@ -855,6 +890,10 @@ async def jageum_manual(request: Request):
         return _AUTH401
     body = await request.body()
     JAGEUM_MANUAL_FILE.write_text(body.decode("utf-8"), encoding="utf-8")
+    try:
+        _kv_backup("jageum_manual", json.loads(body.decode("utf-8")))
+    except Exception:
+        pass
     return JSONResponse({"ok": True})
 
 
@@ -1140,10 +1179,18 @@ def _load_approvals():
             return json.loads(JAGEUM_APPROVALS_FILE.read_text(encoding="utf-8"))
         except Exception:
             return []
+    data = _kv_restore("jageum_approvals")   # 로컬 없음(재배포 초기화) → Lightsail 백업 복원
+    if isinstance(data, list):
+        try:
+            JAGEUM_APPROVALS_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+        return data
     return []
 
 def _save_approvals(items):
     JAGEUM_APPROVALS_FILE.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
+    _kv_backup("jageum_approvals", items)
 
 def _jageum_summary() -> str:
     """대시보드 데이터를 AI가 보기 좋게 요약(토큰 절약)."""
@@ -1192,12 +1239,7 @@ def _jageum_summary() -> str:
     if d.get("미수금"):
         lines.append(f"[미수금] {d['미수금'].get('total',0)//10000}만")
     # 경리 수기입력 항목 + 최종수정일 (AI가 '언제 기준 얼마'를 안내할 수 있게)
-    man = {}
-    if JAGEUM_MANUAL_FILE.exists():
-        try:
-            man = json.loads(JAGEUM_MANUAL_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            man = {}
+    man = _load_manual()
     md = man.get("수정일", {}) or {}
     def _sum_rows(v):
         try:
@@ -1284,7 +1326,7 @@ async def jageum_chat(request: Request):
         items = _load_approvals()
         aid = (max([a["id"] for a in items], default=0) + 1)
         items.append({"id": aid, "title": title, "desc": desc, "who": who,
-                      "status": "대기", "ts": ""})
+                      "status": "대기", "ts": "", "thread": []})
         _save_approvals(items)
         approval = {"id": aid, "title": title, "desc": desc}
     return JSONResponse({"reply": text, "approval": approval})
@@ -1309,13 +1351,144 @@ async def jageum_approval_act(aid: int, request: Request):
     _save_approvals(items)
     return JSONResponse({"ok": True})
 
+@app.post("/jageum/api/approvals/{aid}/chat")
+async def jageum_approval_chat(aid: int, request: Request):
+    """결재 안건에 대해 사장님이 AI와 구체적으로 대화(무슨 기능을 어떻게 바꾸는지)."""
+    if _jageum_role(request) != "boss":
+        return JSONResponse({"error": "권한 없음 (대표 전용)"}, status_code=403)
+    data = await request.json()
+    msg = (data.get("message") or "").strip()
+    items = _load_approvals()
+    appr = next((a for a in items if a["id"] == aid), None)
+    if not appr:
+        return JSONResponse({"error": "없는 안건"}, status_code=404)
+    thread = appr.setdefault("thread", [])
+    if not msg:
+        return JSONResponse({"thread": thread})
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return JSONResponse({"error": "ANTHROPIC_API_KEY 미설정"}, status_code=500)
+    system = f"""당신은 부자홀딩스 자금 대시보드의 '코드/기능 변경 안건'을 사장님께 설명하는 AI입니다.
+아래 결재 안건에 대해, 사장님이 '무슨 기능을 / 어떻게 바꾸는지'를 구체적으로 이해하도록 쉬운 한국어로 설명하세요.
+- 기술용어는 최소화하고, 실무 관점(무엇이 어떻게 달라지는지)으로 설명.
+- 바꾸면 좋은 점과 주의할 점(부작용·비용)도 함께 짚으세요.
+- 사장님이 승인/반려를 판단하도록 돕되, 결정은 사장님 몫입니다. 필요하면 되물어 확인하세요.
+
+[결재 안건]
+제목: {appr.get('title','')}
+요청 내용: {appr.get('desc','')}
+요청자: {appr.get('who','')}"""
+    conv = [{"role": m.get("role"), "content": m.get("text", "")} for m in thread if m.get("role") in ("user", "assistant")]
+    conv.append({"role": "user", "content": msg})
+    body = {"model": "claude-opus-4-8", "max_tokens": 1200, "system": system, "messages": conv[-16:]}
+    headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
+    async with httpx.AsyncClient(timeout=90) as client:
+        r = await client.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
+        if r.status_code != 200:
+            return JSONResponse({"error": f"AI 오류: {r.text[:200]}"}, status_code=500)
+        rd = r.json()
+    reply = "".join(b.get("text", "") for b in rd.get("content", []) if b.get("type") == "text")
+    thread.append({"role": "user", "text": msg})
+    thread.append({"role": "assistant", "text": reply})
+    _save_approvals(items)
+    return JSONResponse({"reply": reply, "thread": thread})
+
+
+# ===== 소싱 사이트 AI 개선 상담 + 결재함 =====
+SITE_APPROVALS_FILE = data_path("site_approvals.json")
+
+def _load_site_approvals():
+    if SITE_APPROVALS_FILE.exists():
+        try:
+            return json.loads(SITE_APPROVALS_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+    return []
+
+def _save_site_approvals(items):
+    SITE_APPROVALS_FILE.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
+
+@app.post("/api/site_chat")
+async def site_chat(request: Request):
+    if not _jageum_auth(request):
+        return _AUTH401
+    data = await request.json()
+    messages = data.get("messages", [])
+    is_boss = _jageum_role(request) == "boss"
+    who = "사장님" if is_boss else "직원"
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return JSONResponse({"error": "ANTHROPIC_API_KEY 미설정"}, status_code=500)
+    role_rule = ("당신은 지금 '사장님(대표)'과 대화 중입니다. 대표는 결재 권한이 있습니다."
+                 if is_boss else
+                 "당신은 지금 '직원'과 대화 중입니다. 직원은 코드/기능을 직접 바꿀 수 없고, 변경은 대표 결재가 필요합니다. 변경안이 정리되면 결재요청으로 대표에게 올리세요.")
+    system = f"""당신은 부자홀딩스(업소용 주방기기 셀러)의 소싱·쿠팡 사업 웹사이트를 함께 개선하는 AI 파트너입니다.
+지금 '{who}'님과 대화 중입니다. 한국어 존댓말로, 사이트·소싱·쿠팡 사업의 개선 아이디어를 실무적으로 상담하세요.
+
+이 사이트 구성: 📋쿠팡 품목 진행상황(소싱/로켓 파이프라인) · 📦소싱 추천 · 🔍키워드 분석 · 🎨페이지 메이커 · 🏭CN메이커(상세페이지 자동생성).
+
+{role_rule}
+
+규칙:
+- 사이트 기능·UX·소싱 전략·쿠팡 운영 개선을 구체적으로 제안하세요.
+- 실제로 코드/기능 변경(개발)이 필요한 안이 정리되면, 답변 맨 끝에 별도 줄로 정확히 이 형식을 출력하세요:
+[결재요청] 제목 | 무엇을 어떻게 바꿀지 한 문장 요약
+- 단순 상담·질문·설명이면 결재요청을 넣지 마세요. 실제 개발 작업이 필요할 때만.
+- 모르는 건 모른다고 하세요."""
+    body = {
+        "model": "claude-opus-4-8", "max_tokens": 1500, "system": system,
+        "messages": [{"role": m["role"], "content": m["content"]} for m in messages[-12:]],
+    }
+    headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
+    async with httpx.AsyncClient(timeout=90) as client:
+        r = await client.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
+        if r.status_code != 200:
+            return JSONResponse({"error": f"AI 오류: {r.text[:200]}"}, status_code=500)
+        rd = r.json()
+    text = "".join(b.get("text","") for b in rd.get("content",[]) if b.get("type")=="text")
+    approval = None
+    import re as _re
+    mt = _re.search(r"\[결재요청\]\s*(.+?)\s*\|\s*(.+)", text)
+    if mt:
+        title, desc = mt.group(1).strip(), mt.group(2).strip()
+        text = text[:mt.start()].rstrip()
+        items = _load_site_approvals()
+        aid = (max([a["id"] for a in items], default=0) + 1)
+        items.append({"id": aid, "title": title, "desc": desc, "who": who,
+                      "status": "대기", "ts": ""})
+        _save_site_approvals(items)
+        approval = {"id": aid, "title": title, "desc": desc}
+    return JSONResponse({"reply": text, "approval": approval})
+
+@app.get("/api/site_approvals")
+async def site_approvals_list(request: Request):
+    # 결재함은 사장님(대표)만
+    if _jageum_role(request) != "boss":
+        return JSONResponse({"items": [], "forbidden": True})
+    return JSONResponse({"items": _load_site_approvals()})
+
+@app.post("/api/site_approvals/{aid}")
+async def site_approval_act(aid: int, request: Request):
+    if _jageum_role(request) != "boss":
+        return JSONResponse({"error": "권한 없음 (대표 전용)"}, status_code=403)
+    data = await request.json()
+    action = data.get("action")
+    items = _load_site_approvals()
+    for a in items:
+        if a["id"] == aid:
+            a["status"] = "승인" if action == "approve" else "반려"
+    _save_site_approvals(items)
+    return JSONResponse({"ok": True})
+
 
 # ===== CN메이커 (CN인사이더 → 부자주방 상세페이지) — Lightsail 중개 =====
 CNMAKER_BASE = os.getenv("CNMAKER_BASE", "http://43.200.232.189")
 CNMAKER_SECRET = os.getenv("CNMAKER_SECRET", "bj-cnmaker-2026")
 
 @app.get("/cnmaker")
-def cnmaker_page():
+def cnmaker_page(request: Request):
+    if not _jageum_auth(request):
+        return FileResponse("static/site_login.html", headers={"Cache-Control": "no-store"})
     return FileResponse("static/cnmaker.html", headers={"Cache-Control": "no-store"})
 
 @app.post("/cnmaker/api/start")
