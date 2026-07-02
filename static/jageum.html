@@ -1264,23 +1264,43 @@ function chatSend(){
   }).catch(()=>{chatMsgs.pop();chatMsgs.push({role:'assistant',content:'⚠️ 연결 실패'});chatRender();chat_btn.disabled=false;});
 }
 chat_in.addEventListener('keydown',e=>{if(e.key==='Enter')chatSend();});
+let APPRS=[];
 function loadApprovals(){
  fetch('/jageum/api/approvals').then(r=>r.json()).then(d=>{
-  const items=(d.items||[]).slice().reverse();
-  const pend=items.filter(a=>a.status==='대기').length;
+  APPRS=(d.items||[]).slice().reverse();
+  const pend=APPRS.filter(a=>a.status==='대기').length;
   appr_count.textContent=pend?`· 대기 ${pend}건`:'· 대기 없음';
-  appr_list.innerHTML=items.length?items.map(a=>{
+  renderApprovals();
+ });
+}
+function renderApprovals(){
+  appr_list.innerHTML=APPRS.length?APPRS.map(a=>{
     const c=a.status==='승인'?'#059669':a.status==='반려'?'#9ca3af':'#d97706';
+    const th=a.thread||[];
+    const thHtml=th.length?'<div style="background:#f8fafc;border:1px solid #eef0f4;border-radius:8px;padding:8px 10px;margin-top:8px;max-height:280px;overflow:auto">'+th.map(m=>`<div style="margin:5px 0"><b style="color:${m.role==='user'?'#1d4ed8':'#7c3aed'};font-size:12px">${m.role==='user'?'👑 사장님':'🤖 AI'}</b><div style="white-space:pre-wrap;font-size:13px;line-height:1.5">${(m.text||'').replace(/</g,'&lt;')}</div></div>`).join('')+'</div>':'';
     return `<div style="border:1px solid #eef0f4;border-radius:10px;padding:12px;margin:8px 0">
       <div style="font-weight:700">${a.title} <span style="color:${c};font-size:12px">[${a.status}]</span></div>
       <div class="muted" style="font-size:13px;margin:4px 0;white-space:normal">${a.desc}</div>
       <div class="muted" style="font-size:11px">요청: ${a.who}</div>
+      ${thHtml}
+      <div style="margin-top:8px;display:flex;gap:6px">
+        <input id="apprin_${a.id}" placeholder="이 안건, 무슨 기능을 어떻게 바꾸는지 물어보세요" style="flex:1;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px" onkeydown="if(event.key==='Enter')apprChat(${a.id})">
+        <button onclick="apprChat(${a.id})" style="background:#5b21b6;color:#fff;border:none;border-radius:7px;padding:7px 14px;cursor:pointer">💬 질문</button>
+      </div>
       ${a.status==='대기'?`<div style="margin-top:8px;display:flex;gap:8px">
         <button onclick="apprAct(${a.id},'approve')" style="background:#059669;color:#fff;border:none;border-radius:7px;padding:7px 16px;cursor:pointer;font-weight:600">✅ 승인 (Yes)</button>
         <button onclick="apprAct(${a.id},'reject')" style="background:#fff;color:#dc2626;border:1px solid #fca5a5;border-radius:7px;padding:7px 14px;cursor:pointer">반려</button></div>`:''}
     </div>`;
   }).join(''):'<div class="muted" style="font-size:13px">아직 결재 요청이 없습니다.</div>';
- });
+}
+function apprChat(id){
+  const el=document.getElementById('apprin_'+id); if(!el)return; const msg=el.value.trim(); if(!msg)return;
+  const a=APPRS.find(x=>x.id===id); if(!a)return;
+  a.thread=a.thread||[]; a.thread.push({role:'user',text:msg}); a.thread.push({role:'assistant',text:'⏳ 답변 생성 중…'});
+  renderApprovals();
+  fetch('/jageum/api/approvals/'+id+'/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg})})
+   .then(r=>r.json()).then(d=>{ if(d.thread)a.thread=d.thread; else if(d.error){a.thread.pop();a.thread.push({role:'assistant',text:'오류: '+d.error});} renderApprovals(); })
+   .catch(()=>{a.thread.pop();a.thread.push({role:'assistant',text:'네트워크 오류'});renderApprovals();});
 }
 function apprAct(id,action){
  fetch('/jageum/api/approvals/'+id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})})
