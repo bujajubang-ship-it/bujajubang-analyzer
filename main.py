@@ -477,8 +477,18 @@ async def get_image(name: str):
     return {"url": url}
 
 
+# ── 영구 저장소 경로 (Render Persistent Disk /var/data) ──────────────
+# DATA_DIR 환경변수 있으면 그 경로(영구 디스크), 없으면 로컬(fallback)
+DATA_DIR = Path(os.getenv("DATA_DIR", "."))
+try:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    DATA_DIR = Path(".")
+def data_path(name):
+    return DATA_DIR / name
+
 # ── Memo API (서버 저장 — 브라우저/기기 무관하게 유지) ──────────────
-MEMOS_FILE = Path("memos.json")
+MEMOS_FILE = data_path("memos.json")
 
 def _load_memos() -> dict:
     try:
@@ -514,7 +524,7 @@ async def delete_memo(memo_id: str):
 
 
 # ── 품목 진행상황 트래커 ─────────────────────────────────────────────
-TRACKER_FILE = Path("tracker.json")
+TRACKER_FILE = data_path("tracker.json")
 
 def _load_tracker() -> dict:
     try:
@@ -742,7 +752,7 @@ async def pm_ai_stream(request: Request):
 
 
 # ===== 이카운트 자금일보 대시보드 =====
-JAGEUM_FILE = Path("jageum_data.json")
+JAGEUM_FILE = data_path("jageum_data.json")
 JAGEUM_USER = os.getenv("JAGEUM_USER", "buja")
 JAGEUM_PASS = os.getenv("JAGEUM_PASS", "1234")
 JAGEUM_INGEST_SECRET = os.getenv("JAGEUM_INGEST_SECRET", "bj-ecount-2026-ingest")
@@ -816,7 +826,7 @@ async def jageum_logout():
     resp.delete_cookie("jg_session")
     return resp
 
-JAGEUM_MANUAL_FILE = Path("jageum_manual.json")
+JAGEUM_MANUAL_FILE = data_path("jageum_manual.json")
 
 @app.get("/jageum/api/data")
 def jageum_data(request: Request):
@@ -849,7 +859,7 @@ async def jageum_manual(request: Request):
 
 
 # ===== 사장님 개인 자산 (boss 전용) =====
-JAGEUM_PERSONAL_FILE = Path("jageum_personal.json")
+JAGEUM_PERSONAL_FILE = data_path("jageum_personal.json")
 _NV_H = {"User-Agent": "Mozilla/5.0", "Referer": "https://finance.naver.com/"}
 
 def _num(s):
@@ -964,7 +974,7 @@ async def jageum_personal_search(request: Request, q: str = ""):
         pass
     return JSONResponse({"items": items})
 
-JAGEUM_LIFE_FILE = Path("jageum_life.json")
+JAGEUM_LIFE_FILE = data_path("jageum_life.json")
 
 @app.get("/jageum/api/life")
 def jageum_life_get(request: Request):
@@ -1122,7 +1132,7 @@ async def jageum_personal_chart(request: Request, market: str = "KR", code: str 
 
 
 # ===== 자금 대시보드 AI 채팅 + 결재함 =====
-JAGEUM_APPROVALS_FILE = Path("jageum_approvals.json")
+JAGEUM_APPROVALS_FILE = data_path("jageum_approvals.json")
 
 def _load_approvals():
     if JAGEUM_APPROVALS_FILE.exists():
