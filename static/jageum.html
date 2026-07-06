@@ -1024,15 +1024,25 @@ function renderSales(){
   +'<div style="font-weight:600;color:#1d4ed8;margin-bottom:6px">🔵 경리 체크 품목·거래처 <span class="muted" style="font-weight:400">— 선금·수량파악 까다로운 것 등록 (여기 적은 게 견적 품목/거래처에 있으면 파란색으로 떠요)</span></div>'
   +'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">'+(watch.length?watch.map((w,i)=>`<span style="background:#dbeafe;border-radius:14px;padding:3px 10px;font-size:12px">${w} <a onclick="svRemoveWatch(${i})" style="cursor:pointer;color:#2563eb">✕</a></span>`).join(''):'<span class="muted" style="font-size:12px">아직 없음 — 아래에 추가하세요</span>')+'</div>'
   +'<input id="sv_watch_in" placeholder="거래처명 또는 품목명 (예: 식기세척기, 꼬챙이)" style="padding:6px 10px;border:1px solid #93c5fd;border-radius:7px;font-size:13px;width:300px" onkeydown="if(event.key===\'Enter\')svAddWatch()"> <button onclick="svAddWatch()" style="background:#2563eb;color:#fff;border:none;border-radius:7px;padding:6px 14px;cursor:pointer;font-size:13px">+ 추가</button></div>';
+ // #1 품목 역검색 박스
+ const q=(window._svQuery||'');
+ let searchBox='<div style="margin-bottom:12px"><input id="sv_search_in" placeholder="🔍 품목명으로 검색 — 어느 현장·담당자가 몇 개 팔았나" value="'+q.replace(/"/g,'&quot;')+'" style="padding:7px 12px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;width:340px" onkeydown="if(event.key===\'Enter\')svSearch()"> <button onclick="svSearch()" style="background:#374151;color:#fff;border:none;border-radius:7px;padding:7px 14px;cursor:pointer;font-size:13px">검색</button>'+(q?' <button onclick="svSearchClear()" style="background:#fff;border:1px solid #d1d5db;border-radius:7px;padding:7px 12px;cursor:pointer;font-size:13px">✕ 초기화</button>':'')+'</div>';
  let deals=[];
  keys.forEach(k=>{const m=sd[k]; if(m&&m.전표)deals.push(...m.전표);});
- if(!deals.length){box.innerHTML=editor+'<div class="muted" style="padding:14px">해당 기간 판매 데이터가 없습니다. (영업 손익은 2026년 7월부터 집계됩니다)</div>';return;}
+ if(!deals.length){box.innerHTML=editor+searchBox+'<div class="muted" style="padding:14px">해당 기간 판매 데이터가 없습니다. (영업 손익은 2026년 7월부터 집계됩니다)</div>';return;}
+ // #1 검색 결과
+ let searchHtml='';
+ if(q){
+   const hits=deals.map(d=>{const its=(d.품목들||[]).filter(p=>p.indexOf(q)>=0); return (its.length||(d.품목요약||'').indexOf(q)>=0)?{d,its:its.length?its:[d.품목요약||'']}:null;}).filter(Boolean);
+   searchHtml='<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;margin-bottom:12px"><div style="font-weight:600;margin-bottom:6px">🔍 "'+q+'" 검색 — '+hits.length+'건</div>'+(hits.length?'<table><thead><tr><th>일자</th><th>거래처(현장)</th><th>담당자</th><th class="num">매출</th><th>매칭 품목</th></tr></thead><tbody>'+hits.map(h=>`<tr><td>${h.d.일자No||''}</td><td style="white-space:normal">${h.d.거래처||''}</td><td>${h.d.담당자||''}</td><td class="num">${(h.d.매출||0).toLocaleString()}</td><td style="white-space:normal;font-size:12px">${h.its.join(', ')}</td></tr>`).join('')+'</tbody></table>':'<div class="muted" style="font-size:13px">일치하는 품목이 없어요.</div>')+'</div>';
+ }
  const G={};
  deals.forEach(d=>{const t=salesTeamOf(d.담당자||''),e=d.담당자||'(미지정)',c=d.거래처||'(미지정)';
-  ((G[t]=G[t]||{})[e]=G[t][e]||{})[c]=G[t][e][c]||{매출:0,공급가:0,원가:0,이익:0,미입력품목:[],원가미입력:0,품목텍스트:''};
+  ((G[t]=G[t]||{})[e]=G[t][e]||{})[c]=G[t][e][c]||{매출:0,공급가:0,원가:0,이익:0,미입력품목:[],원가미입력:0,품목텍스트:'',전표목록:[]};
   const o=G[t][e][c]; o.매출+=d.매출||0;o.공급가+=d.공급가||0;o.원가+=d.원가||0;o.이익+=d.이익||0;o.원가미입력+=d.원가미입력||0; if(d.미입력품목)o.미입력품목.push(...d.미입력품목);
-  o.품목텍스트+=' '+(d.품목요약||'')+' '+((d.품목들||[]).join(' '))+' '+((d.미입력품목||[]).join(' '));});
- window._sm=[]; window._ck=[]; let html='';
+  o.품목텍스트+=' '+(d.품목요약||'')+' '+((d.품목들||[]).join(' '))+' '+((d.미입력품목||[]).join(' '));
+  o.전표목록.push({일자:d.일자No||'',매출:d.매출||0,원가:d.원가||0,이익:d.이익||0,품목들:d.품목들||[]});});
+ window._sm=[]; window._ck=[]; window._exk=[]; window._svExp=window._svExp||new Set(); let html='';
  ['영업팀','쇼핑몰팀','기타'].forEach(team=>{
   if(!G[team])return;
   let TM=0,TS=0,TC=0,TP=0;
@@ -1055,14 +1065,19 @@ function renderSales(){
     if(hit){const key=keys.join(',')+'|'+emp+'|'+cust; const ki=window._ck.push(key)-1;
      if(done[key]){rowStyle='background:#f3f4f6;color:#6b7280'; chk=`<span style="cursor:pointer;color:#16a34a" onclick="svToggleDone(${ki})">✅완료</span>`;}
      else{rowStyle='background:#eff6ff'; chk=`<span style="cursor:pointer;color:#2563eb;font-weight:600" onclick="svToggleDone(${ki})">🔵확인</span>`;}}
-    html+=`<tr style="${rowStyle}"><td style="white-space:normal">${cust}${hit?` <span style="font-size:11px;color:#2563eb">🔵${hit}</span>`:''}</td><td class="num">${o.매출.toLocaleString()}</td><td class="num">${o.원가.toLocaleString()}</td><td class="num">${o.이익.toLocaleString()}</td><td class="num">${r}%</td><td>${flag}</td><td>${chk}</td></tr>`;
+    const exkey=keys.join(',')+'|'+emp+'|'+cust; const exi=window._exk.push(exkey)-1; const exp=window._svExp.has(exkey);
+    html+=`<tr style="${rowStyle}"><td style="white-space:normal;cursor:pointer" onclick="svExpand(${exi})"><span style="color:#9ca3af">${exp?'▾':'▸'}</span> ${cust}${hit?` <span style="font-size:11px;color:#2563eb">🔵${hit}</span>`:''}</td><td class="num">${o.매출.toLocaleString()}</td><td class="num">${o.원가.toLocaleString()}</td><td class="num">${o.이익.toLocaleString()}</td><td class="num">${r}%</td><td>${flag}</td><td>${chk}</td></tr>`;
+    if(exp){ html+=`<tr><td colspan="7" style="background:#fafafa;padding:8px 12px"><div style="font-size:12px;font-weight:600;margin-bottom:4px">📄 전표 상세 (${o.전표목록.length}건)</div><table style="font-size:12px"><thead><tr><th>일자</th><th class="num">매출</th><th class="num">원가</th><th class="num">이익</th><th>품목</th></tr></thead><tbody>`+o.전표목록.map(t=>`<tr><td>${t.일자}</td><td class="num">${t.매출.toLocaleString()}</td><td class="num">${t.원가.toLocaleString()}</td><td class="num">${t.이익.toLocaleString()}</td><td style="white-space:normal">${(t.품목들||[]).join(', ')||'-'}</td></tr>`).join('')+`</tbody></table></td></tr>`; }
    });
    html+='</tbody></table>';
   });
   html+='</div>';
  });
- box.innerHTML=editor+html;
+ box.innerHTML=editor+searchBox+searchHtml+html;
 }
+function svSearch(){const el=document.getElementById('sv_search_in');window._svQuery=el?el.value.trim():'';renderSales();}
+function svSearchClear(){window._svQuery='';renderSales();}
+function svExpand(i){const k=(window._exk||[])[i];if(!k)return;window._svExp=window._svExp||new Set();if(window._svExp.has(k))window._svExp.delete(k);else window._svExp.add(k);renderSales();}
 function svAddWatch(){const el=document.getElementById('sv_watch_in');if(!el)return;const v=el.value.trim();if(!v)return;M.체크목록=M.체크목록||[];if(!M.체크목록.includes(v))M.체크목록.push(v);saveManual();renderSales();}
 function svRemoveWatch(i){if(M.체크목록){M.체크목록.splice(i,1);saveManual();renderSales();}}
 function svToggleDone(i){const key=(window._ck||[])[i];if(!key)return;M.체크완료=M.체크완료||{};M.체크완료[key]=!M.체크완료[key];saveManual();renderSales();}
