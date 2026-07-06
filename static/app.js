@@ -28,6 +28,7 @@ function switchPage(page) {
   const isSourcing  = page === 'sourcing';
   const isPagemaker = page === 'pagemaker';
   const isCnmaker   = page === 'cnmaker';
+  const isDanga     = page === 'danga';
 
   const navTracker = document.getElementById('nav-tracker');
   if (navTracker) navTracker.classList.toggle('active', isTracker);
@@ -36,6 +37,8 @@ function switchPage(page) {
   document.getElementById('nav-pagemaker').classList.toggle('active', isPagemaker);
   const navCn = document.getElementById('nav-cnmaker');
   if (navCn) navCn.classList.toggle('active', isCnmaker);
+  const navDg = document.getElementById('nav-danga');
+  if (navDg) navDg.classList.toggle('active', isDanga);
 
   const _trk = document.getElementById('tracker-section');
   if (_trk) _trk.classList.toggle('hidden', !isTracker);
@@ -52,8 +55,11 @@ function switchPage(page) {
       if (fr && !fr.src) fr.src = '/cnmaker';
     }
   }
+  const _dg = document.getElementById('danga-page');
+  if (_dg) _dg.classList.toggle('hidden', !isDanga);
   document.getElementById('header-search').style.display = isSearch && currentSection !== 'hero' ? 'flex' : 'none';
 
+  if (isDanga) loadDanga();
   if (isTracker) loadTracker();
   if (isSourcing) {
     syncMemosFromServer().then(() => loadSourcing(currentSrcPage));
@@ -1973,3 +1979,70 @@ function siteLogout(){
   fetch('/jageum/api/logout',{method:'POST'}).then(()=>{location.href='/';}).catch(()=>{location.href='/';});
 }
 loadMe();
+
+// ═══════════ 💰 거래처 단가 / 마진 ═══════════
+let DANGA = [];
+function _dgNum(v){ const n = parseFloat(String(v==null?'':v).replace(/[^0-9.-]/g,'')); return isNaN(n)?0:n; }
+function _dgFmt(n){ return Math.round(n).toLocaleString('ko-KR'); }
+function _dgEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+function loadDanga(){
+  fetch('/api/danga').then(r=>r.json()).then(rows=>{ DANGA = Array.isArray(rows)?rows:[]; renderDanga(); })
+    .catch(()=>{ DANGA=[]; renderDanga(); });
+}
+function renderDanga(){
+  const tb = document.getElementById('danga-tbody'); if(!tb) return;
+  const q = (document.getElementById('danga-search').value||'').trim().toLowerCase();
+  tb.innerHTML=''; let shown=0, sumM=0, sumR=0, cnt=0;
+  DANGA.forEach((r,i)=>{
+    const hay = ((r.name||'')+' '+(r.supplier||'')+' '+(r.spec||'')).toLowerCase();
+    if(q && !hay.includes(q)) return;
+    const cost=_dgNum(r.cost), price=_dgNum(r.price), margin=price-cost, rate=price?(margin/price*100):0;
+    if(price){ sumM+=margin; sumR+=rate; cnt++; }
+    shown++;
+    const mc = margin<0?'#dc2626':'#059669';
+    const tr=document.createElement('tr'); tr.style.borderTop='1px solid #f0f0f0';
+    const inp=(k,align)=>`<input value="${_dgEsc(r[k])}" oninput="dangaEdit(${i},'${k}',this.value)" style="width:100%;border:0;background:transparent;padding:6px 4px;font-size:14px;${align?'text-align:right':''}" />`;
+    tr.innerHTML =
+      `<td>${inp('name')}</td><td>${inp('supplier')}</td><td>${inp('spec')}</td>`+
+      `<td>${inp('cost',1)}</td><td>${inp('price',1)}</td>`+
+      `<td style="padding:6px 8px;text-align:right;color:${mc};font-weight:600">${_dgFmt(margin)}</td>`+
+      `<td style="padding:6px 8px;text-align:right;color:${mc}">${rate.toFixed(1)}%</td>`+
+      `<td>${inp('memo')}</td>`+
+      `<td style="padding:6px 8px;text-align:center"><button onclick="dangaDel(${i})" title="삭제" style="border:0;background:none;color:#dc2626;cursor:pointer;font-size:15px">✕</button></td>`;
+    tb.appendChild(tr);
+  });
+  const s=document.getElementById('danga-summary');
+  if(s) s.innerHTML = `총 <b>${DANGA.length}</b>개 (표시 ${shown}) · 평균 마진 <b>${cnt?_dgFmt(sumM/cnt):0}원</b> · 평균 마진율 <b>${cnt?(sumR/cnt).toFixed(1):0}%</b>`;
+}
+function dangaEdit(i,k,v){ if(DANGA[i]){ DANGA[i][k]=v; if(k==='cost'||k==='price') renderDanga(); } }
+function dangaAddRow(){ DANGA.unshift({name:'',supplier:'',spec:'',cost:'',price:'',memo:''}); document.getElementById('danga-search').value=''; renderDanga(); }
+function dangaDel(i){ DANGA.splice(i,1); renderDanga(); }
+function dangaSave(){
+  const s=document.getElementById('danga-status'); s.textContent='저장 중…';
+  fetch('/api/danga',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(DANGA)})
+    .then(r=>r.json()).then(d=>{ s.textContent = d.ok?('✅ 저장됨 ('+d.count+')'):'❌ 실패'; setTimeout(()=>{s.textContent='';},3000); })
+    .catch(()=>{ s.textContent='❌ 저장 오류'; });
+}
+function dangaImport(){
+  const txt=prompt('엑셀/CSV에서 복사해 붙여넣으세요 (탭 또는 콤마 구분).\n열 순서: 품목명 · 거래처 · 규격 · 매입가 · 판매가 · 비고\n(첫 줄이 헤더면 자동 무시, 기존 데이터에 추가됨)');
+  if(!txt) return;
+  const lines=txt.replace(/\r/g,'').split('\n'); const rows=[];
+  lines.forEach((ln,idx)=>{
+    if(!ln.trim()) return;
+    const c=ln.split('\t').length>1 ? ln.split('\t') : ln.split(',');
+    const g=n=>(c[n]||'').trim();
+    if(idx===0 && /품목|거래처|매입|판매|단가/.test(ln)) return;
+    if(!g(0)) return;
+    rows.push({name:g(0),supplier:g(1),spec:g(2),cost:g(3),price:g(4),memo:g(5)});
+  });
+  if(rows.length){ DANGA = rows.concat(DANGA); renderDanga(); alert(rows.length+'개 불러왔어요. 확인 후 💾저장을 누르세요.'); }
+  else alert('불러올 행이 없어요. 형식을 확인해주세요.');
+}
+function dangaExport(){
+  const head='품목명,거래처,규격,매입가,판매가,마진,마진율,비고';
+  const lines=DANGA.map(r=>{ const cost=_dgNum(r.cost),price=_dgNum(r.price),m=price-cost,rt=price?(m/price*100).toFixed(1):'';
+    const esc=s=>'"'+String(s==null?'':s).replace(/"/g,'""')+'"';
+    return [esc(r.name),esc(r.supplier),esc(r.spec),cost,price,m,rt,esc(r.memo)].join(','); });
+  const csv='﻿'+head+'\n'+lines.join('\n');
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download='거래처단가.csv'; a.click();
+}

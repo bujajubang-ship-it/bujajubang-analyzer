@@ -20,6 +20,7 @@
         <button class="nav-btn" id="nav-search" onclick="switchPage('search')">🔍 키워드 분석</button>
         <button class="nav-btn" id="nav-pagemaker" onclick="switchPage('pagemaker')">🎨 페이지 메이커</button>
         <button class="nav-btn" id="nav-cnmaker" onclick="switchPage('cnmaker')">🏭 CN메이커</button>
+        <button class="nav-btn" id="nav-danga" onclick="switchPage('danga')">💰 단가/마진</button>
       </nav>
       <div class="search-wrap" id="header-search" style="display:none">
         <input type="text" id="header-keyword" placeholder="키워드 검색..." onkeydown="if(event.key==='Enter')doSearch()" />
@@ -753,6 +754,44 @@
     <iframe id="cnmaker-frame" title="CN메이커" style="width:100%;height:calc(100vh - 130px);min-height:600px;border:1px solid #e5e7eb;border-radius:12px;background:#fff"></iframe>
   </section>
 
+  <!-- ===== 💰 단가 / 마진 (직원 공유) ===== -->
+  <section id="danga-page" class="hidden">
+    <div style="max-width:1400px;margin:16px auto;padding:0 16px">
+      <div style="background:#fff;border:1px solid #e5e7eb;border-top:3px solid #D70010;border-radius:14px;padding:16px 18px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+          <h2 style="margin:0;font-size:18px">💰 거래처 단가 / 마진 <span style="font-size:13px;color:#9ca3af;font-weight:400">— 직원 공유용. 매입가·판매가 넣으면 마진 자동계산</span></h2>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <input id="danga-search" placeholder="🔍 품목·거래처·규격 검색" oninput="renderDanga()" style="padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;width:220px" />
+            <button onclick="dangaAddRow()" style="padding:8px 12px;border:1px solid #d1d5db;background:#fff;border-radius:8px;cursor:pointer;font-size:13px">+ 행</button>
+            <button onclick="dangaImport()" style="padding:8px 12px;border:0;background:#374151;color:#fff;border-radius:8px;cursor:pointer;font-size:13px">📋 붙여넣기</button>
+            <button onclick="dangaExport()" style="padding:8px 12px;border:1px solid #d1d5db;background:#fff;border-radius:8px;cursor:pointer;font-size:13px">⬇ CSV</button>
+            <button onclick="dangaSave()" style="padding:8px 14px;border:0;background:#059669;color:#fff;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px">💾 저장</button>
+            <span id="danga-status" style="font-size:13px;color:#6b7280"></span>
+          </div>
+        </div>
+        <div id="danga-summary" style="font-size:13px;color:#374151;margin-bottom:8px"></div>
+        <div style="overflow:auto;max-height:72vh;border:1px solid #eef0f3;border-radius:10px">
+          <table style="width:100%;border-collapse:collapse;font-size:14px;min-width:900px">
+            <thead style="position:sticky;top:0;background:#f9fafb;z-index:1">
+              <tr style="text-align:left">
+                <th style="padding:9px 8px">품목명</th>
+                <th style="padding:9px 8px">거래처</th>
+                <th style="padding:9px 8px">규격/옵션</th>
+                <th style="padding:9px 8px;text-align:right">매입가</th>
+                <th style="padding:9px 8px;text-align:right">판매가</th>
+                <th style="padding:9px 8px;text-align:right">마진</th>
+                <th style="padding:9px 8px;text-align:right">마진율</th>
+                <th style="padding:9px 8px">비고</th>
+                <th style="padding:9px 8px"></th>
+              </tr>
+            </thead>
+            <tbody id="danga-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- ── AI 개선 상담 + 결재함 (하단) ── -->
   <section id="site-ai" style="max-width:1100px;margin:28px auto 40px;padding:0 16px">
     <!-- 결재함 (사장님 전용) -->
@@ -788,7 +827,7 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-  <script src="/static/app.js?v=20260702c"></script>
+  <script src="/static/app.js?v=20260706a"></script>
   <!-- 마진/ROAS 계산기 (React 18 + htm, 빌드 없음) -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>

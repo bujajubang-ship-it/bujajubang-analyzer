@@ -543,6 +543,31 @@ def _save_tracker(data: dict):
     TRACKER_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+# ── 거래처 단가 / 마진 (직원 공유) ───────────────────────────────────
+DANGA_FILE = data_path("danga.json")
+
+def _load_danga() -> list:
+    try:
+        return json.loads(DANGA_FILE.read_text(encoding="utf-8")) if DANGA_FILE.exists() else []
+    except Exception:
+        return []
+
+def _save_danga(rows: list):
+    DANGA_FILE.write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
+
+@app.get("/api/danga")
+async def get_danga():
+    return _load_danga()
+
+@app.post("/api/danga")
+async def save_danga(request: Request):
+    rows = await request.json()
+    if not isinstance(rows, list):
+        return {"ok": False, "error": "list required"}
+    _save_danga(rows)
+    return {"ok": True, "count": len(rows)}
+
+
 @app.get("/api/tracker")
 async def get_tracker():
     return _load_tracker()
