@@ -763,6 +763,8 @@
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
             <select id="danga-supplier" onchange="renderDanga()" style="padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;max-width:220px"></select>
             <input id="danga-search" placeholder="🔍 제품·사이즈·카테고리 검색" oninput="renderDanga()" style="padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;width:200px" />
+            <button onclick="dgExpandAll(false)" title="전체 접기" style="padding:8px 10px;border:1px solid #d1d5db;background:#fff;border-radius:8px;cursor:pointer;font-size:13px">▶ 접기</button>
+            <button onclick="dgExpandAll(true)" title="전체 펼치기" style="padding:8px 10px;border:1px solid #d1d5db;background:#fff;border-radius:8px;cursor:pointer;font-size:13px">▼ 펼치기</button>
             <button onclick="dangaAddRow()" style="padding:8px 12px;border:1px solid #d1d5db;background:#fff;border-radius:8px;cursor:pointer;font-size:13px">+ 행</button>
             <button onclick="dangaImport()" style="padding:8px 12px;border:0;background:#374151;color:#fff;border-radius:8px;cursor:pointer;font-size:13px">📋 붙여넣기</button>
             <button onclick="dangaDelSupplier()" style="padding:8px 12px;border:1px solid #fca5a5;background:#fff;color:#dc2626;border-radius:8px;cursor:pointer;font-size:13px">🗑 거래처삭제</button>
@@ -817,7 +819,7 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-  <script src="/static/app.js?v=20260706c"></script>
+  <script src="/static/app.js?v=20260706d"></script>
   <!-- 마진/ROAS 계산기 (React 18 + htm, 빌드 없음) -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>

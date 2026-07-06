@@ -2000,28 +2000,46 @@ function dgBuildSupplier(){
   sel.innerHTML='<option value="">전체 거래처 ('+DANGA.length+')</option>'+sup.map(s=>`<option value="${_dgEsc(s)}">${_dgEsc(s)} (${DANGA.filter(r=>r['거래처']===s).length})</option>`).join('');
   if(cur) sel.value=cur;
 }
+let dgCollapsed = {};
+function dgToggle(s){ dgCollapsed[s] = (dgCollapsed[s]===false); renderDanga(); }
+function dgExpandAll(v){ [...new Set(DANGA.map(r=>r['거래처']||'(미분류)'))].forEach(s=>{ dgCollapsed[s]=!v; }); renderDanga(); }
 function renderDanga(){
   const th=document.getElementById('danga-thead'), tb=document.getElementById('danga-tbody'); if(!tb) return;
+  const NC=DG_COLS.length+1;
   th.innerHTML='<tr style="text-align:left">'+DG_COLS.map(c=>`<th style="padding:8px;min-width:${c.w}px;${c.n?'text-align:right':''}">${c.k}</th>`).join('')+'<th style="padding:8px"></th></tr>';
   const sup=(document.getElementById('danga-supplier').value||''), q=(document.getElementById('danga-search').value||'').trim().toLowerCase();
-  tb.innerHTML=''; let shown=0;
+  const groups={};
   DANGA.forEach((r,i)=>{
     if(sup && r['거래처']!==sup) return;
     const hay=((r['제품명']||'')+' '+(r['카테고리']||'')+' '+(r['사이즈']||'')+' '+(r['옵션']||'')+' '+(r['거래처']||'')).toLowerCase();
     if(q && !hay.includes(q)) return;
-    shown++;
-    const tr=document.createElement('tr'); tr.style.borderTop='1px solid #f0f0f0';
-    const flags=r._flag||[];
-    tr.innerHTML=DG_COLS.map(c=>{
-      const disp=c.n?_dgFmt(r[c.k]):_dgEsc(r[c.k]);
-      const y=flags.includes(c.k);
-      return `<td style="padding:1px;${y?'background:#fde68a':''}" ${y?'title="⚠️ 원본이 흐릿·불확실 — 확인 필요"':''}><input value="${disp}" oninput="dangaEdit(${i},'${c.k}',this.value)" style="width:100%;min-width:${c.w-8}px;border:0;background:transparent;padding:5px 4px;font-size:13px;${c.n?'text-align:right':''}"/></td>`;
-    }).join('')+`<td style="padding:1px;text-align:center"><button onclick="dangaDel(${i})" style="border:0;background:none;color:#dc2626;cursor:pointer">✕</button></td>`;
-    tb.appendChild(tr);
+    const s2=r['거래처']||'(미분류)';
+    (groups[s2]=groups[s2]||[]).push({r,i});
+  });
+  tb.innerHTML=''; let shown=0;
+  Object.keys(groups).sort().forEach(gs=>{
+    const items=groups[gs];
+    const collapsed = q ? false : (sup===gs ? false : (dgCollapsed[gs]!==false));
+    const sj=_dgEsc(gs).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    const hdr=document.createElement('tr');
+    hdr.innerHTML=`<td colspan="${NC}" onclick="dgToggle('${sj}')" style="background:#eef2ff;padding:9px 12px;cursor:pointer;font-weight:700;border-top:2px solid #c7d2fe">${collapsed?'▶':'▼'} ${_dgEsc(gs)} <span style="color:#6b7280;font-weight:400;font-size:12px">(${items.length}개)</span></td>`;
+    tb.appendChild(hdr);
+    if(collapsed) return;
+    items.forEach(({r,i})=>{
+      shown++;
+      const tr=document.createElement('tr'); tr.style.borderTop='1px solid #f0f0f0';
+      const flags=r._flag||[];
+      tr.innerHTML=DG_COLS.map(c=>{
+        const disp=c.n?_dgFmt(r[c.k]):_dgEsc(r[c.k]);
+        const y=flags.includes(c.k);
+        return `<td style="padding:1px;${y?'background:#fde68a':''}" ${y?'title="⚠️ 원본 흐릿 — 확인필요"':''}><input value="${disp}" oninput="dangaEdit(${i},'${c.k}',this.value)" style="width:100%;min-width:${c.w-8}px;border:0;background:transparent;padding:5px 4px;font-size:13px;${c.n?'text-align:right':''}"/></td>`;
+      }).join('')+`<td style="padding:1px;text-align:center"><button onclick="dangaDel(${i})" style="border:0;background:none;color:#dc2626;cursor:pointer">✕</button></td>`;
+      tb.appendChild(tr);
+    });
   });
   const unc=DANGA.filter(r=>(r._flag||[]).length && (!sup||r['거래처']===sup)).length;
   const s=document.getElementById('danga-summary');
-  if(s) s.innerHTML=`거래처 <b>${sup||'전체'}</b> · 표시 <b>${shown}</b>개 / 총 ${DANGA.length}개`+(unc?` · <span style="background:#fde68a;padding:1px 5px;border-radius:4px">⚠️ 확인필요 ${unc}개</span> (노란칸=원본 흐릿)`:'');
+  if(s) s.innerHTML=`거래처 <b>${Object.keys(groups).length}</b>곳 · 총 <b>${DANGA.length}</b>개`+((q||sup)?` · 표시 ${shown}개`:'')+(unc?` · <span style="background:#fde68a;padding:1px 5px;border-radius:4px">⚠️ 확인필요 ${unc}개</span> (노란칸=원본흐릿)`:'');
 }
 function dangaEdit(i,k,v){ if(DANGA[i]) DANGA[i][k]=v; }
 function dangaAddRow(){ const o={}; DG_COLS.forEach(c=>o[c.k]=''); const sup=document.getElementById('danga-supplier').value; if(sup)o['거래처']=sup; DANGA.unshift(o); renderDanga(); }
