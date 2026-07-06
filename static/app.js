@@ -1980,69 +1980,64 @@ function siteLogout(){
 }
 loadMe();
 
-// ═══════════ 💰 거래처 단가 / 마진 ═══════════
+// ═══════════ 💰 거래처 단가 / 마진 v2 ═══════════
 let DANGA = [];
-function _dgNum(v){ const n = parseFloat(String(v==null?'':v).replace(/[^0-9.-]/g,'')); return isNaN(n)?0:n; }
-function _dgFmt(n){ return Math.round(n).toLocaleString('ko-KR'); }
+const DG_COLS = [
+ {k:'거래처',w:96},{k:'카테고리',w:96},{k:'제품명',w:180},{k:'옵션',w:96},{k:'사이즈',w:78},
+ {k:'매입단가',w:96,n:1},{k:'매입배송비',w:86,n:1},{k:'네이버단가',w:96,n:1},{k:'판매배송비',w:82,n:1},
+ {k:'네이버마진',w:90,n:1},{k:'마진율',w:66},{k:'쿠팡마진',w:90,n:1},{k:'가격설정',w:66},
+ {k:'도매가',w:90,n:1},{k:'부가세포함',w:90,n:1},{k:'재고',w:56,n:1}
+];
+function _dgFmt(v){ if(v===''||v==null) return ''; if(typeof v==='number') return v.toLocaleString('ko-KR'); const s=String(v); if(/%/.test(s)) return s; const n=parseFloat(s.replace(/,/g,'')); return isNaN(n)? s : n.toLocaleString('ko-KR'); }
 function _dgEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 function loadDanga(){
-  fetch('/api/danga').then(r=>r.json()).then(rows=>{ DANGA = Array.isArray(rows)?rows:[]; renderDanga(); })
-    .catch(()=>{ DANGA=[]; renderDanga(); });
+  fetch('/api/danga').then(r=>r.json()).then(rows=>{ DANGA=Array.isArray(rows)?rows:[]; dgBuildSupplier(); renderDanga(); }).catch(()=>{DANGA=[];renderDanga();});
+}
+function dgBuildSupplier(){
+  const sel=document.getElementById('danga-supplier'); if(!sel) return;
+  const sup=[...new Set(DANGA.map(r=>r['거래처']).filter(Boolean))].sort();
+  const cur=sel.value;
+  sel.innerHTML='<option value="">전체 거래처 ('+DANGA.length+')</option>'+sup.map(s=>`<option value="${_dgEsc(s)}">${_dgEsc(s)} (${DANGA.filter(r=>r['거래처']===s).length})</option>`).join('');
+  if(cur) sel.value=cur;
 }
 function renderDanga(){
-  const tb = document.getElementById('danga-tbody'); if(!tb) return;
-  const q = (document.getElementById('danga-search').value||'').trim().toLowerCase();
-  tb.innerHTML=''; let shown=0, sumM=0, sumR=0, cnt=0;
+  const th=document.getElementById('danga-thead'), tb=document.getElementById('danga-tbody'); if(!tb) return;
+  th.innerHTML='<tr style="text-align:left">'+DG_COLS.map(c=>`<th style="padding:8px;min-width:${c.w}px;${c.n?'text-align:right':''}">${c.k}</th>`).join('')+'<th style="padding:8px"></th></tr>';
+  const sup=(document.getElementById('danga-supplier').value||''), q=(document.getElementById('danga-search').value||'').trim().toLowerCase();
+  tb.innerHTML=''; let shown=0;
   DANGA.forEach((r,i)=>{
-    const hay = ((r.name||'')+' '+(r.supplier||'')+' '+(r.spec||'')).toLowerCase();
+    if(sup && r['거래처']!==sup) return;
+    const hay=((r['제품명']||'')+' '+(r['카테고리']||'')+' '+(r['사이즈']||'')+' '+(r['옵션']||'')+' '+(r['거래처']||'')).toLowerCase();
     if(q && !hay.includes(q)) return;
-    const cost=_dgNum(r.cost), price=_dgNum(r.price), margin=price-cost, rate=price?(margin/price*100):0;
-    if(price){ sumM+=margin; sumR+=rate; cnt++; }
     shown++;
-    const mc = margin<0?'#dc2626':'#059669';
     const tr=document.createElement('tr'); tr.style.borderTop='1px solid #f0f0f0';
-    const inp=(k,align)=>`<input value="${_dgEsc(r[k])}" oninput="dangaEdit(${i},'${k}',this.value)" style="width:100%;border:0;background:transparent;padding:6px 4px;font-size:14px;${align?'text-align:right':''}" />`;
-    tr.innerHTML =
-      `<td>${inp('name')}</td><td>${inp('supplier')}</td><td>${inp('spec')}</td>`+
-      `<td>${inp('cost',1)}</td><td>${inp('price',1)}</td>`+
-      `<td style="padding:6px 8px;text-align:right;color:${mc};font-weight:600">${_dgFmt(margin)}</td>`+
-      `<td style="padding:6px 8px;text-align:right;color:${mc}">${rate.toFixed(1)}%</td>`+
-      `<td>${inp('memo')}</td>`+
-      `<td style="padding:6px 8px;text-align:center"><button onclick="dangaDel(${i})" title="삭제" style="border:0;background:none;color:#dc2626;cursor:pointer;font-size:15px">✕</button></td>`;
+    tr.innerHTML=DG_COLS.map(c=>{
+      const disp=c.n?_dgFmt(r[c.k]):_dgEsc(r[c.k]);
+      return `<td style="padding:1px"><input value="${disp}" oninput="dangaEdit(${i},'${c.k}',this.value)" style="width:100%;min-width:${c.w-8}px;border:0;background:transparent;padding:5px 4px;font-size:13px;${c.n?'text-align:right':''}"/></td>`;
+    }).join('')+`<td style="padding:1px;text-align:center"><button onclick="dangaDel(${i})" style="border:0;background:none;color:#dc2626;cursor:pointer">✕</button></td>`;
     tb.appendChild(tr);
   });
   const s=document.getElementById('danga-summary');
-  if(s) s.innerHTML = `총 <b>${DANGA.length}</b>개 (표시 ${shown}) · 평균 마진 <b>${cnt?_dgFmt(sumM/cnt):0}원</b> · 평균 마진율 <b>${cnt?(sumR/cnt).toFixed(1):0}%</b>`;
+  if(s) s.innerHTML=`거래처 <b>${sup||'전체'}</b> · 표시 <b>${shown}</b>개 / 총 ${DANGA.length}개`;
 }
-function dangaEdit(i,k,v){ if(DANGA[i]){ DANGA[i][k]=v; if(k==='cost'||k==='price') renderDanga(); } }
-function dangaAddRow(){ DANGA.unshift({name:'',supplier:'',spec:'',cost:'',price:'',memo:''}); document.getElementById('danga-search').value=''; renderDanga(); }
-function dangaDel(i){ DANGA.splice(i,1); renderDanga(); }
+function dangaEdit(i,k,v){ if(DANGA[i]) DANGA[i][k]=v; }
+function dangaAddRow(){ const o={}; DG_COLS.forEach(c=>o[c.k]=''); const sup=document.getElementById('danga-supplier').value; if(sup)o['거래처']=sup; DANGA.unshift(o); renderDanga(); }
+function dangaDel(i){ if(confirm('이 행 삭제할까요?')){ DANGA.splice(i,1); renderDanga(); } }
 function dangaSave(){
   const s=document.getElementById('danga-status'); s.textContent='저장 중…';
-  fetch('/api/danga',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(DANGA)})
-    .then(r=>r.json()).then(d=>{ s.textContent = d.ok?('✅ 저장됨 ('+d.count+')'):'❌ 실패'; setTimeout(()=>{s.textContent='';},3000); })
-    .catch(()=>{ s.textContent='❌ 저장 오류'; });
+  fetch('/api/danga',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(DANGA)}).then(r=>r.json()).then(d=>{ s.textContent=d.ok?('✅ 저장됨 ('+d.count+')'):'❌ 실패'; dgBuildSupplier(); setTimeout(()=>{s.textContent='';},3000); }).catch(()=>{s.textContent='❌ 오류';});
 }
 function dangaImport(){
-  const txt=prompt('엑셀/CSV에서 복사해 붙여넣으세요 (탭 또는 콤마 구분).\n열 순서: 품목명 · 거래처 · 규격 · 매입가 · 판매가 · 비고\n(첫 줄이 헤더면 자동 무시, 기존 데이터에 추가됨)');
+  const txt=prompt('엑셀/CSV 붙여넣기 (탭 또는 콤마 구분)\n열 순서: '+DG_COLS.map(c=>c.k).join(' · ')+'\n(첫 줄 헤더면 자동 무시 · 기존에 추가됨)');
   if(!txt) return;
-  const lines=txt.replace(/\r/g,'').split('\n'); const rows=[];
-  lines.forEach((ln,idx)=>{
-    if(!ln.trim()) return;
-    const c=ln.split('\t').length>1 ? ln.split('\t') : ln.split(',');
-    const g=n=>(c[n]||'').trim();
-    if(idx===0 && /품목|거래처|매입|판매|단가/.test(ln)) return;
-    if(!g(0)) return;
-    rows.push({name:g(0),supplier:g(1),spec:g(2),cost:g(3),price:g(4),memo:g(5)});
-  });
-  if(rows.length){ DANGA = rows.concat(DANGA); renderDanga(); alert(rows.length+'개 불러왔어요. 확인 후 💾저장을 누르세요.'); }
-  else alert('불러올 행이 없어요. 형식을 확인해주세요.');
+  const lines=txt.replace(/\r/g,'').split('\n'), rows=[];
+  lines.forEach((ln,idx)=>{ if(!ln.trim())return; const c=(ln.split('\t').length>1)?ln.split('\t'):ln.split(','); if(idx===0&&/거래처|제품|매입|단가/.test(ln))return; if(!(c[0]||'').trim()&&!(c[2]||'').trim())return; const o={}; DG_COLS.forEach((col,j)=>o[col.k]=(c[j]||'').trim()); rows.push(o); });
+  if(rows.length){ DANGA=rows.concat(DANGA); dgBuildSupplier(); renderDanga(); alert(rows.length+'개 불러왔어요. 확인 후 💾저장 누르세요.'); } else alert('불러올 행이 없어요. 형식 확인.');
 }
 function dangaExport(){
-  const head='품목명,거래처,규격,매입가,판매가,마진,마진율,비고';
-  const lines=DANGA.map(r=>{ const cost=_dgNum(r.cost),price=_dgNum(r.price),m=price-cost,rt=price?(m/price*100).toFixed(1):'';
-    const esc=s=>'"'+String(s==null?'':s).replace(/"/g,'""')+'"';
-    return [esc(r.name),esc(r.supplier),esc(r.spec),cost,price,m,rt,esc(r.memo)].join(','); });
+  const head=DG_COLS.map(c=>c.k).join(',');
+  const esc=s=>'"'+String(s==null?'':s).replace(/"/g,'""')+'"';
+  const lines=DANGA.map(r=>DG_COLS.map(c=>esc(r[c.k])).join(','));
   const csv='﻿'+head+'\n'+lines.join('\n');
   const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download='거래처단가.csv'; a.click();
 }
