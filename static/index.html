@@ -765,6 +765,7 @@
             <input id="danga-search" placeholder="🔍 제품·사이즈·카테고리 검색" oninput="renderDanga()" style="padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;width:200px" />
             <button onclick="dangaAddRow()" style="padding:8px 12px;border:1px solid #d1d5db;background:#fff;border-radius:8px;cursor:pointer;font-size:13px">+ 행</button>
             <button onclick="dangaImport()" style="padding:8px 12px;border:0;background:#374151;color:#fff;border-radius:8px;cursor:pointer;font-size:13px">📋 붙여넣기</button>
+            <button onclick="dangaDelSupplier()" style="padding:8px 12px;border:1px solid #fca5a5;background:#fff;color:#dc2626;border-radius:8px;cursor:pointer;font-size:13px">🗑 거래처삭제</button>
             <button onclick="dangaExport()" style="padding:8px 12px;border:1px solid #d1d5db;background:#fff;border-radius:8px;cursor:pointer;font-size:13px">⬇ CSV</button>
             <button onclick="dangaSave()" style="padding:8px 14px;border:0;background:#059669;color:#fff;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px">💾 저장</button>
             <span id="danga-status" style="font-size:13px;color:#6b7280"></span>
@@ -816,7 +817,7 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-  <script src="/static/app.js?v=20260706b"></script>
+  <script src="/static/app.js?v=20260706c"></script>
   <!-- 마진/ROAS 계산기 (React 18 + htm, 빌드 없음) -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>

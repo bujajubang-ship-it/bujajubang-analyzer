@@ -1984,7 +1984,7 @@ loadMe();
 let DANGA = [];
 const DG_COLS = [
  {k:'거래처',w:96},{k:'카테고리',w:96},{k:'제품명',w:180},{k:'옵션',w:96},{k:'사이즈',w:78},
- {k:'매입단가',w:96,n:1},{k:'매입배송비',w:86,n:1},{k:'네이버단가',w:96,n:1},{k:'판매배송비',w:82,n:1},
+ {k:'매입단가',w:96,n:1},{k:'할인율',w:62},{k:'매입배송비',w:86,n:1},{k:'네이버단가',w:96,n:1},{k:'판매배송비',w:82,n:1},
  {k:'네이버마진',w:90,n:1},{k:'마진율',w:66},{k:'쿠팡마진',w:90,n:1},{k:'가격설정',w:66},
  {k:'도매가',w:90,n:1},{k:'부가세포함',w:90,n:1},{k:'재고',w:56,n:1}
 ];
@@ -2011,18 +2011,30 @@ function renderDanga(){
     if(q && !hay.includes(q)) return;
     shown++;
     const tr=document.createElement('tr'); tr.style.borderTop='1px solid #f0f0f0';
+    const flags=r._flag||[];
     tr.innerHTML=DG_COLS.map(c=>{
       const disp=c.n?_dgFmt(r[c.k]):_dgEsc(r[c.k]);
-      return `<td style="padding:1px"><input value="${disp}" oninput="dangaEdit(${i},'${c.k}',this.value)" style="width:100%;min-width:${c.w-8}px;border:0;background:transparent;padding:5px 4px;font-size:13px;${c.n?'text-align:right':''}"/></td>`;
+      const y=flags.includes(c.k);
+      return `<td style="padding:1px;${y?'background:#fde68a':''}" ${y?'title="⚠️ 원본이 흐릿·불확실 — 확인 필요"':''}><input value="${disp}" oninput="dangaEdit(${i},'${c.k}',this.value)" style="width:100%;min-width:${c.w-8}px;border:0;background:transparent;padding:5px 4px;font-size:13px;${c.n?'text-align:right':''}"/></td>`;
     }).join('')+`<td style="padding:1px;text-align:center"><button onclick="dangaDel(${i})" style="border:0;background:none;color:#dc2626;cursor:pointer">✕</button></td>`;
     tb.appendChild(tr);
   });
+  const unc=DANGA.filter(r=>(r._flag||[]).length && (!sup||r['거래처']===sup)).length;
   const s=document.getElementById('danga-summary');
-  if(s) s.innerHTML=`거래처 <b>${sup||'전체'}</b> · 표시 <b>${shown}</b>개 / 총 ${DANGA.length}개`;
+  if(s) s.innerHTML=`거래처 <b>${sup||'전체'}</b> · 표시 <b>${shown}</b>개 / 총 ${DANGA.length}개`+(unc?` · <span style="background:#fde68a;padding:1px 5px;border-radius:4px">⚠️ 확인필요 ${unc}개</span> (노란칸=원본 흐릿)`:'');
 }
 function dangaEdit(i,k,v){ if(DANGA[i]) DANGA[i][k]=v; }
 function dangaAddRow(){ const o={}; DG_COLS.forEach(c=>o[c.k]=''); const sup=document.getElementById('danga-supplier').value; if(sup)o['거래처']=sup; DANGA.unshift(o); renderDanga(); }
 function dangaDel(i){ if(confirm('이 행 삭제할까요?')){ DANGA.splice(i,1); renderDanga(); } }
+function dangaDelSupplier(){
+  const sup=document.getElementById('danga-supplier').value;
+  if(!sup){ alert('먼저 거래처를 선택하세요.'); return; }
+  const cnt=DANGA.filter(r=>r['거래처']===sup).length;
+  if(confirm(`'${sup}' 거래처의 ${cnt}개 행을 전부 삭제할까요? (💾저장해야 반영)`)){
+    DANGA=DANGA.filter(r=>r['거래처']!==sup);
+    document.getElementById('danga-supplier').value=''; dgBuildSupplier(); renderDanga();
+  }
+}
 function dangaSave(){
   const s=document.getElementById('danga-status'); s.textContent='저장 중…';
   fetch('/api/danga',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(DANGA)}).then(r=>r.json()).then(d=>{ s.textContent=d.ok?('✅ 저장됨 ('+d.count+')'):'❌ 실패'; dgBuildSupplier(); setTimeout(()=>{s.textContent='';},3000); }).catch(()=>{s.textContent='❌ 오류';});
