@@ -595,6 +595,24 @@ async def ingest_coupang_products(request: Request):
     COUPANG_PRODUCTS_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     return {"ok": True, "count": len(data.get("items", []))}
 
+# ── 마진분석 수동 매칭/매입가 확정 (한번 고치면 영구저장) ──
+COUPANG_MAP_FILE = data_path("coupang_map.json")
+
+@app.get("/api/coupang_map")
+async def get_coupang_map():
+    try:
+        return json.loads(COUPANG_MAP_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+@app.post("/api/coupang_map")
+async def save_coupang_map(request: Request):
+    d = await request.json()
+    if not isinstance(d, dict):
+        return {"ok": False}
+    COUPANG_MAP_FILE.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+    return {"ok": True, "count": len(d)}
+
 
 @app.get("/api/tracker")
 async def get_tracker():
