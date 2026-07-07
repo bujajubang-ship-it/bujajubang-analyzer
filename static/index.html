@@ -387,6 +387,19 @@
   <!-- ── Sourcing Page ── -->
   <section id="sourcing-page" class="hidden">
     <div id="sourcing-section">
+      <!-- 🧮 소싱 마진 계산기 -->
+      <div style="background:#fff;border:1px solid #e5e7eb;border-top:3px solid #D70010;border-radius:14px;padding:16px 18px;margin-bottom:16px">
+        <div style="font-weight:800;font-size:16px;margin-bottom:10px">🧮 소싱 마진 계산기 <span style="font-size:12px;color:#9ca3af;font-weight:400">— 1688 단가·판매가 넣으면 순마진·마진율·손익분기 자동 (수수료·환율은 조정 가능)</span></div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+          <label style="font-size:12px;color:#6b7280">판매가(원)<br><input id="sc-price" type="number" oninput="srcCalc()" placeholder="예: 19900" style="width:110px;padding:7px;border:1px solid #d1d5db;border-radius:7px" /></label>
+          <label style="font-size:12px;color:#6b7280">1688단가(위안)<br><input id="sc-unit" type="number" oninput="srcCalc()" placeholder="예: 12.5" style="width:100px;padding:7px;border:1px solid #d1d5db;border-radius:7px" /></label>
+          <label style="font-size:12px;color:#6b7280">환율+판관비(원/위안)<br><input id="sc-rate" type="number" value="350" oninput="srcCalc()" style="width:110px;padding:7px;border:1px solid #d1d5db;border-radius:7px" /></label>
+          <label style="font-size:12px;color:#6b7280">쿠팡 수수료(%)<br><input id="sc-fee" type="number" value="10.8" oninput="srcCalc()" style="width:90px;padding:7px;border:1px solid #d1d5db;border-radius:7px" /></label>
+          <label style="font-size:12px;color:#6b7280">기타비용(원)<br><input id="sc-etc" type="number" value="0" oninput="srcCalc()" style="width:90px;padding:7px;border:1px solid #d1d5db;border-radius:7px" /></label>
+          <label style="font-size:12px;color:#6b7280">발주수량<br><input id="sc-qty" type="number" value="1" oninput="srcCalc()" style="width:80px;padding:7px;border:1px solid #d1d5db;border-radius:7px" /></label>
+        </div>
+        <div id="sc-out" style="margin-top:12px;font-size:14px;color:#9ca3af">판매가와 1688단가를 입력하세요.</div>
+      </div>
       <div class="sourcing-header">
         <div>
           <div class="sourcing-title">📦 소싱 추천 대시보드</div>
@@ -833,7 +846,7 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="/static/app.js?v=20260707c"></script>
+  <script src="/static/app.js?v=20260707d"></script>
   <!-- 마진/ROAS 계산기 (React 18 + htm, 빌드 없음) -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>

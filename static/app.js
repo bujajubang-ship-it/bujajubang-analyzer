@@ -2175,3 +2175,20 @@ function dangaApplyUpload(){
   alert('반영됐어요! 확인 후 💾저장을 눌러야 서버에 저장됩니다.');
 }
 function dangaCancelUpload(){ _dgUpload=null; document.getElementById('danga-preview').style.display='none'; }
+
+// ── 소싱 마진 계산기 ──
+function srcCalc(){
+  const g=id=>{const e=document.getElementById(id);return e?(parseFloat(e.value)||0):0;};
+  const out=document.getElementById('sc-out'); if(!out) return;
+  const price=g('sc-price'), unit=g('sc-unit'), rate=g('sc-rate')||350, fee=g('sc-fee')/100, etc=g('sc-etc'), qty=g('sc-qty')||1;
+  if(!price){ out.style.color='#9ca3af'; out.innerHTML='판매가와 1688단가를 입력하세요.'; return; }
+  out.style.color='#111';
+  const cost=Math.round(unit*rate);
+  const per=Math.round(price*(1-fee)-cost-etc);
+  const rateP=price?(per/price*100):0;
+  const be=(1-fee)>0?Math.round((cost+etc)/(1-fee)):0;
+  const total=Math.round(per*qty);
+  const sig=rateP>=30?['#059669','🟢 좋음']:rateP>=15?['#d97706','🟡 보통']:['#dc2626','🔴 낮음'];
+  out.innerHTML='원가 <b>'+cost.toLocaleString('ko-KR')+'원</b> · 개당 순마진 <b style="color:'+(per>=0?'#059669':'#dc2626')+'">'+per.toLocaleString('ko-KR')+'원</b> · 마진율 <b style="color:'+sig[0]+'">'+rateP.toFixed(1)+'%</b> <span style="background:'+sig[0]+'22;color:'+sig[0]+';padding:2px 8px;border-radius:6px;font-weight:700">'+sig[1]+'</span><br>'
+    +'<span style="color:#6b7280;font-size:13px">손익분기 판매가 <b>'+be.toLocaleString('ko-KR')+'원</b> (이 아래면 손해) · 발주 '+qty+'개 총마진 <b>'+total.toLocaleString('ko-KR')+'원</b></span>';
+}
