@@ -1782,6 +1782,10 @@ function fieldSummary(it) {
   if (it.unitPrice)       chips.push(`<span class="trk-chip">단가 ${_trkEsc(it.unitPrice)}</span>`);
   if (it.orderQty)        chips.push(`<span class="trk-chip">발주 ${_trkEsc(it.orderQty)}개</span>`);
   if (it.initialPrice)    chips.push(`<span class="trk-chip">판매가 ${_trkWon(it.initialPrice)}</span>`);
+  if (it.pipeline === 'rocket' && (it.initialPrice || it.unitPrice)) {
+    const per = Math.round(_trkNum(it.initialPrice) * 0.881 - _trkNum(it.unitPrice) * 350);
+    chips.push(`<span class="trk-chip strong" style="background:${per>=0?'#dcfce7':'#fee2e2'};color:${per>=0?'#166534':'#991b1b'}">개당마진 ${per.toLocaleString('ko-KR')}원</span>`);
+  }
   if (it.expectedRevenue) chips.push(`<span class="trk-chip strong">기대매출 ${_trkWon(it.expectedRevenue)}</span>`);
   const links = [];
   if (it.link1688)   links.push(`<a class="trk-link" href="${_trkAttr(it.link1688)}" target="_blank" rel="noopener">🔗 1688</a>`);
@@ -2015,6 +2019,7 @@ function loadSiteApprovals(){
     const box=document.getElementById('site-approvals-list');
     if (!box) return;
     const items=(d.items||[]).slice().reverse();
+    _updateApprovalAlarm(items.filter(a=>(a.status||'대기')==='대기').length);
     if (!items.length){ box.innerHTML='<div style="color:#9ca3af">대기 중인 결재 요청이 없어요.</div>'; return; }
     box.innerHTML=items.map(a=>{
       const st=a.status||'대기';
@@ -2027,6 +2032,27 @@ function loadSiteApprovals(){
 function siteApprovalAct(id, action){
   fetch('/api/site_approvals/'+id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})})
     .then(r=>r.json()).then(()=>loadSiteApprovals()).catch(()=>{});
+}
+// 사장 로그인 시 대기 결재 알람 (FAB 배지 + 패널 상단 배너 + 최초 1회 패널 자동열기)
+let _apprAlarmShown=false;
+function _updateApprovalAlarm(n){
+  const fab=document.getElementById('site-ai-fab');
+  if(fab){
+    let badge=document.getElementById('ai-fab-badge');
+    if(n>0){
+      if(!badge){ badge=document.createElement('span'); badge.id='ai-fab-badge';
+        badge.style.cssText='position:absolute;top:-8px;right:-8px;background:#facc15;color:#7c2d12;border-radius:12px;padding:1px 7px;font-size:12px;font-weight:800;box-shadow:0 2px 6px rgba(0,0,0,.35)';
+        fab.appendChild(badge); }
+      badge.textContent='🔔 '+n; badge.style.display='inline-block';
+    } else if(badge){ badge.style.display='none'; }
+  }
+  const banner=document.getElementById('approval-alarm');
+  if(banner){
+    if(n>0){ banner.style.display='block'; banner.textContent='🔔 새 결재요청 '+n+'건 — 아래에서 바로 승인하세요!'; }
+    else banner.style.display='none';
+  }
+  // 대기 있으면 패널 자동으로 펼치기 (최초 1회)
+  if(n>0 && !_apprAlarmShown){ _apprAlarmShown=true; setTimeout(()=>{ try{ aiDock(true); }catch(e){} }, 400); }
 }
 function siteLogout(){
   fetch('/jageum/api/logout',{method:'POST'}).then(()=>{location.href='/';}).catch(()=>{location.href='/';});
@@ -2220,10 +2246,22 @@ function srcCalc(){
 }
 
 // ── AI 상담 플로팅 패널 토글 ──
-function toggleSiteAI(){
+function _aiMobile(){ return window.innerWidth < 900; }
+function aiDock(open){
   const p=document.getElementById('site-ai'), o=document.getElementById('site-ai-overlay'), f=document.getElementById('site-ai-fab');
   if(!p) return;
-  const isOpen=p.getAttribute('data-open')==='1';
-  if(isOpen){ p.style.transform='translateX(100%)'; if(o)o.style.display='none'; if(f)f.style.display='block'; p.setAttribute('data-open','0'); }
-  else { p.style.transform='translateX(0%)'; if(o)o.style.display='block'; if(f)f.style.display='none'; p.setAttribute('data-open','1'); const inp=document.getElementById('site-chat-in'); if(inp) setTimeout(()=>inp.focus(),120); }
+  if(open){
+    p.style.transform='translateX(0%)'; p.setAttribute('data-open','1');
+    if(f) f.style.display='none';
+    if(_aiMobile()){ if(o)o.style.display='block'; document.body.style.paddingRight=''; }
+    else { if(o)o.style.display='none'; document.body.style.paddingRight=(p.offsetWidth||380)+'px'; }
+  } else {
+    p.style.transform='translateX(100%)'; p.setAttribute('data-open','0');
+    if(f) f.style.display='block'; if(o) o.style.display='none';
+    document.body.style.paddingRight='';
+  }
 }
+function toggleSiteAI(){ const p=document.getElementById('site-ai'); if(p) aiDock(p.getAttribute('data-open')!=='1'); }
+// 데스크톱은 기본으로 열린 상시 사이드패널
+window.addEventListener('load', function(){ setTimeout(function(){ if(!_aiMobile()) aiDock(true); }, 300); });
+window.addEventListener('resize', function(){ const p=document.getElementById('site-ai'); if(p&&p.getAttribute('data-open')==='1'&&!_aiMobile()) document.body.style.paddingRight=(p.offsetWidth||380)+'px'; else if(p&&p.getAttribute('data-open')!=='1') document.body.style.paddingRight=''; });

@@ -813,11 +813,13 @@
   <!-- ── AI 개선 상담 + 결재함 (플로팅 패널) ── -->
   <button id="site-ai-fab" onclick="toggleSiteAI()" style="position:fixed;right:28px;bottom:90px;z-index:201;background:#D70010;color:#fff;border:none;border-radius:30px;padding:11px 18px;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 6px 20px rgba(215,0,16,.4)">🤖 AI 상담</button>
   <div id="site-ai-overlay" onclick="toggleSiteAI()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:899"></div>
-  <section id="site-ai" data-open="0" style="position:fixed;top:0;right:0;width:min(460px,100%);height:100vh;overflow:auto;background:#f8fafc;box-shadow:-8px 0 30px rgba(0,0,0,.15);z-index:900;padding:16px 16px 40px;transform:translateX(100%);transition:transform .25s ease">
+  <section id="site-ai" data-open="0" style="position:fixed;top:0;right:0;width:min(380px,100%);height:100vh;overflow:auto;background:#f8fafc;box-shadow:-8px 0 30px rgba(0,0,0,.12);z-index:900;padding:14px 14px 40px;transform:translateX(100%);transition:transform .25s ease">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <div style="font-weight:800;font-size:16px">🤖 AI 상담 · 결재함</div>
-      <button onclick="toggleSiteAI()" title="닫기" style="border:none;background:#e5e7eb;border-radius:8px;width:32px;height:32px;cursor:pointer;font-size:16px">✕</button>
+      <button onclick="toggleSiteAI()" title="접기" style="border:none;background:#e5e7eb;border-radius:8px;padding:5px 12px;height:32px;cursor:pointer;font-size:13px;font-weight:700">▶ 접기</button>
     </div>
+    <div id="approval-alarm" style="display:none;background:#fef08a;border:2px solid #eab308;color:#713f12;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-weight:800;font-size:14px;animation:apprPulse 1.4s ease-in-out infinite"></div>
+    <style>@keyframes apprPulse{0%,100%{box-shadow:0 0 0 0 rgba(234,179,8,.5)}50%{box-shadow:0 0 0 6px rgba(234,179,8,0)}}</style>
     <!-- 결재함 (사장님 전용) -->
     <div id="site-approvals-card" style="display:none;background:#fff;border:1px solid #e5e7eb;border-top:3px solid #D70010;border-radius:14px;padding:18px 20px;margin-bottom:18px">
       <h2 style="margin:0 0 4px;font-size:18px">🗂 결재함 <span style="font-size:13px;color:#9ca3af;font-weight:400">— 직원이 올린 코드·기능 변경 요청 (승인하면 개발 진행)</span></h2>
@@ -855,7 +857,7 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="/static/app.js?v=20260707g"></script>
+  <script src="/static/app.js?v=20260707h"></script>
   <!-- 마진/ROAS 계산기 (React 18 + htm, 빌드 없음) -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
