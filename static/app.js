@@ -2333,6 +2333,7 @@ function mzAnalyze(grid){
     let match=null; const pmN=_mzNorm(pmodel), pnN=_mzNorm(pname);
     if(pmN&&pmN.length>=2){ match=DANGA.find(d=>{ const dm=_mzNorm(d['모델명'])+'|'+_mzNorm(d['옵션']); return (dm&&(dm.indexOf(pmN)>=0||(pmN.length>=3&&pmN.indexOf(_mzNorm(d['모델명']))>=0&&_mzNorm(d['모델명']).length>=3))); }); }
     if(!match&&pnN&&pnN.length>=2){ match=DANGA.find(d=>{ const dn=_mzNorm(d['제품명']); return dn&&dn.length>=2&&(pnN.indexOf(dn)>=0||dn.indexOf(pnN)>=0); }); }
+    if(!match&&pnN&&pnN.length>=3){ match=DANGA.find(d=>{ const dm=_mzNorm(d['모델명']); return dm&&dm.length>=3&&pnN.indexOf(dm)>=0; }); }  // 모델명이 쇼핑몰 상품명 안에 있는 경우
     let cost='', margin='', rate='';
     if(match){ cost=dgMaeipga(match); if(cost!==''&&cost!=null){ margin=Math.round(price*(1-fee)-cost-_dgN(match['매입배송비'])); rate=price?(margin/price*100):0; } }
     res.push({상품명:pname, 판매가:price, 매입가:cost, 마진:margin, 마진율:rate, matched:!!(match&&cost!==''&&cost!=null), 거래처:match?match['거래처']:'', 매칭제품:match?((match['제품명']||'')+' '+(match['모델명']||match['옵션']||'')).trim():''});
@@ -2358,4 +2359,18 @@ function mzRender(){
   tb.innerHTML=html||'<tr><td colspan="7" style="padding:20px;text-align:center;color:#9ca3af">쇼핑몰 데이터를 올려주세요</td></tr>';
   const s=document.getElementById('mz-summary');
   if(s) s.innerHTML='총 <b>'+MZ_RESULTS.length+'</b>개 · <span style="color:#dc2626;font-weight:700">🔴 역마진 '+loss+'</span> · <span style="color:#d97706;font-weight:700">🟠 저마진 '+low+'</span> · 🟢 정상 '+(MZ_RESULTS.length-loss-low-un)+' · ⚪ 미확인 '+un+(only?' (역마진만 표시중)':'');
+}
+
+// 쿠팡 실판매가 자동 불러오기 (서버가 Wing에서 수집한 데이터)
+function mzLoadCoupang(){
+  const s=document.getElementById('mz-summary'); if(s) s.innerHTML='🛒 쿠팡 실판매가 불러오는 중…';
+  const go=function(){ fetch('/api/coupang_products').then(r=>r.json()).then(d=>{
+    const items=(d&&d.items)||[];
+    if(!items.length){ if(s) s.innerHTML='쿠팡 데이터가 아직 서버에 없어요 (수집 대기). 잠시 후 다시 눌러주세요.'; return; }
+    const grid=[['상품명','판매가']].concat(items.map(it=>[it.name||'', it.price||0]));
+    mzAnalyze(grid);
+    const s2=document.getElementById('mz-summary'); if(s2&&d.updated) s2.innerHTML+=' · 🛒쿠팡 수집 '+d.updated;
+  }).catch(()=>{ if(s) s.innerHTML='불러오기 실패'; }); };
+  if(!DANGA||!DANGA.length){ fetch('/api/danga').then(r=>r.json()).then(rows=>{ DANGA=Array.isArray(rows)?rows:[]; go(); }).catch(go); }
+  else go();
 }

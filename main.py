@@ -574,6 +574,27 @@ async def save_danga(request: Request):
     _save_danga(rows)
     return {"ok": True, "count": len(rows)}
 
+# ── 쿠팡 실판매가 (Lightsail이 Wing API로 수집→여기로 전송, 브라우저는 조회) ──
+COUPANG_PRODUCTS_FILE = data_path("coupang_products.json")
+COUPANG_INGEST_SECRET = os.getenv("COUPANG_INGEST_SECRET", "bj-coupang-ingest-2026")
+
+@app.get("/api/coupang_products")
+async def get_coupang_products():
+    try:
+        return json.loads(COUPANG_PRODUCTS_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {"items": [], "updated": ""}
+
+@app.post("/api/coupang_products/ingest")
+async def ingest_coupang_products(request: Request):
+    if request.headers.get("x-secret") != COUPANG_INGEST_SECRET:
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    data = await request.json()
+    if not isinstance(data, dict) or not isinstance(data.get("items"), list):
+        return JSONResponse({"error": "bad payload"}, status_code=400)
+    COUPANG_PRODUCTS_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    return {"ok": True, "count": len(data.get("items", []))}
+
 
 @app.get("/api/tracker")
 async def get_tracker():

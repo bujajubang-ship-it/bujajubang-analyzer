@@ -824,6 +824,7 @@
         <h2 style="margin:0 0 4px;font-size:18px">📉 마진 분석 — 쇼핑몰 판매가 vs 매입가 (역마진 감지)</h2>
         <div style="font-size:13px;color:#6b7280;margin-bottom:12px">쇼핑몰(쿠팡·네이버) <b>상품명 + 판매가</b>를 올리면, 💰단가/마진의 <b>매입가</b>와 이름·모델명으로 매칭해 <b>역마진·저마진</b>을 찾아줘요. (모델명/옵션 코드가 있으면 매칭 정확도↑)</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+          <button onclick="mzLoadCoupang()" style="padding:8px 14px;border:0;background:#D70010;color:#fff;border-radius:8px;cursor:pointer;font-weight:700">🛒 쿠팡 실판매가 자동 불러오기</button>
           <button onclick="document.getElementById('mz-file').click()" style="padding:8px 14px;border:0;background:#2563eb;color:#fff;border-radius:8px;cursor:pointer;font-weight:700">📤 엑셀 업로드</button>
           <input type="file" id="mz-file" accept=".xlsx,.xls,.csv,.txt" style="display:none" onchange="mzUpload(this)" />
           <button onclick="mzPaste()" style="padding:8px 12px;border:0;background:#374151;color:#fff;border-radius:8px;cursor:pointer;font-size:13px">📋 붙여넣기</button>
@@ -890,7 +891,7 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="/static/app.js?v=20260707j"></script>
+  <script src="/static/app.js?v=20260707k"></script>
   <!-- 마진/ROAS 계산기 (React 18 + htm, 빌드 없음) -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
