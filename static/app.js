@@ -2298,6 +2298,8 @@ window.addEventListener('resize', function(){ const p=document.getElementById('s
 // ═══════════ 📉 마진 분석 (쇼핑몰 판매가 vs 매입가 매칭) ═══════════
 let MZ_RESULTS=[];
 function _mzNorm(s){ return String(s==null?'':s).toLowerCase().replace(/[\s\-_()[\]./]/g,''); }
+// 모델코드 추출: 영문+숫자 조합 토큰(길이4+) — 예 JWB-330S→JWB330S, GCS-200N, WDS8000S
+function _mzCodes(s){ const out=[]; const t=String(s==null?'':s).toUpperCase().match(/[A-Z0-9][A-Z0-9\-]*/g)||[]; t.forEach(function(x){ const c=x.replace(/[^A-Z0-9]/g,''); if(c.length>=4&&/[A-Z]/.test(c)&&/\d/.test(c)) out.push(c); }); return out; }
 function mzUpload(input){
   const file=input.files&&input.files[0]; if(!file) return;
   const isX=/\.xlsx?$/i.test(file.name); const rd=new FileReader();
@@ -2330,10 +2332,10 @@ function mzAnalyze(grid){
     const row=grid[i]; if(!row||!row.join('').trim()) continue;
     const pname=(row[ci.name]||'').trim(); const price=_dgN(row[ci.price]); const pmodel=(ci.model>=0?(row[ci.model]||''):'').trim();
     if(!pname&&!price) continue;
-    let match=null; const pmN=_mzNorm(pmodel), pnN=_mzNorm(pname);
-    if(pmN&&pmN.length>=2){ match=DANGA.find(d=>{ const dm=_mzNorm(d['모델명'])+'|'+_mzNorm(d['옵션']); return (dm&&(dm.indexOf(pmN)>=0||(pmN.length>=3&&pmN.indexOf(_mzNorm(d['모델명']))>=0&&_mzNorm(d['모델명']).length>=3))); }); }
-    if(!match&&pnN&&pnN.length>=2){ match=DANGA.find(d=>{ const dn=_mzNorm(d['제품명']); return dn&&dn.length>=2&&(pnN.indexOf(dn)>=0||dn.indexOf(pnN)>=0); }); }
-    if(!match&&pnN&&pnN.length>=3){ match=DANGA.find(d=>{ const dm=_mzNorm(d['모델명']); return dm&&dm.length>=3&&pnN.indexOf(dm)>=0; }); }  // 모델명이 쇼핑몰 상품명 안에 있는 경우
+    // 모델코드 기반 정확 매칭 (헐거운 이름 substring 매칭은 오매칭이 심해서 제거)
+    let match=null;
+    const pcodes=_mzCodes(pname+' '+pmodel);
+    if(pcodes.length){ match=DANGA.find(d=>{ const dc=_mzCodes((d['모델명']||'')+' '+(d['옵션']||'')); return dc.some(c=>pcodes.indexOf(c)>=0); }); }
     let cost='', margin='', rate='';
     if(match){ cost=dgMaeipga(match); if(cost!==''&&cost!=null){ margin=Math.round(price*(1-fee)-cost-_dgN(match['매입배송비'])); rate=price?(margin/price*100):0; } }
     res.push({상품명:pname, 판매가:price, 매입가:cost, 마진:margin, 마진율:rate, matched:!!(match&&cost!==''&&cost!=null), 거래처:match?match['거래처']:'', 매칭제품:match?((match['제품명']||'')+' '+(match['모델명']||match['옵션']||'')).trim():''});
