@@ -46,6 +46,36 @@ button.go:disabled{background:#d1a0a3;cursor:not-allowed}
 </style></head><body>
 <div class="top" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap"><h1 style="margin:0">🏭 CN메이커 — 부자주방 상세페이지 자동생성</h1><a id="backlink" href="/" style="text-decoration:none;background:#1f2937;color:#fff;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:600;white-space:nowrap">← 소싱 분석기</a></div>
 <script>if(window.self!==window.top){var _b=document.getElementById('backlink');if(_b)_b.style.display='none';}</script>
+<!-- 로고 자동삽입 설정 -->
+<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px 16px;margin:10px 0 4px">
+  <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:14px">
+    <label style="font-weight:700"><input type="checkbox" id="lg-on" onchange="lgSave()" /> 🏷 부자주방 로고 자동삽입</label>
+    <label>위치 <select id="lg-pos" onchange="lgSave()" style="padding:5px;border:1px solid #d1d5db;border-radius:6px">
+      <option value="bottom-right">우하단</option><option value="bottom-left">좌하단</option><option value="bottom-center">하단중앙</option>
+      <option value="top-right">우상단</option><option value="top-left">좌상단</option><option value="top-center">상단중앙</option></select></label>
+    <label>크기 <input type="range" id="lg-size" min="5" max="40" oninput="document.getElementById('lg-size-v').textContent=this.value+'%';" onchange="lgSave()" style="vertical-align:middle"><span id="lg-size-v">15%</span></label>
+    <label>여백 <input type="range" id="lg-margin" min="0" max="12" oninput="document.getElementById('lg-margin-v').textContent=this.value+'%';" onchange="lgSave()" style="vertical-align:middle"><span id="lg-margin-v">3%</span></label>
+    <img src="/static/logo_bujajubang.png" style="height:22px" />
+    <span id="lg-status" style="color:#059669;font-size:12px"></span>
+  </div>
+</div>
+<script>
+function lgLoad(){ fetch('/cnmaker/api/logo_config').then(r=>r.json()).then(c=>{
+  document.getElementById('lg-on').checked=!!c.enabled;
+  document.getElementById('lg-pos').value=c.position||'bottom-right';
+  const sz=Math.round((c.size_pct||0.15)*100), mg=Math.round((c.margin_pct||0.03)*100);
+  document.getElementById('lg-size').value=sz; document.getElementById('lg-size-v').textContent=sz+'%';
+  document.getElementById('lg-margin').value=mg; document.getElementById('lg-margin-v').textContent=mg+'%';
+}); }
+function lgSave(){
+  const body={enabled:document.getElementById('lg-on').checked,position:document.getElementById('lg-pos').value,
+    size_pct:parseInt(document.getElementById('lg-size').value)/100,margin_pct:parseInt(document.getElementById('lg-margin').value)/100};
+  fetch('/cnmaker/api/logo_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(()=>{
+    const s=document.getElementById('lg-status'); s.textContent='✅ 저장됨 (다음 생성부터 적용)'; setTimeout(()=>s.textContent='',2500);
+  });
+}
+lgLoad();
+</script>
 <div class="wrap">
  <div class="card">
    <div class="tabs">

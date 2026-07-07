@@ -1572,6 +1572,53 @@ async def cnmaker_history():
         r = await client.get(f"{CNMAKER_BASE}/cnmaker/history", headers={"x-secret": CNMAKER_SECRET})
         return JSONResponse(r.json(), status_code=r.status_code)
 
+# ── CN메이커 로고 자동삽입 (부자홀딩스/부자주방 로고) ──
+CN_LOGO_PATH = "static/logo_bujajubang.png"
+CN_LOGO_CFG = data_path("cnmaker_logo.json")
+def _cn_logo_cfg():
+    try:
+        return json.loads(CN_LOGO_CFG.read_text(encoding="utf-8"))
+    except Exception:
+        return {"enabled": True, "position": "bottom-right", "size_pct": 0.15, "margin_pct": 0.03}
+def _cn_apply_logo(img_bytes: bytes) -> bytes:
+    cfg = _cn_logo_cfg()
+    if not cfg.get("enabled"):
+        return img_bytes
+    try:
+        import io as _io
+        from PIL import Image as _Img
+        base = _Img.open(_io.BytesIO(img_bytes)).convert("RGBA")
+        logo = _Img.open(CN_LOGO_PATH).convert("RGBA")
+        W, H = base.size
+        lw = max(1, int(W * float(cfg.get("size_pct", 0.15))))
+        lh = max(1, int(logo.height * lw / logo.width))
+        logo = logo.resize((lw, lh))
+        m = int(W * float(cfg.get("margin_pct", 0.03)))
+        pos = str(cfg.get("position", "bottom-right"))
+        x = m if "left" in pos else (W - lw - m if "right" in pos else (W - lw) // 2)
+        y = m if "top" in pos else (H - lh - m)
+        base.alpha_composite(logo, (x, y))
+        out = _io.BytesIO(); base.convert("RGB").save(out, "JPEG", quality=90)
+        return out.getvalue()
+    except Exception:
+        return img_bytes
+
+@app.get("/cnmaker/api/logo_config")
+async def cn_logo_get():
+    return _cn_logo_cfg()
+
+@app.post("/cnmaker/api/logo_config")
+async def cn_logo_set(request: Request):
+    d = await request.json()
+    cfg = {
+        "enabled": bool(d.get("enabled", True)),
+        "position": str(d.get("position", "bottom-right")),
+        "size_pct": max(0.03, min(0.5, float(d.get("size_pct", 0.15)))),
+        "margin_pct": max(0.0, min(0.2, float(d.get("margin_pct", 0.03)))),
+    }
+    CN_LOGO_CFG.write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+    return {"ok": True, "cfg": cfg}
+
 @app.get("/cnmaker/api/result")
 async def cnmaker_result(job: str, thumb: str = ""):
     params = {"job": job}
@@ -1579,7 +1626,10 @@ async def cnmaker_result(job: str, thumb: str = ""):
         params["thumb"] = "1"
     async with httpx.AsyncClient(timeout=60) as client:
         r = await client.get(f"{CNMAKER_BASE}/cnmaker/result", params=params)
-        return Response(content=r.content, media_type="image/jpeg")
+        content = r.content
+        if not thumb and r.status_code == 200:
+            content = _cn_apply_logo(content)  # 상세 이미지에 로고 자동합성
+        return Response(content=content, media_type="image/jpeg")
 
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
