@@ -2192,3 +2192,12 @@ function srcCalc(){
   out.innerHTML='원가 <b>'+cost.toLocaleString('ko-KR')+'원</b> · 개당 순마진 <b style="color:'+(per>=0?'#059669':'#dc2626')+'">'+per.toLocaleString('ko-KR')+'원</b> · 마진율 <b style="color:'+sig[0]+'">'+rateP.toFixed(1)+'%</b> <span style="background:'+sig[0]+'22;color:'+sig[0]+';padding:2px 8px;border-radius:6px;font-weight:700">'+sig[1]+'</span><br>'
     +'<span style="color:#6b7280;font-size:13px">손익분기 판매가 <b>'+be.toLocaleString('ko-KR')+'원</b> (이 아래면 손해) · 발주 '+qty+'개 총마진 <b>'+total.toLocaleString('ko-KR')+'원</b></span>';
 }
+
+// ── AI 상담 플로팅 패널 토글 ──
+function toggleSiteAI(){
+  const p=document.getElementById('site-ai'), o=document.getElementById('site-ai-overlay'), f=document.getElementById('site-ai-fab');
+  if(!p) return;
+  const isOpen=p.getAttribute('data-open')==='1';
+  if(isOpen){ p.style.transform='translateX(100%)'; if(o)o.style.display='none'; if(f)f.style.display='block'; p.setAttribute('data-open','0'); }
+  else { p.style.transform='translateX(0%)'; if(o)o.style.display='block'; if(f)f.style.display='none'; p.setAttribute('data-open','1'); const inp=document.getElementById('site-chat-in'); if(inp) setTimeout(()=>inp.focus(),120); }
+}

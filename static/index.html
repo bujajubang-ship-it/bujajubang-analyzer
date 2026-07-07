@@ -810,8 +810,14 @@
     </div>
   </section>
 
-  <!-- ── AI 개선 상담 + 결재함 (하단) ── -->
-  <section id="site-ai" style="max-width:1100px;margin:28px auto 40px;padding:0 16px">
+  <!-- ── AI 개선 상담 + 결재함 (플로팅 패널) ── -->
+  <button id="site-ai-fab" onclick="toggleSiteAI()" style="position:fixed;right:20px;bottom:20px;z-index:901;background:#D70010;color:#fff;border:none;border-radius:30px;padding:12px 20px;font-weight:800;font-size:15px;cursor:pointer;box-shadow:0 6px 20px rgba(215,0,16,.4)">🤖 AI 상담</button>
+  <div id="site-ai-overlay" onclick="toggleSiteAI()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:899"></div>
+  <section id="site-ai" data-open="0" style="position:fixed;top:0;right:0;width:min(460px,100%);height:100vh;overflow:auto;background:#f8fafc;box-shadow:-8px 0 30px rgba(0,0,0,.15);z-index:900;padding:16px 16px 40px;transform:translateX(100%);transition:transform .25s ease">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="font-weight:800;font-size:16px">🤖 AI 상담 · 결재함</div>
+      <button onclick="toggleSiteAI()" title="닫기" style="border:none;background:#e5e7eb;border-radius:8px;width:32px;height:32px;cursor:pointer;font-size:16px">✕</button>
+    </div>
     <!-- 결재함 (사장님 전용) -->
     <div id="site-approvals-card" style="display:none;background:#fff;border:1px solid #e5e7eb;border-top:3px solid #D70010;border-radius:14px;padding:18px 20px;margin-bottom:18px">
       <h2 style="margin:0 0 4px;font-size:18px">🗂 결재함 <span style="font-size:13px;color:#9ca3af;font-weight:400">— 직원이 올린 코드·기능 변경 요청 (승인하면 개발 진행)</span></h2>
@@ -846,7 +852,7 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="/static/app.js?v=20260707d"></script>
+  <script src="/static/app.js?v=20260707e"></script>
   <!-- 마진/ROAS 계산기 (React 18 + htm, 빌드 없음) -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
