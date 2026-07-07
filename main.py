@@ -798,40 +798,57 @@ SITE_STAFF_ACCOUNTS = {
     os.getenv("SOURCING_USER", "sosing"): (os.getenv("SOURCING_PASS", "3030"), "sourcing"),  # 소싱직원
     os.getenv("CS_USER", "cs"): (os.getenv("CS_PASS", "1234"), "cs"),  # CS직원
 }
+# 영업사원 계정 (자금 대시보드의 '영업 결산' 탭만 접근) — {아이디: (비번, 담당자이름)}
+SALES_ACCOUNTS = {
+    os.getenv("SALES1_USER", "김성주"): (os.getenv("SALES1_PASS", "1940"), "김성주"),
+    os.getenv("SALES2_USER", "성기민"): (os.getenv("SALES2_PASS", "7746"), "성기민"),
+}
 # 역할 → 표시 이름 (채팅·결재에 누가 올렸는지 구분)
-ROLE_NAMES = {"boss": "사장님", "staff": "경리", "design": "디자이너", "sourcing": "소싱직원", "cs": "CS직원"}
+ROLE_NAMES = {"boss": "사장님", "staff": "경리", "design": "디자이너", "sourcing": "소싱직원", "cs": "CS직원", "sales": "영업사원"}
 
 import hashlib, hmac, time
 _JAGEUM_SECRET = os.getenv("JAGEUM_TOKEN_SECRET", "bj-jageum-token-2026")
 
-def _make_token(role: str) -> str:
-    """role|expiry|sig 형태의 세션 토큰 (24시간 유효)"""
+def _make_token(role: str, who: str = "") -> str:
+    """role|who|expiry|sig 형태의 세션 토큰 (24시간 유효). who=담당자/표시이름"""
     exp = str(int(time.time()) + 86400)
-    msg = f"{role}|{exp}"
+    who = (who or "").replace("|", "")
+    msg = f"{role}|{who}|{exp}"
     sig = hmac.new(_JAGEUM_SECRET.encode(), msg.encode(), hashlib.sha256).hexdigest()[:16]
     return f"{msg}|{sig}"
 
-def _check_token(tok: str) -> str:
+def _check_token(tok: str):
+    """반환: (role, who). 실패 시 ('', '')"""
     try:
-        role, exp, sig = tok.split("|")
-        msg = f"{role}|{exp}"
+        role, who, exp, sig = tok.split("|")
+        msg = f"{role}|{who}|{exp}"
         good = hmac.new(_JAGEUM_SECRET.encode(), msg.encode(), hashlib.sha256).hexdigest()[:16]
         if hmac.compare_digest(sig, good) and int(exp) > time.time():
-            return role
+            return role, who
     except Exception:
         pass
-    return ""
+    return "", ""
 
 def _jageum_role(request: Request) -> str:
-    """'boss' / 'staff' / 'sourcing' / '' — 쿠키 세션 토큰만 인정"""
     tok = request.cookies.get("jg_session", "")
-    if tok:
-        return _check_token(tok)
-    return ""
+    return _check_token(tok)[0] if tok else ""
+
+def _jageum_who(request: Request) -> str:
+    """로그인한 사람의 이름(담당자) — 영업 딜 배정용"""
+    tok = request.cookies.get("jg_session", "")
+    return _check_token(tok)[1] if tok else ""
 
 def _jageum_auth(request: Request) -> bool:
-    # 자금 대시보드: 사장·경리만 (소싱직원 제외)
+    # 회사 자금(매출·지출·개인자산 등): 사장·경리만
     return _jageum_role(request) in ("boss", "staff")
+
+def _jageum_page_auth(request: Request) -> bool:
+    # 자금 대시보드 페이지 로드: 사장·경리·영업사원 (영업은 영업결산 탭만 봄)
+    return _jageum_role(request) in ("boss", "staff", "sales")
+
+def _sales_auth(request: Request) -> bool:
+    # 영업 결산 데이터: 사장·경리·영업사원
+    return _jageum_role(request) in ("boss", "staff", "sales")
 
 def _site_auth(request: Request) -> bool:
     # 소싱 사이트(/·/cnmaker): 로그인한 모두 (사장·경리·디자이너·소싱직원·CS)
@@ -841,7 +858,7 @@ _AUTH401 = JSONResponse({"error": "로그인 필요"}, status_code=401)
 
 @app.get("/jageum")
 def jageum_page(request: Request):
-    if not _jageum_auth(request):
+    if not _jageum_page_auth(request):
         return FileResponse("static/jageum_login.html", headers={"Cache-Control": "no-store"})
     return FileResponse("static/jageum.html", headers={"Cache-Control": "no-store"})
 
@@ -854,17 +871,19 @@ async def jageum_login(request: Request):
     data = await request.json()
     u = (data.get("id") or "").strip()
     p = (data.get("pw") or "")
-    role = ""
+    role = ""; who = ""
     if u == JAGEUM_BOSS_USER and p == JAGEUM_BOSS_PASS:
-        role = "boss"
+        role = "boss"; who = "사장님"
     elif u == JAGEUM_USER and p == JAGEUM_PASS:
-        role = "staff"
+        role = "staff"; who = "경리"
     elif u in SITE_STAFF_ACCOUNTS and p == SITE_STAFF_ACCOUNTS[u][0]:
-        role = SITE_STAFF_ACCOUNTS[u][1]
+        role = SITE_STAFF_ACCOUNTS[u][1]; who = ROLE_NAMES.get(role, role)
+    elif u in SALES_ACCOUNTS and p == SALES_ACCOUNTS[u][0]:
+        role = "sales"; who = SALES_ACCOUNTS[u][1]  # 담당자 이름
     if not role:
         return JSONResponse({"error": "아이디 또는 비밀번호가 맞지 않습니다"}, status_code=401)
-    resp = JSONResponse({"ok": True, "role": role})
-    resp.set_cookie("jg_session", _make_token(role), max_age=86400,
+    resp = JSONResponse({"ok": True, "role": role, "who": who})
+    resp.set_cookie("jg_session", _make_token(role, who), max_age=86400,
                     httponly=True, samesite="lax")
     return resp
 
@@ -910,12 +929,71 @@ def _load_manual():
 
 @app.get("/jageum/api/data")
 def jageum_data(request: Request):
-    if not _jageum_auth(request):
+    role = _jageum_role(request)
+    if role not in ("boss", "staff", "sales"):
         return _AUTH401
+    # 영업사원은 회사 자금 데이터 접근 불가 — 역할·이름만 (프론트가 영업결산 탭만 노출)
+    if role == "sales":
+        return JSONResponse({"_role": "sales", "_who": _jageum_who(request)})
     d = json.loads(JAGEUM_FILE.read_text(encoding="utf-8")) if JAGEUM_FILE.exists() else {"period": "", "자금현황": [], "자금의증가": [], "자금의감소": []}
     d["수동입력"] = _load_manual()
-    d["_role"] = _jageum_role(request)
+    d["_role"] = role
+    d["_who"] = _jageum_who(request)
     return JSONResponse(d)
+
+# ===== 영업 결산 (딜 관리) =====
+SALES_DEALS_FILE = data_path("sales_deals.json")
+
+def _load_deals():
+    if SALES_DEALS_FILE.exists():
+        try:
+            return json.loads(SALES_DEALS_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+    return []
+
+def _save_deals(items):
+    SALES_DEALS_FILE.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
+
+@app.get("/jageum/api/sales")
+def sales_list(request: Request):
+    if not _sales_auth(request):
+        return _AUTH401
+    return JSONResponse({"deals": _load_deals(), "_role": _jageum_role(request), "_who": _jageum_who(request)})
+
+@app.post("/jageum/api/sales")
+async def sales_save(request: Request):
+    if not _sales_auth(request):
+        return _AUTH401
+    body = await request.json()
+    who = _jageum_who(request)
+    role = _jageum_role(request)
+    items = _load_deals()
+    d = body.get("deal") or {}
+    # 영업사원이 새 딜 만들면 담당자는 본인으로 강제(사칭 방지). 사장·경리는 지정 가능.
+    if role == "sales" and not d.get("id"):
+        d["담당자"] = who
+    did = d.get("id")
+    if did:  # 수정
+        for i, x in enumerate(items):
+            if x.get("id") == did:
+                items[i] = {**x, **d}
+                break
+    else:  # 신규
+        d["id"] = (max([x.get("id", 0) for x in items], default=0) + 1)
+        items.insert(0, d)
+    _save_deals(items)
+    return JSONResponse({"ok": True, "deal": d})
+
+@app.post("/jageum/api/sales/delete")
+async def sales_delete(request: Request):
+    if not _sales_auth(request):
+        return _AUTH401
+    body = await request.json()
+    did = body.get("id")
+    items = [x for x in _load_deals() if x.get("id") != did]
+    _save_deals(items)
+    return JSONResponse({"ok": True})
 
 @app.post("/jageum/api/ingest")
 async def jageum_ingest(request: Request):
