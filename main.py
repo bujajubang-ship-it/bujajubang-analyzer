@@ -789,8 +789,8 @@ JAGEUM_USER = os.getenv("JAGEUM_USER", "buja")
 JAGEUM_PASS = os.getenv("JAGEUM_PASS", "1234")
 JAGEUM_INGEST_SECRET = os.getenv("JAGEUM_INGEST_SECRET", "bj-ecount-2026-ingest")
 # 사장님(대표) 계정 — 결재함 권한
-JAGEUM_BOSS_USER = os.getenv("JAGEUM_BOSS_USER", "성건1248")
-JAGEUM_BOSS_PASS = os.getenv("JAGEUM_BOSS_PASS", "313131")
+JAGEUM_BOSS_USER = os.getenv("JAGEUM_BOSS_USER", "1111")
+JAGEUM_BOSS_PASS = os.getenv("JAGEUM_BOSS_PASS", "3131")
 # 소싱직원 계정 — 소싱 사이트(/, /cnmaker)만 접근, 자금 대시보드는 못 봄
 # 소싱 사이트 직원 계정들 (자금 대시보드는 못 봄) — {아이디: (비번, 역할)}
 SITE_STAFF_ACCOUNTS = {
