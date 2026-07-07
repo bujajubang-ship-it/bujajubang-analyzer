@@ -796,9 +796,10 @@ JAGEUM_BOSS_PASS = os.getenv("JAGEUM_BOSS_PASS", "3131")
 SITE_STAFF_ACCOUNTS = {
     os.getenv("DESIGN_USER", "buja2"): (os.getenv("DESIGN_PASS", "3030"), "design"),    # 디자이너
     os.getenv("SOURCING_USER", "sosing"): (os.getenv("SOURCING_PASS", "3030"), "sourcing"),  # 소싱직원
+    os.getenv("CS_USER", "cs"): (os.getenv("CS_PASS", "1234"), "cs"),  # CS직원
 }
 # 역할 → 표시 이름 (채팅·결재에 누가 올렸는지 구분)
-ROLE_NAMES = {"boss": "사장님", "staff": "경리", "design": "디자이너", "sourcing": "소싱직원"}
+ROLE_NAMES = {"boss": "사장님", "staff": "경리", "design": "디자이너", "sourcing": "소싱직원", "cs": "CS직원"}
 
 import hashlib, hmac, time
 _JAGEUM_SECRET = os.getenv("JAGEUM_TOKEN_SECRET", "bj-jageum-token-2026")
@@ -833,8 +834,8 @@ def _jageum_auth(request: Request) -> bool:
     return _jageum_role(request) in ("boss", "staff")
 
 def _site_auth(request: Request) -> bool:
-    # 소싱 사이트(/·/cnmaker): 로그인한 모두 (사장·경리·디자이너·소싱직원)
-    return _jageum_role(request) in ("boss", "staff", "design", "sourcing")
+    # 소싱 사이트(/·/cnmaker): 로그인한 모두 (사장·경리·디자이너·소싱직원·CS)
+    return _jageum_role(request) in ("boss", "staff", "design", "sourcing", "cs")
 
 _AUTH401 = JSONResponse({"error": "로그인 필요"}, status_code=401)
 
