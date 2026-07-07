@@ -51,6 +51,7 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    <button class="tabbtn" data-v="personal" onclick="showTab('personal',this)">👑 개인자산</button>
    <button class="tabbtn" data-v="total" onclick="showTab('total',this)">📊 전체 합산</button>
    <button class="tabbtn" data-v="life" onclick="showTab('life',this)">🌱 인생 노트</button>
+   <button class="tabbtn" data-v="sales" onclick="showTab('sales',this)">📈 영업 결산</button>
  </div>
  <div id="period_bar"><div class="pbtns">
    <b style="margin-right:4px">📅 기간</b>
@@ -60,6 +61,60 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    <select id="month_sel"></select>
    <span id="period_label" class="muted"></span>
  </div></div>
+
+ <!-- ===== 📈 영업 결산 ===== -->
+ <div id="view_sales" style="display:none">
+   <div class="card" style="border-top:3px solid #b91c1c">
+     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+       <h2 style="margin:0">📈 영업 결산 <span class="muted big">— 거래처별 진행·마감 현황 (ERP 판매조회 연동 예정)</span></h2>
+       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+         <select id="sl_period" onchange="renderSales()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px">
+           <option value="this">이번달</option><option value="last">지난달</option>
+           <option value="q">이번 분기</option><option value="y2026">2026 전체</option><option value="all" selected>전체</option>
+         </select>
+         <select id="sl_person" onchange="renderSales()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px"><option value="">담당자 전체</option></select>
+         <select id="sl_status" onchange="renderSales()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px"><option value="">상태 전체</option><option value="진행중">진행중</option><option value="마감">마감</option></select>
+       </div>
+     </div>
+     <!-- 요약 KPI -->
+     <div id="sl_kpi" class="kpis" style="margin-top:14px"></div>
+     <!-- 담당자별 -->
+     <div id="sl_byperson" style="margin-top:10px"></div>
+   </div>
+
+   <!-- 딜 입력 -->
+   <div class="card" style="border-top:3px solid #b91c1c">
+     <h2 style="margin:0 0 12px">➕ <span id="sl_form_title">딜 추가</span></h2>
+     <input type="hidden" id="sl_id">
+     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px">
+       <label class="sl_f">일자<input type="date" id="sl_date"></label>
+       <label class="sl_f">거래처<input id="sl_cust" placeholder="예: 울산솥집"></label>
+       <label class="sl_f">담당자<select id="sl_owner"></select></label>
+       <label class="sl_f">상태<select id="sl_stat" onchange="slFormMode()"><option value="진행중">진행중</option><option value="마감">마감</option></select></label>
+       <label class="sl_f">총 견적<input type="number" id="sl_quote" placeholder="0"></label>
+       <label class="sl_f">계약금<input type="number" id="sl_deposit" placeholder="0"></label>
+       <label class="sl_f">중도금<input type="number" id="sl_mid" placeholder="0"></label>
+       <label class="sl_f">미수<input type="number" id="sl_unpaid" placeholder="0"></label>
+       <label class="sl_f slm">매출<input type="number" id="sl_rev" placeholder="0" oninput="slCalc()"></label>
+       <label class="sl_f slm">원가<input type="number" id="sl_cost" placeholder="0" oninput="slCalc()"></label>
+       <label class="sl_f slm">판관비<input type="number" id="sl_sga" placeholder="0" oninput="slCalc()"></label>
+       <label class="sl_f slm">영업이익<input id="sl_profit" readonly style="background:#f3f4f6"></label>
+       <label class="sl_f slm">영업이익률<input id="sl_rate" readonly style="background:#f3f4f6"></label>
+     </div>
+     <div style="margin-top:6px;font-size:12px;color:#9ca3af">✔ 진행중=현금(견적·계약금·중도금·미수) 관리 · 마감=매출·원가로 영업이익 확정 (마감 시 매출/원가 칸 입력)</div>
+     <div style="margin-top:10px;display:flex;gap:8px">
+       <button onclick="slSave()" id="sl_savebtn" style="background:#b91c1c;color:#fff;border:none;border-radius:9px;padding:10px 22px;font-weight:700;cursor:pointer">저장</button>
+       <button onclick="slReset()" style="background:#fff;color:#374151;border:1.5px solid #e5e7eb;border-radius:9px;padding:10px 16px;font-weight:600;cursor:pointer">초기화</button>
+     </div>
+   </div>
+
+   <!-- 딜 목록 -->
+   <div class="card" style="border-top:3px solid #b91c1c">
+     <h2 style="margin:0 0 6px">📋 딜 목록 <span id="sl_count" class="muted big"></span></h2>
+     <div style="overflow-x:auto"><table id="sl_table" style="font-size:13px"></table></div>
+   </div>
+ </div>
+ <style>.sl_f{display:flex;flex-direction:column;font-size:12px;color:#6b7280;font-weight:600;gap:3px}.sl_f input,.sl_f select{padding:8px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;color:#1f2937}.slm input{border-color:#fecaca}</style>
  <div id="edit_modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;align-items:flex-start;justify-content:center;overflow:auto;padding:30px 10px">
    <div style="background:#fff;border-radius:14px;max-width:760px;width:100%;padding:20px">
      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h2 id="em_title" style="margin:0;font-size:17px">편집</h2><button onclick="closeEdit()" style="border:none;background:#f3f4f6;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:15px">✕</button></div>
@@ -394,9 +449,18 @@ function logout(){fetch('/jageum/api/logout',{method:'POST'}).then(()=>location.
 function load(){fetch('/jageum/api/data').then(r=>{if(r.status===401){location.href='/jageum/login';return null;}return r.json();}).then(d=>{if(!d)return;D=d;M=d.수동입력||{};MYROLE=d._role||'';
   document.getElementById('whoami').textContent = MYROLE==='boss'?'👑 대표님':(MYROLE==='staff'?'🧑‍💼 경리':'');
   {const _wl=document.getElementById('chat_who_label'); if(_wl)_wl.textContent=MYROLE==='boss'?'👑 사장님':(MYROLE==='staff'?'🧑‍💼 경리':'게스트');}
+  window._who=d._who||'';
   if(MYROLE==='boss'){document.getElementById('approval_card').style.display='';loadApprovals();loadPersonal();
     document.getElementById('tabbar').style.display='flex';showTab('biz');}
-  if(MYROLE!=='boss'){const tb=document.getElementById('tabbar');if(tb)tb.remove();}  // 경리: 개인 탭 DOM 제거(보안)
+  else if(MYROLE==='staff'){  // 경리: 개인/전체/인생 탭 제거, 사업+영업결산만
+    ['personal','total','life'].forEach(v=>{const b=document.querySelector('#tabbar .tabbtn[data-v="'+v+'"]');if(b)b.remove();});
+    document.getElementById('tabbar').style.display='flex';showTab('biz');}
+  else if(MYROLE==='sales'){  // 영업사원: 회사 대시보드 전부 숨김, 영업결산만
+    document.querySelectorAll('.card').forEach(c=>{if(!c.closest('#view_sales'))c.style.display='none';});
+    const pb=document.getElementById('period_bar');if(pb)pb.style.display='none';
+    const tb=document.getElementById('tabbar');if(tb)tb.remove();
+    document.getElementById('whoami').textContent='📈 '+(d._who||'영업사원')+' 님';
+    showTab('sales');return;}
   chatWelcome();
   initPeriod()}).catch(()=>{period.textContent='데이터 없음'})}
 function chatWelcome(){
@@ -636,9 +700,11 @@ function showTab(v,btn){
   const vp=document.getElementById('view_personal'); if(vp)vp.style.display=(v==='personal')?'':'none';
   const vt=document.getElementById('view_total'); if(vt)vt.style.display=(v==='total')?'':'none';
   const vl=document.getElementById('view_life'); if(vl)vl.style.display=(v==='life')?'':'none';
+  const vs=document.getElementById('view_sales'); if(vs)vs.style.display=(v==='sales')?'':'none';
   const pb=document.getElementById('period_bar'); if(pb)pb.style.display=(v==='biz')?'':'none';
   if(v==='total')renderTotal();
   if(v==='life')loadLife();
+  if(v==='sales')loadSales();
   window.scrollTo(0,0);
 }
 function renderTotal(){
@@ -1323,5 +1389,74 @@ function apprAct(id,action){
  fetch('/jageum/api/approvals/'+id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})})
   .then(()=>loadApprovals());
 }
+// ===== 📈 영업 결산 =====
+let SALES=[];
+function _n(id){return +(document.getElementById(id).value||0)||0;}
+function loadSales(){
+  fetch('/jageum/api/sales').then(r=>r.json()).then(d=>{
+    SALES=d.deals||[];
+    const owners=[...new Set(['김성주','성기민',...SALES.map(x=>x.담당자).filter(Boolean)])];
+    const ownerSel=document.getElementById('sl_owner'), personSel=document.getElementById('sl_person');
+    const mine=(MYROLE==='sales')?(window._who||d._who||''):'';
+    if(ownerSel){const list=mine?[mine]:owners;ownerSel.innerHTML=list.map(o=>`<option>${o}</option>`).join('');ownerSel.disabled=!!mine;}
+    if(personSel)personSel.innerHTML='<option value="">담당자 전체</option>'+owners.map(o=>`<option>${o}</option>`).join('');
+    if(!document.getElementById('sl_date').value)document.getElementById('sl_date').value=_ymd();
+    slFormMode();renderSales();
+  }).catch(()=>{});
+}
+function _slFilter(){
+  const per=document.getElementById('sl_period').value, ps=document.getElementById('sl_person').value, st=document.getElementById('sl_status').value;
+  const now=new Date(); const ym=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  const lm=new Date(now.getFullYear(),now.getMonth()-1,1); const lym=lm.getFullYear()+'-'+String(lm.getMonth()+1).padStart(2,'0');
+  const q=Math.floor(now.getMonth()/3);
+  return SALES.filter(x=>{
+    if(ps&&x.담당자!==ps)return false;
+    if(st&&(x.status||'진행중')!==st)return false;
+    const dt=(x.date||''); const dym=dt.slice(0,7);
+    if(per==='this'&&dym!==ym)return false;
+    if(per==='last'&&dym!==lym)return false;
+    if(per==='y2026'&&!dt.startsWith('2026'))return false;
+    if(per==='q'){const mo=parseInt(dt.slice(5,7))-1;if(Math.floor(mo/3)!==q||!dt.startsWith(String(now.getFullYear())))return false;}
+    return true;
+  });
+}
+function renderSales(){
+  const rows=_slFilter();
+  let rev=0,prof=0,unpaid=0,quote=0,cP=0,cM=0;
+  rows.forEach(x=>{const st=x.status||'진행중';quote+=(+x.총견적||0);unpaid+=(+x.미수||0);
+    if(st==='마감'){rev+=(+x.매출||0);prof+=((+x.매출||0)-(+x.원가||0)-(+x.판관비||0));cM++;}else cP++;});
+  const rate=rev?Math.round(prof/rev*1000)/10:0;
+  document.getElementById('sl_kpi').innerHTML=
+    `<div class="kpi in"><div class="l">마감 매출</div><div class="v">${won(rev)}</div><div class="s">마감 ${cM}건</div></div>`+
+    `<div class="kpi"><div class="l">영업이익</div><div class="v" style="color:#059669">${won(prof)}</div><div class="s">이익률 ${rate}%</div></div>`+
+    `<div class="kpi"><div class="l">미수금</div><div class="v" style="color:#dc2626">${won(unpaid)}</div><div class="s">받을 잔금</div></div>`+
+    `<div class="kpi"><div class="l">진행중</div><div class="v">${cP}건</div><div class="s">견적합계 ${won(quote)}</div></div>`;
+  const byp={};rows.forEach(x=>{const o=x.담당자||'미지정';byp[o]=byp[o]||{n:0,rev:0,prof:0,unpaid:0};byp[o].n++;const m=(x.status==='마감');byp[o].rev+=(m?(+x.매출||0):0);byp[o].prof+=(m?((+x.매출||0)-(+x.원가||0)-(+x.판관비||0)):0);byp[o].unpaid+=(+x.미수||0);});
+  const keys=Object.keys(byp);
+  document.getElementById('sl_byperson').innerHTML=keys.length?('<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'+keys.map(o=>`<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:9px;padding:8px 12px;font-size:13px"><b>${o}</b> · ${byp[o].n}건 · 매출 ${won(byp[o].rev)} · 이익 ${won(byp[o].prof)}${byp[o].unpaid?` · <span style="color:#dc2626">미수 ${won(byp[o].unpaid)}</span>`:''}</div>`).join('')+'</div>'):'';
+  document.getElementById('sl_count').textContent='· '+rows.length+'건';
+  const th='<thead><tr><th>일자</th><th>거래처</th><th>담당자</th><th>상태</th><th class="num">총견적</th><th class="num">매출</th><th class="num">영업이익</th><th class="num">미수</th><th></th></tr></thead>';
+  const tb=rows.map(x=>{const st=x.status||'진행중';const pf=(st==='마감')?((+x.매출||0)-(+x.원가||0)-(+x.판관비||0)):0;const sc=st==='마감'?'#059669':'#d97706';
+    return `<tr><td>${x.date||''}</td><td>${(x.거래처||'').replace(/</g,'&lt;')}</td><td>${x.담당자||''}</td><td><span style="color:${sc};font-weight:700">${st}</span></td><td class="num">${won(+x.총견적||0)}</td><td class="num">${st==='마감'?won(+x.매출||0):'-'}</td><td class="num" style="color:#059669">${st==='마감'?won(pf):'-'}</td><td class="num" style="color:${(+x.미수||0)?'#dc2626':'#9ca3af'}">${won(+x.미수||0)}</td><td style="white-space:nowrap"><a onclick="slEdit(${x.id})" style="cursor:pointer;color:#2563eb">수정</a> <a onclick="slDel(${x.id})" style="cursor:pointer;color:#dc2626">삭제</a></td></tr>`;}).join('');
+  document.getElementById('sl_table').innerHTML=th+'<tbody>'+(tb||'<tr><td colspan=9 style="text-align:center;color:#9ca3af;padding:14px">딜이 없어요. 위에서 추가하세요.</td></tr>')+'</tbody>';
+}
+function slCalc(){const rev=_n('sl_rev'),c=_n('sl_cost'),s=_n('sl_sga');const pf=rev-c-s;
+  document.getElementById('sl_profit').value=pf.toLocaleString();document.getElementById('sl_rate').value=rev?(Math.round(pf/rev*1000)/10)+'%':'-';}
+function slFormMode(){const st=document.getElementById('sl_stat').value;document.querySelectorAll('.slm').forEach(e=>e.style.opacity=(st==='마감')?'1':'0.45');}
+function slReset(){['sl_id','sl_cust','sl_quote','sl_deposit','sl_mid','sl_unpaid','sl_rev','sl_cost','sl_sga','sl_profit','sl_rate'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('sl_date').value=_ymd();document.getElementById('sl_stat').value='진행중';document.getElementById('sl_form_title').textContent='딜 추가';slFormMode();}
+function slEdit(id){const x=SALES.find(d=>d.id===id);if(!x)return;
+  document.getElementById('sl_id').value=x.id;document.getElementById('sl_date').value=x.date||_ymd();document.getElementById('sl_cust').value=x.거래처||'';
+  document.getElementById('sl_owner').value=x.담당자||'';document.getElementById('sl_stat').value=x.status||'진행중';
+  document.getElementById('sl_quote').value=x.총견적||'';document.getElementById('sl_deposit').value=x.계약금||'';document.getElementById('sl_mid').value=x.중도금||'';
+  document.getElementById('sl_unpaid').value=x.미수||'';document.getElementById('sl_rev').value=x.매출||'';document.getElementById('sl_cost').value=x.원가||'';document.getElementById('sl_sga').value=x.판관비||'';
+  slCalc();slFormMode();document.getElementById('sl_form_title').textContent='딜 수정 #'+x.id;window.scrollTo(0,0);}
+function slSave(){const cust=document.getElementById('sl_cust').value.trim();if(!cust){alert('거래처를 입력하세요.');return;}
+  const deal={date:document.getElementById('sl_date').value,거래처:cust,담당자:document.getElementById('sl_owner').value,status:document.getElementById('sl_stat').value,
+    총견적:_n('sl_quote'),계약금:_n('sl_deposit'),중도금:_n('sl_mid'),미수:_n('sl_unpaid'),매출:_n('sl_rev'),원가:_n('sl_cost'),판관비:_n('sl_sga')};
+  const id=document.getElementById('sl_id').value;if(id)deal.id=+id;
+  document.getElementById('sl_savebtn').disabled=true;
+  fetch('/jageum/api/sales',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({deal})}).then(r=>r.json()).then(()=>{document.getElementById('sl_savebtn').disabled=false;slReset();loadSales();}).catch(()=>{document.getElementById('sl_savebtn').disabled=false;alert('저장 실패');});}
+function slDel(id){if(!confirm('이 딜을 삭제할까요?'))return;fetch('/jageum/api/sales/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})}).then(()=>loadSales());}
 load();
 </script></body></html>
