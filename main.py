@@ -967,7 +967,11 @@ def _save_deals(items):
 def sales_list(request: Request):
     if not _sales_auth(request):
         return _AUTH401
-    return JSONResponse({"deals": _load_deals(), "_role": _jageum_role(request), "_who": _jageum_who(request)})
+    role = _jageum_role(request); who = _jageum_who(request)
+    deals = _load_deals()
+    if role == "sales":  # 영업사원: 자기 거래처만
+        deals = [x for x in deals if x.get("담당자") == who]
+    return JSONResponse({"deals": deals, "_role": role, "_who": who})
 
 @app.post("/jageum/api/sales")
 async def sales_save(request: Request):
@@ -978,15 +982,19 @@ async def sales_save(request: Request):
     role = _jageum_role(request)
     items = _load_deals()
     d = body.get("deal") or {}
-    # 영업사원이 새 딜 만들면 담당자는 본인으로 강제(사칭 방지). 사장·경리는 지정 가능.
-    if role == "sales" and not d.get("id"):
-        d["담당자"] = who
+    if role == "sales":
+        d["담당자"] = who  # 영업사원은 담당자 항상 본인 강제(신규·수정 모두)
     did = d.get("id")
     if did:  # 수정
+        found = False
         for i, x in enumerate(items):
             if x.get("id") == did:
-                items[i] = {**x, **d}
+                if role == "sales" and x.get("담당자") != who:  # 남의 거래처 수정 차단
+                    return JSONResponse({"error": "본인 거래처만 수정할 수 있어요"}, status_code=403)
+                items[i] = {**x, **d}; found = True
                 break
+        if not found:
+            return JSONResponse({"error": "거래처를 찾을 수 없어요"}, status_code=404)
     else:  # 신규
         d["id"] = (max([x.get("id", 0) for x in items], default=0) + 1)
         items.insert(0, d)
@@ -999,7 +1007,13 @@ async def sales_delete(request: Request):
         return _AUTH401
     body = await request.json()
     did = body.get("id")
-    items = [x for x in _load_deals() if x.get("id") != did]
+    who = _jageum_who(request); role = _jageum_role(request)
+    items = _load_deals()
+    if role == "sales":  # 본인 거래처만 삭제
+        target = next((x for x in items if x.get("id") == did), None)
+        if target and target.get("담당자") != who:
+            return JSONResponse({"error": "본인 거래처만 삭제할 수 있어요"}, status_code=403)
+    items = [x for x in items if x.get("id") != did]
     _save_deals(items)
     return JSONResponse({"ok": True})
 

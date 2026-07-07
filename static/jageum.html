@@ -1474,7 +1474,7 @@ function loadSales(){
     const ownerSel=document.getElementById('sl_owner'), personSel=document.getElementById('sl_person');
     const mine=(MYROLE==='sales')?(window._who||d._who||''):'';
     if(ownerSel){const list=mine?[mine]:owners;ownerSel.innerHTML=list.map(o=>`<option>${o}</option>`).join('');ownerSel.disabled=!!mine;}
-    if(personSel)personSel.innerHTML='<option value="">담당자 전체</option>'+owners.map(o=>`<option>${o}</option>`).join('');
+    if(personSel){personSel.style.display=mine?'none':'';personSel.innerHTML='<option value="">담당자 전체</option>'+owners.map(o=>`<option>${o}</option>`).join('');}
     if(!document.getElementById('sl_date').value)document.getElementById('sl_date').value=_ymd();
     slFormMode();renderSales();
   }).catch(()=>{});
