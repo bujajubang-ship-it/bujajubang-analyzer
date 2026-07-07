@@ -1017,6 +1017,26 @@ async def sales_delete(request: Request):
     _save_deals(items)
     return JSONResponse({"ok": True})
 
+@app.get("/jageum/api/sale_vouchers")
+def sale_vouchers(request: Request):
+    # 이카운트 판매조회 전표(매출·원가·이익) — 마감 시 클릭으로 가져옴
+    if not _sales_auth(request):
+        return _AUTH401
+    role = _jageum_role(request); who = _jageum_who(request)
+    d = json.loads(JAGEUM_FILE.read_text(encoding="utf-8")) if JAGEUM_FILE.exists() else {}
+    sales = d.get("영업손익", {}) or {}
+    out = []
+    for month, sd in sales.items():
+        for v in (sd.get("전표") or []):
+            out.append({"일자No": v.get("일자No", ""), "거래처": v.get("거래처", ""),
+                        "담당자": v.get("담당자", ""), "매출": v.get("매출", 0),
+                        "원가": v.get("원가", 0), "이익": v.get("이익", 0),
+                        "원가확인필요": v.get("원가확인필요", False), "품목": v.get("품목요약", "")})
+    if role == "sales":  # 영업사원은 본인 전표만
+        out = [v for v in out if v.get("담당자") == who]
+    out.sort(key=lambda v: v.get("일자No", ""), reverse=True)
+    return JSONResponse({"vouchers": out})
+
 @app.get("/jageum/api/deposits")
 def sales_deposits(request: Request):
     # 실제 입금 내역(자금일보 자금의증가) — 영업이 딜에 계약금/중도금으로 연결
