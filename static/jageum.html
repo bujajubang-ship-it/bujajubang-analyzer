@@ -86,15 +86,22 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    <div class="card" style="border-top:3px solid #b91c1c">
      <h2 style="margin:0 0 12px">➕ <span id="sl_form_title">거래처 추가</span></h2>
      <input type="hidden" id="sl_id">
-     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px">
+     <div class="sl_sec">기본 정보</div>
+     <div class="sl_row">
        <label class="sl_f">일자<input type="date" id="sl_date"></label>
        <label class="sl_f">거래처<input id="sl_cust" placeholder="예: 울산솥집"></label>
        <label class="sl_f">담당자<select id="sl_owner"></select></label>
        <label class="sl_f">상태<select id="sl_stat" onchange="slFormMode()"><option value="진행중">진행중</option><option value="마감">마감</option></select></label>
+     </div>
+     <div class="sl_sec">💵 현금 <span>— 진행중 관리 · 계약금·중도금은 아래 '입금 연결'에서 자동</span></div>
+     <div class="sl_row">
        <label class="sl_f">총 견적<input type="number" id="sl_quote" placeholder="0" oninput="slRecash()"></label>
-       <label class="sl_f">계약금 <span style="color:#2563eb;font-weight:400">(입금연결)</span><input id="sl_deposit" readonly style="background:#eff6ff" placeholder="0"></label>
-       <label class="sl_f">중도금 <span style="color:#2563eb;font-weight:400">(입금연결)</span><input id="sl_mid" readonly style="background:#eff6ff" placeholder="0"></label>
-       <label class="sl_f">미수 <span style="color:#9ca3af;font-weight:400">(자동)</span><input id="sl_unpaid" readonly style="background:#f3f4f6" placeholder="0"></label>
+       <label class="sl_f">계약금 <span class="sub b">입금연결</span><input id="sl_deposit" readonly style="background:#eff6ff" placeholder="0"></label>
+       <label class="sl_f">중도금 <span class="sub b">입금연결</span><input id="sl_mid" readonly style="background:#eff6ff" placeholder="0"></label>
+       <label class="sl_f">미수 <span class="sub">자동</span><input id="sl_unpaid" readonly style="background:#f3f4f6" placeholder="0"></label>
+     </div>
+     <div class="sl_sec">🧾 마감 <span>— 매출·원가 입력 시 영업이익 자동 (마감 상태에서 입력)</span></div>
+     <div class="sl_row">
        <label class="sl_f slm">매출<input type="number" id="sl_rev" placeholder="0" oninput="slCalc()"></label>
        <label class="sl_f slm">원가<input type="number" id="sl_cost" placeholder="0" oninput="slCalc()"></label>
        <label class="sl_f slm">판관비<input type="number" id="sl_sga" placeholder="0" oninput="slCalc()"></label>
@@ -134,7 +141,17 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
      </div>
    </div>
  </div>
- <style>.sl_f{display:flex;flex-direction:column;font-size:12px;color:#6b7280;font-weight:600;gap:3px}.sl_f input,.sl_f select{padding:8px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;color:#1f2937}.slm input{border-color:#fecaca}</style>
+ <style>
+ .sl_sec{font-size:12px;font-weight:700;color:#b91c1c;margin:16px 0 7px;border-bottom:1px solid #f3d4d6;padding-bottom:5px}
+ .sl_sec span{color:#9ca3af;font-weight:400;font-size:11px}
+ .sl_row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end}
+ .sl_f{display:flex;flex-direction:column;font-size:12px;color:#6b7280;font-weight:600;gap:4px;min-width:0}
+ .sl_f input,.sl_f select{padding:9px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;color:#1f2937;width:100%;text-align:right;font-variant-numeric:tabular-nums}
+ .sl_f input[type=date],.sl_f select,#sl_cust{text-align:left}
+ .sl_f .sub{font-size:10px;font-weight:600;color:#9ca3af;background:#f3f4f6;border-radius:4px;padding:1px 5px;margin-left:3px}
+ .sl_f .sub.b{color:#1e40af;background:#dbeafe}
+ .slm input{border-color:#fecaca}
+ </style>
  <div id="edit_modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;align-items:flex-start;justify-content:center;overflow:auto;padding:30px 10px">
    <div style="background:#fff;border-radius:14px;max-width:760px;width:100%;padding:20px">
      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><h2 id="em_title" style="margin:0;font-size:17px">편집</h2><button onclick="closeEdit()" style="border:none;background:#f3f4f6;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:15px">✕</button></div>
