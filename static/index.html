@@ -21,6 +21,7 @@
         <button class="nav-btn" id="nav-pagemaker" onclick="switchPage('pagemaker')">🎨 페이지 메이커</button>
         <button class="nav-btn" id="nav-cnmaker" onclick="switchPage('cnmaker')">🏭 CN메이커</button>
         <button class="nav-btn" id="nav-danga" onclick="switchPage('danga')">💰 단가/마진</button>
+        <button class="nav-btn" id="nav-margin" onclick="switchPage('margin')">📉 마진분석</button>
       </nav>
       <div class="search-wrap" id="header-search" style="display:none">
         <input type="text" id="header-keyword" placeholder="키워드 검색..." onkeydown="if(event.key==='Enter')doSearch()" />
@@ -816,6 +817,32 @@
     </div>
   </section>
 
+  <!-- ===== 📉 마진 분석 (역마진 감지) ===== -->
+  <section id="margin-page" class="hidden">
+    <div style="max-width:1400px;margin:16px auto;padding:0 16px">
+      <div style="background:#fff;border:1px solid #e5e7eb;border-top:3px solid #D70010;border-radius:14px;padding:16px 18px">
+        <h2 style="margin:0 0 4px;font-size:18px">📉 마진 분석 — 쇼핑몰 판매가 vs 매입가 (역마진 감지)</h2>
+        <div style="font-size:13px;color:#6b7280;margin-bottom:12px">쇼핑몰(쿠팡·네이버) <b>상품명 + 판매가</b>를 올리면, 💰단가/마진의 <b>매입가</b>와 이름·모델명으로 매칭해 <b>역마진·저마진</b>을 찾아줘요. (모델명/옵션 코드가 있으면 매칭 정확도↑)</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+          <button onclick="document.getElementById('mz-file').click()" style="padding:8px 14px;border:0;background:#2563eb;color:#fff;border-radius:8px;cursor:pointer;font-weight:700">📤 엑셀 업로드</button>
+          <input type="file" id="mz-file" accept=".xlsx,.xls,.csv,.txt" style="display:none" onchange="mzUpload(this)" />
+          <button onclick="mzPaste()" style="padding:8px 12px;border:0;background:#374151;color:#fff;border-radius:8px;cursor:pointer;font-size:13px">📋 붙여넣기</button>
+          <label style="font-size:13px;color:#374151">쿠팡 수수료 <input id="mz-fee" type="number" value="10.8" oninput="mzRender()" style="width:64px;padding:5px;border:1px solid #d1d5db;border-radius:6px">%</label>
+          <label style="font-size:13px;color:#374151"><input type="checkbox" id="mz-only-loss" onchange="mzRender()"> 역마진만 보기</label>
+        </div>
+        <div id="mz-summary" style="font-size:14px;color:#374151;margin-bottom:8px">쇼핑몰 데이터를 올려주세요.</div>
+        <div style="overflow:auto;max-height:72vh;border:1px solid #eef0f3;border-radius:10px">
+          <table style="width:100%;border-collapse:collapse;font-size:13px;white-space:nowrap">
+            <thead style="position:sticky;top:0;background:#f3f4f6;z-index:1"><tr style="text-align:left">
+              <th style="padding:8px">쇼핑몰 상품명</th><th style="padding:8px;text-align:right">판매가</th><th style="padding:8px;text-align:right">매입가</th><th style="padding:8px;text-align:right">마진</th><th style="padding:8px;text-align:right">마진율</th><th style="padding:8px">상태</th><th style="padding:8px">매칭된 단가표 제품</th>
+            </tr></thead>
+            <tbody id="mz-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- ── AI 개선 상담 + 결재함 (플로팅 패널) ── -->
   <button id="site-ai-fab" onclick="toggleSiteAI()" style="position:fixed;right:28px;bottom:90px;z-index:201;background:#D70010;color:#fff;border:none;border-radius:30px;padding:11px 18px;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 6px 20px rgba(215,0,16,.4)">🤖 AI 상담</button>
   <div id="site-ai-overlay" onclick="toggleSiteAI()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:899"></div>
@@ -863,7 +890,7 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="/static/app.js?v=20260707i"></script>
+  <script src="/static/app.js?v=20260707j"></script>
   <!-- 마진/ROAS 계산기 (React 18 + htm, 빌드 없음) -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>

@@ -29,6 +29,7 @@ function switchPage(page) {
   const isPagemaker = page === 'pagemaker';
   const isCnmaker   = page === 'cnmaker';
   const isDanga     = page === 'danga';
+  const isMargin    = page === 'margin';
 
   const navTracker = document.getElementById('nav-tracker');
   if (navTracker) navTracker.classList.toggle('active', isTracker);
@@ -39,6 +40,8 @@ function switchPage(page) {
   if (navCn) navCn.classList.toggle('active', isCnmaker);
   const navDg = document.getElementById('nav-danga');
   if (navDg) navDg.classList.toggle('active', isDanga);
+  const navMz = document.getElementById('nav-margin');
+  if (navMz) navMz.classList.toggle('active', isMargin);
 
   const _trk = document.getElementById('tracker-section');
   if (_trk) _trk.classList.toggle('hidden', !isTracker);
@@ -57,9 +60,12 @@ function switchPage(page) {
   }
   const _dg = document.getElementById('danga-page');
   if (_dg) _dg.classList.toggle('hidden', !isDanga);
+  const _mz = document.getElementById('margin-page');
+  if (_mz) _mz.classList.toggle('hidden', !isMargin);
   document.getElementById('header-search').style.display = isSearch && currentSection !== 'hero' ? 'flex' : 'none';
 
   if (isDanga) loadDanga();
+  if (isMargin && (!DANGA || !DANGA.length)) loadDanga();  // 매칭에 단가데이터 필요
   if (isTracker) loadTracker();
   if (isSourcing) {
     syncMemosFromServer().then(() => loadSourcing(currentSrcPage));
@@ -2288,3 +2294,68 @@ function toggleSiteAI(){ const p=document.getElementById('site-ai'); if(p) aiDoc
 // 데스크톱은 기본으로 열린 상시 사이드패널
 window.addEventListener('load', function(){ setTimeout(function(){ if(!_aiMobile()) aiDock(true); }, 300); });
 window.addEventListener('resize', function(){ const p=document.getElementById('site-ai'); if(p&&p.getAttribute('data-open')==='1'&&!_aiMobile()) document.body.style.paddingRight=(p.offsetWidth||380)+'px'; else if(p&&p.getAttribute('data-open')!=='1') document.body.style.paddingRight=''; });
+
+// ═══════════ 📉 마진 분석 (쇼핑몰 판매가 vs 매입가 매칭) ═══════════
+let MZ_RESULTS=[];
+function _mzNorm(s){ return String(s==null?'':s).toLowerCase().replace(/[\s\-_()[\]./]/g,''); }
+function mzUpload(input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const isX=/\.xlsx?$/i.test(file.name); const rd=new FileReader();
+  rd.onload=e=>{ let grid=[];
+    try{ if(isX&&window.XLSX){ const wb=XLSX.read(e.target.result,{type:'array'}); grid=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:false}); }
+      else{ const t=(typeof e.target.result==='string')?e.target.result:new TextDecoder('utf-8').decode(e.target.result); grid=t.replace(/\r/g,'').replace(/^﻿/,'').split('\n').filter(l=>l.length).map(_dgCsvLine); } }
+    catch(err){ alert('파일 읽기 실패: '+(err.message||err)); return; }
+    mzAnalyze(grid.map(r=>(r||[]).map(c=>String(c==null?'':c))));
+  };
+  if(isX) rd.readAsArrayBuffer(file); else rd.readAsText(file,'utf-8');
+  input.value='';
+}
+function mzPaste(){
+  const t=prompt('쇼핑몰 데이터 붙여넣기 (탭 또는 콤마 구분)\n열 순서: 상품명 · 판매가 · (모델명/옵션은 선택)\n첫 줄이 헤더면 자동 무시');
+  if(!t) return;
+  const grid=t.replace(/\r/g,'').split('\n').filter(l=>l.trim()).map(l=>(l.split('\t').length>1?l.split('\t'):l.split(',')));
+  mzAnalyze(grid.map(r=>r.map(c=>String(c||''))));
+}
+function mzAnalyze(grid){
+  if(!DANGA||!DANGA.length){ alert('먼저 💰단가/마진 탭을 한 번 열어 데이터를 불러온 뒤 다시 시도하세요.'); return; }
+  let start=0, ci={name:0,price:1,model:-1};
+  if(grid.length){ const h=grid[0].map(x=>String(x||'').trim());
+    const find=(...ks)=>h.findIndex(x=>ks.some(k=>x.indexOf(k)>=0));
+    const ni=find('상품명','제품명','품명'), pi=find('판매가','가격','단가','금액','판매'), mi=find('모델','옵션','규격','사이즈');
+    if(ni>=0||pi>=0){ start=1; ci={name:ni>=0?ni:0, price:pi>=0?pi:1, model:mi}; }
+  }
+  const feeEl=document.getElementById('mz-fee'); const fee=(feeEl?parseFloat(feeEl.value):10.8||10.8)/100;
+  const res=[];
+  for(let i=start;i<grid.length;i++){
+    const row=grid[i]; if(!row||!row.join('').trim()) continue;
+    const pname=(row[ci.name]||'').trim(); const price=_dgN(row[ci.price]); const pmodel=(ci.model>=0?(row[ci.model]||''):'').trim();
+    if(!pname&&!price) continue;
+    let match=null; const pmN=_mzNorm(pmodel), pnN=_mzNorm(pname);
+    if(pmN&&pmN.length>=2){ match=DANGA.find(d=>{ const dm=_mzNorm(d['모델명'])+'|'+_mzNorm(d['옵션']); return (dm&&(dm.indexOf(pmN)>=0||(pmN.length>=3&&pmN.indexOf(_mzNorm(d['모델명']))>=0&&_mzNorm(d['모델명']).length>=3))); }); }
+    if(!match&&pnN&&pnN.length>=2){ match=DANGA.find(d=>{ const dn=_mzNorm(d['제품명']); return dn&&dn.length>=2&&(pnN.indexOf(dn)>=0||dn.indexOf(pnN)>=0); }); }
+    let cost='', margin='', rate='';
+    if(match){ cost=dgMaeipga(match); if(cost!==''&&cost!=null){ margin=Math.round(price*(1-fee)-cost-_dgN(match['매입배송비'])); rate=price?(margin/price*100):0; } }
+    res.push({상품명:pname, 판매가:price, 매입가:cost, 마진:margin, 마진율:rate, matched:!!(match&&cost!==''&&cost!=null), 거래처:match?match['거래처']:'', 매칭제품:match?((match['제품명']||'')+' '+(match['모델명']||match['옵션']||'')).trim():''});
+  }
+  MZ_RESULTS=res; mzRender();
+}
+function mzRender(){
+  const onlyEl=document.getElementById('mz-only-loss'); const only=onlyEl&&onlyEl.checked;
+  const rows=MZ_RESULTS.slice().sort((a,b)=>{ const am=a.matched?a.마진율:99999, bm=b.matched?b.마진율:99999; return am-bm; });
+  const tb=document.getElementById('mz-tbody'); if(!tb) return;
+  let loss=0, low=0, un=0, shown=0, html='';
+  rows.forEach(r=>{
+    if(!r.matched) un++; else if(r.마진<0) loss++; else if(r.마진율<10) low++;
+    if(only && !(r.matched&&r.마진<0)) return;
+    shown++;
+    let tag='', bg='';
+    if(!r.matched){ tag='<span style="color:#9ca3af">매입가 미확인</span>'; }
+    else if(r.마진<0){ tag='<span style="background:#dc2626;color:#fff;padding:1px 7px;border-radius:5px;font-weight:700">역마진</span>'; bg='background:#fef2f2'; }
+    else if(r.마진율<10){ tag='<span style="background:#fed7aa;color:#9a3412;padding:1px 7px;border-radius:5px;font-weight:700">저마진</span>'; }
+    else tag='<span style="color:#059669">정상</span>';
+    html+='<tr style="border-top:1px solid #f0f0f0;'+bg+'"><td style="padding:6px">'+_dgEsc(r.상품명)+'</td><td style="padding:6px;text-align:right">'+_dgFmt(r.판매가)+'</td><td style="padding:6px;text-align:right">'+(r.matched?_dgFmt(r.매입가):'-')+'</td><td style="padding:6px;text-align:right;font-weight:600;color:'+(r.matched&&r.마진<0?'#dc2626':'#059669')+'">'+(r.matched?_dgFmt(r.마진):'-')+'</td><td style="padding:6px;text-align:right">'+(r.matched&&r.마진율!==''?r.마진율.toFixed(1)+'%':'-')+'</td><td style="padding:6px">'+tag+'</td><td style="padding:6px;font-size:12px;color:#6b7280">'+_dgEsc(r.매칭제품)+(r.거래처?' ('+_dgEsc(r.거래처)+')':'')+'</td></tr>';
+  });
+  tb.innerHTML=html||'<tr><td colspan="7" style="padding:20px;text-align:center;color:#9ca3af">쇼핑몰 데이터를 올려주세요</td></tr>';
+  const s=document.getElementById('mz-summary');
+  if(s) s.innerHTML='총 <b>'+MZ_RESULTS.length+'</b>개 · <span style="color:#dc2626;font-weight:700">🔴 역마진 '+loss+'</span> · <span style="color:#d97706;font-weight:700">🟠 저마진 '+low+'</span> · 🟢 정상 '+(MZ_RESULTS.length-loss-low-un)+' · ⚪ 미확인 '+un+(only?' (역마진만 표시중)':'');
+}
