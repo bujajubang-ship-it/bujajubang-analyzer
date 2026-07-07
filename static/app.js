@@ -1963,13 +1963,39 @@ function _siteBubble(role, text){
   log.appendChild(div); log.scrollTop = log.scrollHeight;
   return div;
 }
+let _siteAttached = null;
+function aiAttachFile(input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const isX=/\.xlsx?$/i.test(file.name); const rd=new FileReader();
+  rd.onload=e=>{
+    let text='';
+    try{
+      if(isX&&window.XLSX){ const wb=XLSX.read(e.target.result,{type:'array'}); text=wb.SheetNames.map(n=>'# 시트: '+n+'\n'+XLSX.utils.sheet_to_csv(wb.Sheets[n])).join('\n\n'); }
+      else { text=(typeof e.target.result==='string')?e.target.result:new TextDecoder('utf-8').decode(e.target.result); }
+    }catch(err){ alert('파일 읽기 실패: '+(err.message||err)); return; }
+    const CAP=40000, trunc=text.length>CAP; if(trunc) text=text.slice(0,CAP);
+    _siteAttached={name:file.name, text, trunc};
+    const chip=document.getElementById('ai-attach-chip');
+    if(chip){ chip.style.display='inline-flex'; chip.innerHTML='📎 '+_siteEsc(file.name)+(trunc?' (일부)':'')+' <span onclick="aiClearAttach()" style="cursor:pointer;margin-left:6px;font-weight:700">✕</span>'; }
+  };
+  if(isX) rd.readAsArrayBuffer(file); else rd.readAsText(file,'utf-8');
+  input.value='';
+}
+function aiClearAttach(){ _siteAttached=null; const c=document.getElementById('ai-attach-chip'); if(c){c.style.display='none';c.innerHTML='';} }
+function _siteEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
 function siteChatSend(){
   const inp = document.getElementById('site-chat-in');
   const btn = document.getElementById('site-chat-btn');
   const msg = (inp.value||'').trim();
-  if (!msg) return;
-  inp.value=''; btn.disabled=true;
-  _siteChat.push({role:'user', content:msg}); _siteBubble('user', msg);
+  if (!msg && !_siteAttached) return;
+  inp.value=''; inp.style.height='auto'; btn.disabled=true;
+  let sendMsg=msg, dispMsg=msg;
+  if(_siteAttached){
+    sendMsg=(msg||'(첨부파일 참고해서 상담해줘)')+'\n\n[첨부파일: '+_siteAttached.name+']\n```\n'+_siteAttached.text+'\n```'+(_siteAttached.trunc?'\n(파일이 커서 앞부분만 첨부됨)':'');
+    dispMsg=(msg?msg+'\n':'')+'📎 '+_siteAttached.name;
+    aiClearAttach();
+  }
+  _siteChat.push({role:'user', content:sendMsg}); _siteBubble('user', dispMsg);
   const wait = _siteBubble('assistant', '…');
   fetch('/api/site_chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:_siteChat})})
     .then(r=>r.json()).then(d=>{
