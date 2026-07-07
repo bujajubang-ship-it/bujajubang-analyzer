@@ -792,8 +792,13 @@ JAGEUM_INGEST_SECRET = os.getenv("JAGEUM_INGEST_SECRET", "bj-ecount-2026-ingest"
 JAGEUM_BOSS_USER = os.getenv("JAGEUM_BOSS_USER", "성건1248")
 JAGEUM_BOSS_PASS = os.getenv("JAGEUM_BOSS_PASS", "313131")
 # 소싱직원 계정 — 소싱 사이트(/, /cnmaker)만 접근, 자금 대시보드는 못 봄
-SOURCING_USER = os.getenv("SOURCING_USER", "buja2")
-SOURCING_PASS = os.getenv("SOURCING_PASS", "3030")
+# 소싱 사이트 직원 계정들 (자금 대시보드는 못 봄) — {아이디: (비번, 역할)}
+SITE_STAFF_ACCOUNTS = {
+    os.getenv("DESIGN_USER", "buja2"): (os.getenv("DESIGN_PASS", "3030"), "design"),    # 디자이너
+    os.getenv("SOURCING_USER", "sosing"): (os.getenv("SOURCING_PASS", "3030"), "sourcing"),  # 소싱직원
+}
+# 역할 → 표시 이름 (채팅·결재에 누가 올렸는지 구분)
+ROLE_NAMES = {"boss": "사장님", "staff": "경리", "design": "디자이너", "sourcing": "소싱직원"}
 
 import hashlib, hmac, time
 _JAGEUM_SECRET = os.getenv("JAGEUM_TOKEN_SECRET", "bj-jageum-token-2026")
@@ -828,8 +833,8 @@ def _jageum_auth(request: Request) -> bool:
     return _jageum_role(request) in ("boss", "staff")
 
 def _site_auth(request: Request) -> bool:
-    # 소싱 사이트(/·/cnmaker): 로그인한 모두 (사장·경리·소싱직원)
-    return _jageum_role(request) in ("boss", "staff", "sourcing")
+    # 소싱 사이트(/·/cnmaker): 로그인한 모두 (사장·경리·디자이너·소싱직원)
+    return _jageum_role(request) in ("boss", "staff", "design", "sourcing")
 
 _AUTH401 = JSONResponse({"error": "로그인 필요"}, status_code=401)
 
@@ -853,8 +858,8 @@ async def jageum_login(request: Request):
         role = "boss"
     elif u == JAGEUM_USER and p == JAGEUM_PASS:
         role = "staff"
-    elif u == SOURCING_USER and p == SOURCING_PASS:
-        role = "sourcing"
+    elif u in SITE_STAFF_ACCOUNTS and p == SITE_STAFF_ACCOUNTS[u][0]:
+        role = SITE_STAFF_ACCOUNTS[u][1]
     if not role:
         return JSONResponse({"error": "아이디 또는 비밀번호가 맞지 않습니다"}, status_code=401)
     resp = JSONResponse({"ok": True, "role": role})
@@ -1449,8 +1454,9 @@ async def site_chat(request: Request):
         return _AUTH401
     data = await request.json()
     messages = data.get("messages", [])
-    is_boss = _jageum_role(request) == "boss"
-    who = "사장님" if is_boss else "직원"
+    role = _jageum_role(request)
+    is_boss = role == "boss"
+    who = ROLE_NAMES.get(role, "직원")  # 사장님/경리/디자이너/소싱직원 — 결재에 누가 올렸는지 구분
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key:
         return JSONResponse({"error": "ANTHROPIC_API_KEY 미설정"}, status_code=500)
