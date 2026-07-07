@@ -810,20 +810,21 @@ import hashlib, hmac, time
 _JAGEUM_SECRET = os.getenv("JAGEUM_TOKEN_SECRET", "bj-jageum-token-2026")
 
 def _make_token(role: str, who: str = "") -> str:
-    """role|who|expiry|sig 형태의 세션 토큰 (24시간 유효). who=담당자/표시이름"""
+    """role|who(b64)|expiry|sig 세션 토큰 (24h). who는 한글 가능 → base64로 ASCII화(쿠키 제약)"""
     exp = str(int(time.time()) + 86400)
-    who = (who or "").replace("|", "")
-    msg = f"{role}|{who}|{exp}"
+    who_b64 = base64.urlsafe_b64encode((who or "").encode()).decode()
+    msg = f"{role}|{who_b64}|{exp}"
     sig = hmac.new(_JAGEUM_SECRET.encode(), msg.encode(), hashlib.sha256).hexdigest()[:16]
     return f"{msg}|{sig}"
 
 def _check_token(tok: str):
     """반환: (role, who). 실패 시 ('', '')"""
     try:
-        role, who, exp, sig = tok.split("|")
-        msg = f"{role}|{who}|{exp}"
+        role, who_b64, exp, sig = tok.split("|")
+        msg = f"{role}|{who_b64}|{exp}"
         good = hmac.new(_JAGEUM_SECRET.encode(), msg.encode(), hashlib.sha256).hexdigest()[:16]
         if hmac.compare_digest(sig, good) and int(exp) > time.time():
+            who = base64.urlsafe_b64decode(who_b64.encode()).decode()
             return role, who
     except Exception:
         pass
