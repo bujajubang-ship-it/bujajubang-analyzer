@@ -69,12 +69,12 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
        <h2 style="margin:0">📈 영업 결산 <span class="muted big">— 거래처별 진행·마감 현황 (ERP 판매조회 연동 예정)</span></h2>
        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
          <a href="/danga" target="_blank" style="text-decoration:none;background:#faf5ff;color:#7c3aed;border:1.5px solid #ddd6fe;border-radius:8px;padding:6px 12px;font-size:13px;font-weight:600;white-space:nowrap">📊 단가/마진 보기</a>
-         <select id="sl_period" onchange="renderSales()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px">
+         <select id="sl_period" onchange="renderDeals()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px">
            <option value="this">이번달</option><option value="last">지난달</option>
            <option value="q">이번 분기</option><option value="y2026">2026 전체</option><option value="all" selected>전체</option>
          </select>
-         <select id="sl_person" onchange="renderSales()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px"><option value="">담당자 전체</option></select>
-         <select id="sl_status" onchange="renderSales()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px"><option value="">상태 전체</option><option value="진행중">진행중</option><option value="마감">마감</option></select>
+         <select id="sl_person" onchange="renderDeals()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px"><option value="">담당자 전체</option></select>
+         <select id="sl_status" onchange="renderDeals()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px"><option value="">상태 전체</option><option value="진행중">진행중</option><option value="마감">마감</option></select>
        </div>
      </div>
      <!-- 요약 KPI -->
@@ -279,6 +279,12 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
  <div class="card" id="acct_card" style="border-top:3px solid #2563eb">
    <h2>📋 경리 체크리스트 <span class="muted big">— AI가 못 긁는 항목만 모았어요. 이것만 확인·수정하면 끝</span></h2>
    <div id="acct_box"></div>
+ </div>
+
+ <div class="card view-biz" id="review_card" style="border-top:3px solid #dc2626">
+   <h2>🔍 판매 원가 검수 <span class="muted big">— 마감 전표 중 원가 미입력·고마진(35%↑) = 원가 확인 필요 (수정은 이카운트에서)</span></h2>
+   <div class="note" style="margin-bottom:8px">우리 평균 마진 20~30%예요. 마진이 35% 넘으면 원가를 잘못(적게) 넣었을 가능성이 커요. 확인하고 이카운트에서 원가 고치면 자동 반영됩니다.</div>
+   <div id="review_box"></div>
  </div>
 
  <details class="card" id="pl_card" style="border-top:3px solid #5b21b6">
@@ -671,7 +677,7 @@ function render(){
  // 잔액
  const bote=bal.filter(b=>(b.계정명||'').includes('보통예금'));
  document.querySelector('#t_bal tbody').innerHTML=(bote.length?bote:bal).map(r=>`<tr><td>${r.계정명||''}</td><td>${acctName(r)}</td><td class="num">${(r.금일잔액||0).toLocaleString()}</td>`).join('');
- renderAgg(); renderDetail(); renderPL(); renderSettle(); renderAssets(); renderDept(); renderBalTrend(); renderClose(); renderSales(); renderAcct(); renderCards();
+ renderAgg(); renderDetail(); renderPL(); renderSettle(); renderAssets(); renderDept(); renderBalTrend(); renderClose(); renderSales(); renderAcct(); renderCards(); renderReview();
 }
 // ── 사장님 개인 자산 (boss 전용: 주식 실시간 + 부동산/현금) ──
 let PRS={}, PQ={fx_usdkrw:null,prices:{}};
@@ -915,6 +921,34 @@ function acctToggle(key){ M.경리확인=M.경리확인||{};
  else { const d=new Date(); M.경리확인[key]=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
  saveManual(); renderAcct();
 }
+// 🔍 판매 원가 검수 (마감 전표 중 원가 미입력·고마진)
+function renderReview(){
+ const box=document.getElementById('review_box'); if(!box)return;
+ const sd=D.영업손익||{};
+ const keys=(P&&P.keys)||(D.current_month?[D.current_month]:Object.keys(sd));
+ const done=new Set(M.판매검수확인||[]);
+ let flagged=[];
+ Object.entries(sd).forEach(([m,md])=>{
+   if(keys.length && !keys.includes(m)) return;
+   (md.전표||[]).forEach(v=>{
+     const rev=+v.매출||0, cost=+v.원가||0, profit=(v.이익!=null?+v.이익:(rev-cost));
+     const rate=rev?Math.round(profit/rev*100):0;
+     const noCost=v.원가확인필요||cost===0;
+     const hi=(!noCost)&&(rate>=35);
+     if(noCost||hi) flagged.push({key:v.일자No,일자No:v.일자No,거래처:v.거래처,담당자:v.담당자,매출:rev,원가:cost,rate,품목:v.품목요약||'',사유:noCost?'원가 미입력':('고마진 '+rate+'%')});
+   });
+ });
+ const pending=flagged.filter(f=>!done.has(f.key));
+ if(!flagged.length){box.innerHTML='<div class="muted" style="padding:8px">이 기간 마감 전표가 없어요.</div>';return;}
+ if(!pending.length){box.innerHTML='<div style="padding:10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;color:#059669;font-weight:600">✅ 확인 필요한 전표를 모두 검수했어요.</div>';return;}
+ const th='<thead><tr><th>일자</th><th>거래처</th><th>담당자</th><th class="num">매출</th><th class="num">원가</th><th class="num">마진율</th><th>사유</th><th></th></tr></thead>';
+ const tb=pending.map(f=>{
+   const rcol=f.사유.startsWith('원가')?'#dc2626':'#d97706';
+   return `<tr><td style="white-space:nowrap">${(f.일자No||'').replace(/</g,'&lt;')}</td><td>${(f.거래처||'').replace(/</g,'&lt;')}</td><td>${f.담당자||''}</td><td class="num">${won(f.매출)}</td><td class="num" style="color:${f.원가?'#1f2937':'#dc2626'}">${f.원가?won(f.원가):'미입력'}</td><td class="num" style="font-weight:700;color:${rcol}">${f.rate}%</td><td><span style="background:#fef2f2;color:${rcol};border-radius:6px;padding:2px 8px;font-size:12px;font-weight:700">${f.사유}</span></td><td><button onclick="svReviewDone('${(f.key||'').replace(/'/g,'')}')" style="background:#e5e7eb;color:#374151;border:none;border-radius:6px;padding:5px 11px;cursor:pointer;font-size:12px;font-weight:600">확인함</button></td></tr>`;
+ }).join('');
+ box.innerHTML=`<div style="font-size:13px;color:#dc2626;font-weight:700;margin-bottom:6px">⚠ 확인 필요 ${pending.length}건</div><div style="overflow-x:auto"><table style="font-size:13px">${th}<tbody>${tb}</tbody></table></div>`;
+}
+function svReviewDone(key){M.판매검수확인=M.판매검수확인||[];if(!M.판매검수확인.includes(key))M.판매검수확인.push(key);saveManual();renderReview();}
 function renderAcct(){
  const box=document.getElementById('acct_box'); if(!box)return;
  const items=[
@@ -1491,7 +1525,7 @@ function loadSales(){
     if(ownerSel){const list=mine?[mine]:owners;ownerSel.innerHTML=list.map(o=>`<option>${o}</option>`).join('');ownerSel.disabled=!!mine;}
     if(personSel){personSel.style.display=mine?'none':'';personSel.innerHTML='<option value="">담당자 전체</option>'+owners.map(o=>`<option>${o}</option>`).join('');}
     if(!document.getElementById('sl_date').value)document.getElementById('sl_date').value=_ymd();
-    slFormMode();renderSales();
+    slFormMode();renderDeals();
   }).catch(()=>{});
 }
 function _slFilter(){
@@ -1510,7 +1544,7 @@ function _slFilter(){
     return true;
   });
 }
-function renderSales(){
+function renderDeals(){
   const rows=_slFilter();
   let rev=0,prof=0,unpaid=0,quote=0,cP=0,cM=0;
   rows.forEach(x=>{const st=x.status||'진행중';quote+=(+x.총견적||0);unpaid+=(+x.미수||0);
