@@ -830,6 +830,7 @@
           <button onclick="mzPaste()" style="padding:8px 12px;border:0;background:#374151;color:#fff;border-radius:8px;cursor:pointer;font-size:13px">📋 붙여넣기</button>
           <label style="font-size:13px;color:#374151">쿠팡 수수료 <input id="mz-fee" type="number" value="10.8" oninput="mzRender()" style="width:64px;padding:5px;border:1px solid #d1d5db;border-radius:6px">%</label>
           <label style="font-size:13px;color:#374151"><input type="checkbox" id="mz-only-loss" onchange="mzRender()"> 역마진만 보기</label>
+          <label style="font-size:13px;color:#854d0e"><input type="checkbox" id="mz-show-est" onchange="mzRender()"> 🟡 이름추정 매칭도 보기(부정확)</label>
         </div>
         <div id="mz-summary" style="font-size:14px;color:#374151;margin-bottom:8px">쇼핑몰 데이터를 올려주세요.</div>
         <div style="overflow:auto;max-height:72vh;border:1px solid #eef0f3;border-radius:10px">
@@ -891,7 +892,7 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="/static/app.js?v=20260707m"></script>
+  <script src="/static/app.js?v=20260707n"></script>
   <!-- 마진/ROAS 계산기 (React 18 + htm, 빌드 없음) -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>

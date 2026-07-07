@@ -2365,15 +2365,23 @@ function mzAnalyze(grid){
 }
 function mzRender(){
   const onlyEl=document.getElementById('mz-only-loss'); const only=onlyEl&&onlyEl.checked;
+  const estEl=document.getElementById('mz-show-est'); const showEst=estEl&&estEl.checked;  // 이름추정도 보기
   const rows=MZ_RESULTS.slice().sort((a,b)=>{ const am=a.matched?a.마진율:99999, bm=b.matched?b.마진율:99999; return am-bm; });
   const tb=document.getElementById('mz-tbody'); if(!tb) return;
-  let loss=0, low=0, un=0, shown=0, html='';
+  let loss=0, low=0, un=0, est=0, shown=0, html='';
   rows.forEach(r=>{
-    if(!r.matched) un++; else if(r.마진<0) loss++; else if(r.마진율<10) low++;
-    if(only && !(r.matched&&r.마진<0)) return;
+    const trusted = r.matched && r.tier==='정확';
+    // 집계: 역마진/저마진 판정은 '정확매칭'만 (추정은 오매칭이 많아 신뢰불가)
+    if(!r.matched) un++;
+    else if(trusted){ if(r.마진<0) loss++; else if(r.마진율<10) low++; }
+    else est++;
+    // 표시 필터
+    if(only){ if(!(trusted && r.마진<0)) return; }       // 역마진만 = 정확 역마진만
+    else if(!trusted && !showEst) return;                 // 기본: 정확매칭만 (추정/미확인 숨김)
     shown++;
     let tag='', bg='';
     if(!r.matched){ tag='<span style="color:#9ca3af">매입가 미확인</span>'; }
+    else if(!trusted){ tag='<span style="color:#9ca3af">추정 — 매칭확인 필요</span>'; }  // 추정/낮음은 마진 단정 안 함
     else if(r.마진<0){ tag='<span style="background:#dc2626;color:#fff;padding:1px 7px;border-radius:5px;font-weight:700">역마진</span>'; bg='background:#fef2f2'; }
     else if(r.마진율<10){ tag='<span style="background:#fed7aa;color:#9a3412;padding:1px 7px;border-radius:5px;font-weight:700">저마진</span>'; }
     else tag='<span style="color:#059669">정상</span>';
@@ -2381,9 +2389,9 @@ function mzRender(){
     html+='<tr style="border-top:1px solid #f0f0f0;'+bg+'"><td style="padding:6px">'+_dgEsc(r.상품명)+'</td><td style="padding:6px;text-align:right">'+_dgFmt(r.판매가)+'</td><td style="padding:6px;text-align:right">'+(r.matched?_dgFmt(r.매입가):'-')+'</td><td style="padding:6px;text-align:right;font-weight:600;color:'+(r.matched&&r.마진<0?'#dc2626':'#059669')+'">'+(r.matched?_dgFmt(r.마진):'-')+'</td><td style="padding:6px;text-align:right">'+(r.matched&&r.마진율!==''?r.마진율.toFixed(1)+'%':'-')+'</td><td style="padding:6px;white-space:nowrap">'+tag+tb2+'</td><td style="padding:6px;font-size:12px;color:#6b7280">'+_dgEsc(r.매칭제품)+(r.거래처?' ('+_dgEsc(r.거래처)+')':'')+'</td></tr>';
   });
   tb.innerHTML=html||'<tr><td colspan="7" style="padding:20px;text-align:center;color:#9ca3af">쇼핑몰 데이터를 올려주세요</td></tr>';
-  const exact=MZ_RESULTS.filter(r=>r.matched&&r.tier==='정확').length;
+  const exact=loss+low+(MZ_RESULTS.filter(r=>r.matched&&r.tier==='정확'&&r.마진>=0&&r.마진율>=10).length);
   const s=document.getElementById('mz-summary');
-  if(s) s.innerHTML='총 <b>'+MZ_RESULTS.length+'</b>개 · <span style="color:#dc2626;font-weight:700">🔴 역마진 '+loss+'</span> · <span style="color:#d97706;font-weight:700">🟠 저마진 '+low+'</span> · 🟢 정상 '+(MZ_RESULTS.length-loss-low-un)+' · ⚪ 미확인 '+un+' · <span style="color:#166534">(정확매칭 '+exact+')</span>'+(only?' · 역마진만':'');
+  if(s) s.innerHTML='<b>정확매칭 '+exact+'개 기준</b> — <span style="color:#dc2626;font-weight:700">🔴 역마진 '+loss+'</span> · <span style="color:#d97706;font-weight:700">🟠 저마진 '+low+'</span> · 🟢 정상 '+(exact-loss-low)+' &nbsp;|&nbsp; 🟡 이름추정 '+est+' · ⚪ 미확인 '+un+(showEst?' (추정 표시중)':' (추정 숨김 — 아래 체크로 표시)')+(only?' · 역마진만':'');
 }
 
 // 쿠팡 실판매가 자동 불러오기 (서버가 Wing에서 수집한 데이터)
