@@ -1445,7 +1445,7 @@ def _save_site_approvals(items):
 
 @app.post("/api/site_chat")
 async def site_chat(request: Request):
-    if not _jageum_auth(request):
+    if not _site_auth(request):
         return _AUTH401
     data = await request.json()
     messages = data.get("messages", [])
