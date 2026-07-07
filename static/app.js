@@ -2007,49 +2007,59 @@ function siteLogout(){
 }
 loadMe();
 
-// ═══════════ 💰 거래처 단가 / 마진 v2 ═══════════
+// ═══════════ 💰 거래처 단가 / 마진 v3 (20컬럼·자동계산) ═══════════
 let DANGA = [];
+// n=숫자우측정렬, calc=자동계산(읽기전용), pct=퍼센트, label=표시명(키와다를때)
 const DG_COLS = [
- {k:'거래처',w:96},{k:'카테고리',w:96},{k:'제품명',w:180},{k:'옵션',w:96},{k:'사이즈',w:78},
- {k:'매입단가',w:96,n:1},{k:'할인율',w:62},{k:'매입배송비',w:86,n:1},{k:'네이버단가',w:96,n:1},{k:'판매배송비',w:82,n:1},
- {k:'네이버마진',w:90,n:1},{k:'마진율',w:66},{k:'쿠팡마진',w:90,n:1},{k:'가격설정',w:66},
- {k:'도매가',w:90,n:1},{k:'부가세포함',w:90,n:1},{k:'재고',w:56,n:1}
+  {k:'거래처',w:92},{k:'카테고리',w:88},{k:'제품명',w:160},{k:'옵션',w:88},{k:'모델명',w:96},{k:'사이즈',w:76},
+  {k:'협정가',w:92,n:1},{k:'부가세',w:62},{k:'업체할인율',w:74,n:1},
+  {k:'매입가',w:96,n:1,calc:1},{k:'매입배송비',w:80,n:1},
+  {k:'N판매가',w:86,n:1},{k:'N고객배송비',w:88,n:1,label:'고객부담배송비'},{k:'N마진',w:88,n:1,calc:1},{k:'N마진율',w:72,calc:1,pct:1},
+  {k:'C판매가',w:86,n:1},{k:'C고객배송비',w:88,n:1,label:'고객부담배송비'},{k:'C마진',w:88,n:1,calc:1},{k:'C마진율',w:72,calc:1,pct:1},
+  {k:'재고',w:54,n:1},
 ];
-function _dgFmt(v){ if(v===''||v==null) return ''; if(typeof v==='number') return v.toLocaleString('ko-KR'); const s=String(v); if(/%/.test(s)) return s; const n=parseFloat(s.replace(/,/g,'')); return isNaN(n)? s : n.toLocaleString('ko-KR'); }
+function _dgN(v){ const n=parseFloat(String(v==null?'':v).replace(/[^0-9.\-]/g,'')); return isFinite(n)?n:0; }
+function _dgFmt(v){ if(v===''||v==null) return ''; if(typeof v==='number') return v.toLocaleString('ko-KR'); const s=String(v); if(/%/.test(s)) return s; const n=parseFloat(s.replace(/,/g,'')); return isNaN(n)?s:n.toLocaleString('ko-KR'); }
 function _dgEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
-function loadDanga(){
-  fetch('/api/danga').then(r=>r.json()).then(rows=>{ DANGA=Array.isArray(rows)?rows:[]; dgBuildSupplier(); renderDanga(); }).catch(()=>{DANGA=[];renderDanga();});
+function dgMaeipga(r){ const hy=_dgN(r['협정가']); if(!hy) return ''; const dc=_dgN(r['업체할인율']); const vat=String(r['부가세']||'').indexOf('별도')>=0?1.1:1; return Math.round(hy*vat*(1-dc/100)); }
+function dgMargin(r,pk,ck){ const cost=dgMaeipga(r); if(cost==='') return ''; const sp=_dgN(r[pk]); if(!sp) return ''; return Math.round((sp+_dgN(r[ck]))*0.94-cost-_dgN(r['매입배송비'])); }
+function dgCalc(r,k){
+  if(k==='매입가') return dgMaeipga(r);
+  if(k==='N마진') return dgMargin(r,'N판매가','N고객배송비');
+  if(k==='C마진') return dgMargin(r,'C판매가','C고객배송비');
+  if(k==='N마진율'){ const sp=_dgN(r['N판매가']),m=dgMargin(r,'N판매가','N고객배송비'); return (!sp||m==='')?'':(m/sp*100).toFixed(2)+'%'; }
+  if(k==='C마진율'){ const sp=_dgN(r['C판매가']),m=dgMargin(r,'C판매가','C고객배송비'); return (!sp||m==='')?'':(m/sp*100).toFixed(2)+'%'; }
+  return '';
 }
+function loadDanga(){ fetch('/api/danga').then(r=>r.json()).then(rows=>{ DANGA=Array.isArray(rows)?rows:[]; dgBuildSupplier(); renderDanga(); }).catch(()=>{DANGA=[];renderDanga();}); }
 function dgBuildSupplier(){
   const sel=document.getElementById('danga-supplier'); if(!sel) return;
-  const sup=[...new Set(DANGA.map(r=>r['거래처']).filter(Boolean))].sort();
-  const cur=sel.value;
+  const sup=[...new Set(DANGA.map(r=>r['거래처']).filter(Boolean))].sort(); const cur=sel.value;
   sel.innerHTML='<option value="">전체 거래처 ('+DANGA.length+')</option>'+sup.map(s=>`<option value="${_dgEsc(s)}">${_dgEsc(s)} (${DANGA.filter(r=>r['거래처']===s).length})</option>`).join('');
   if(cur) sel.value=cur;
 }
-let dgCollapsed = {};
-function dgToggle(s){ dgCollapsed[s] = (dgCollapsed[s]===false); renderDanga(); }
-function dgExpandAll(v){ [...new Set(DANGA.map(r=>r['거래처']||'(미분류)'))].forEach(s=>{ dgCollapsed[s]=!v; }); renderDanga(); }
+let dgCollapsed={};
+function dgToggle(s){ dgCollapsed[s]=(dgCollapsed[s]===false); renderDanga(); }
+function dgExpandAll(v){ [...new Set(DANGA.map(r=>r['거래처']||'(미분류)'))].forEach(s=>{dgCollapsed[s]=!v;}); renderDanga(); }
 function renderDanga(){
   const th=document.getElementById('danga-thead'), tb=document.getElementById('danga-tbody'); if(!tb) return;
   const NC=DG_COLS.length+1;
-  th.innerHTML='<tr style="text-align:left">'+DG_COLS.map(c=>`<th style="padding:8px;min-width:${c.w}px;${c.n?'text-align:right':''}">${c.k}</th>`).join('')+'<th style="padding:8px"></th></tr>';
+  th.innerHTML='<tr style="text-align:left">'+DG_COLS.map(c=>`<th style="padding:7px 6px;min-width:${c.w}px;${(c.n||c.pct)?'text-align:right':''};${c.calc?'background:#ecfdf5':''}">${c.label||c.k}${c.calc?' <span style="color:#059669;font-size:10px">자동</span>':''}</th>`).join('')+'<th></th></tr>';
   const sup=(document.getElementById('danga-supplier').value||''), q=(document.getElementById('danga-search').value||'').trim().toLowerCase();
   const groups={};
   DANGA.forEach((r,i)=>{
-    if(sup && r['거래처']!==sup) return;
-    const hay=((r['제품명']||'')+' '+(r['카테고리']||'')+' '+(r['사이즈']||'')+' '+(r['옵션']||'')+' '+(r['거래처']||'')).toLowerCase();
-    if(q && !hay.includes(q)) return;
-    const s2=r['거래처']||'(미분류)';
-    (groups[s2]=groups[s2]||[]).push({r,i});
+    if(sup&&r['거래처']!==sup) return;
+    const hay=((r['제품명']||'')+' '+(r['카테고리']||'')+' '+(r['사이즈']||'')+' '+(r['옵션']||'')+' '+(r['모델명']||'')+' '+(r['거래처']||'')).toLowerCase();
+    if(q&&!hay.includes(q)) return;
+    const g=r['거래처']||'(미분류)'; (groups[g]=groups[g]||[]).push({r,i});
   });
   tb.innerHTML=''; let shown=0;
   Object.keys(groups).sort().forEach(gs=>{
     const items=groups[gs];
-    const collapsed = q ? false : (sup===gs ? false : (dgCollapsed[gs]!==false));
+    const collapsed=q?false:(sup===gs?false:(dgCollapsed[gs]!==false));
     const sj=_dgEsc(gs).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     const hdr=document.createElement('tr');
-    hdr.innerHTML=`<td colspan="${NC}" onclick="dgToggle('${sj}')" style="background:#eef2ff;padding:9px 12px;cursor:pointer;font-weight:700;border-top:2px solid #c7d2fe">${collapsed?'▶':'▼'} ${_dgEsc(gs)} <span style="color:#6b7280;font-weight:400;font-size:12px">(${items.length}개)</span></td>`;
+    hdr.innerHTML=`<td colspan="${NC}" onclick="dgToggle('${sj}')" style="background:#eef2ff;padding:8px 12px;cursor:pointer;font-weight:700;border-top:2px solid #c7d2fe">${collapsed?'▶':'▼'} ${_dgEsc(gs)} <span style="color:#6b7280;font-weight:400;font-size:12px">(${items.length}개)</span></td>`;
     tb.appendChild(hdr);
     if(collapsed) return;
     items.forEach(({r,i})=>{
@@ -2057,44 +2067,50 @@ function renderDanga(){
       const tr=document.createElement('tr'); tr.style.borderTop='1px solid #f0f0f0';
       const flags=r._flag||[];
       tr.innerHTML=DG_COLS.map(c=>{
-        const disp=c.n?_dgFmt(r[c.k]):_dgEsc(r[c.k]);
-        const y=flags.includes(c.k);
-        return `<td style="padding:1px;${y?'background:#fde68a':''}" ${y?'title="⚠️ 원본 흐릿 — 확인필요"':''}><input value="${disp}" oninput="dangaEdit(${i},'${c.k}',this.value)" style="width:100%;min-width:${c.w-8}px;border:0;background:transparent;padding:5px 4px;font-size:13px;${c.n?'text-align:right':''}"/></td>`;
+        if(c.calc){
+          const v=dgCalc(r,c.k); const neg=(typeof v==='number'&&v<0)||(c.pct&&parseFloat(v)<0);
+          return `<td style="padding:3px 5px;text-align:right;background:#f7fdfb"><span id="dgc-${c.k}-${i}" style="color:${neg?'#dc2626':'#059669'};font-weight:600">${c.pct?(v||''):_dgFmt(v)}</span></td>`;
+        }
+        const disp=c.n?_dgFmt(r[c.k]):_dgEsc(r[c.k]); const y=flags.includes(c.k);
+        return `<td style="padding:1px;${y?'background:#fde68a':''}"><input value="${disp}" oninput="dangaEdit(${i},'${c.k}',this.value)" style="width:100%;min-width:${c.w-8}px;border:0;background:transparent;padding:5px 4px;font-size:13px;${c.n?'text-align:right':''}"/></td>`;
       }).join('')+`<td style="padding:1px;text-align:center"><button onclick="dangaDel(${i})" style="border:0;background:none;color:#dc2626;cursor:pointer">✕</button></td>`;
       tb.appendChild(tr);
     });
   });
-  const unc=DANGA.filter(r=>(r._flag||[]).length && (!sup||r['거래처']===sup)).length;
+  const unc=DANGA.filter(r=>(r._flag||[]).length&&(!sup||r['거래처']===sup)).length;
   const s=document.getElementById('danga-summary');
-  if(s) s.innerHTML=`거래처 <b>${Object.keys(groups).length}</b>곳 · 총 <b>${DANGA.length}</b>개`+((q||sup)?` · 표시 ${shown}개`:'')+(unc?` · <span style="background:#fde68a;padding:1px 5px;border-radius:4px">⚠️ 확인필요 ${unc}개</span> (노란칸=원본흐릿)`:'');
+  if(s) s.innerHTML=`거래처 <b>${Object.keys(groups).length}</b>곳 · 총 <b>${DANGA.length}</b>개`+((q||sup)?` · 표시 ${shown}개`:'')+(unc?` · <span style="background:#fde68a;padding:1px 5px;border-radius:4px">⚠️ 확인필요 ${unc}개</span>`:'');
 }
-function dangaEdit(i,k,v){ if(DANGA[i]) DANGA[i][k]=v; }
-function dangaAddRow(){ const o={}; DG_COLS.forEach(c=>o[c.k]=''); const sup=document.getElementById('danga-supplier').value; if(sup)o['거래처']=sup; DANGA.unshift(o); renderDanga(); }
+function dangaEdit(i,k,v){
+  if(!DANGA[i]) return; DANGA[i][k]=v;
+  DG_COLS.forEach(c=>{ if(c.calc){ const el=document.getElementById(`dgc-${c.k}-${i}`); if(el){ const val=dgCalc(DANGA[i],c.k); el.textContent=c.pct?(val||''):_dgFmt(val); const neg=(typeof val==='number'&&val<0)||(c.pct&&parseFloat(val)<0); el.style.color=neg?'#dc2626':'#059669'; } } });
+}
+function dangaAddRow(){ const o={}; DG_COLS.forEach(c=>{ if(!c.calc) o[c.k]=''; }); const sup=document.getElementById('danga-supplier').value; if(sup)o['거래처']=sup; DANGA.unshift(o); renderDanga(); }
 function dangaDel(i){ if(confirm('이 행 삭제할까요?')){ DANGA.splice(i,1); renderDanga(); } }
 function dangaDelSupplier(){
-  const sup=document.getElementById('danga-supplier').value;
-  if(!sup){ alert('먼저 거래처를 선택하세요.'); return; }
+  const sup=document.getElementById('danga-supplier').value; if(!sup){ alert('먼저 거래처를 선택하세요.'); return; }
   const cnt=DANGA.filter(r=>r['거래처']===sup).length;
-  if(confirm(`'${sup}' 거래처의 ${cnt}개 행을 전부 삭제할까요? (💾저장해야 반영)`)){
-    DANGA=DANGA.filter(r=>r['거래처']!==sup);
-    document.getElementById('danga-supplier').value=''; dgBuildSupplier(); renderDanga();
-  }
+  if(confirm(`'${sup}' 거래처의 ${cnt}개 행을 전부 삭제할까요? (💾저장해야 반영)`)){ DANGA=DANGA.filter(r=>r['거래처']!==sup); document.getElementById('danga-supplier').value=''; dgBuildSupplier(); renderDanga(); }
 }
 function dangaSave(){
   const s=document.getElementById('danga-status'); s.textContent='저장 중…';
   fetch('/api/danga',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(DANGA)}).then(r=>r.json()).then(d=>{ s.textContent=d.ok?('✅ 저장됨 ('+d.count+')'):'❌ 실패'; dgBuildSupplier(); setTimeout(()=>{s.textContent='';},3000); }).catch(()=>{s.textContent='❌ 오류';});
 }
 function dangaImport(){
-  const txt=prompt('엑셀/CSV 붙여넣기 (탭 또는 콤마 구분)\n열 순서: '+DG_COLS.map(c=>c.k).join(' · ')+'\n(첫 줄 헤더면 자동 무시 · 기존에 추가됨)');
+  const inputCols=DG_COLS.filter(c=>!c.calc);
+  const txt=prompt('엑셀/CSV 붙여넣기 (탭 또는 콤마 구분)\n입력 열 순서(자동계산 제외): '+inputCols.map(c=>c.label||c.k).join(' · ')+'\n(첫 줄 헤더면 자동 무시 · 기존에 추가됨)');
   if(!txt) return;
   const lines=txt.replace(/\r/g,'').split('\n'), rows=[];
-  lines.forEach((ln,idx)=>{ if(!ln.trim())return; const c=(ln.split('\t').length>1)?ln.split('\t'):ln.split(','); if(idx===0&&/거래처|제품|매입|단가/.test(ln))return; if(!(c[0]||'').trim()&&!(c[2]||'').trim())return; const o={}; DG_COLS.forEach((col,j)=>o[col.k]=(c[j]||'').trim()); rows.push(o); });
-  if(rows.length){ DANGA=rows.concat(DANGA); dgBuildSupplier(); renderDanga(); alert(rows.length+'개 불러왔어요. 확인 후 💾저장 누르세요.'); } else alert('불러올 행이 없어요. 형식 확인.');
+  lines.forEach((ln,idx)=>{ if(!ln.trim())return; const c=(ln.split('\t').length>1)?ln.split('\t'):ln.split(','); if(idx===0&&/거래처|제품|협정가|매입/.test(ln))return; if(!(c[0]||'').trim()&&!(c[2]||'').trim())return; const o={}; inputCols.forEach((col,j)=>o[col.k]=(c[j]||'').trim()); rows.push(o); });
+  if(rows.length){ DANGA=rows.concat(DANGA); dgBuildSupplier(); renderDanga(); alert(rows.length+'개 불러왔어요. 확인 후 💾저장 누르세요.'); } else alert('불러올 행이 없어요.');
 }
+function _dg2(n){ return String(n).padStart(2,'0'); }
 function dangaExport(){
-  const head=DG_COLS.map(c=>c.k).join(',');
+  const head=DG_COLS.map(c=>c.label||c.k).join(',');
   const esc=s=>'"'+String(s==null?'':s).replace(/"/g,'""')+'"';
-  const lines=DANGA.map(r=>DG_COLS.map(c=>esc(r[c.k])).join(','));
+  const lines=DANGA.map(r=>DG_COLS.map(c=>esc(c.calc?dgCalc(r,c.k):r[c.k])).join(','));
   const csv='﻿'+head+'\n'+lines.join('\n');
-  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download='거래처단가.csv'; a.click();
+  const d=new Date();
+  const fn='거래처단가'+String(d.getFullYear()).slice(2)+_dg2(d.getMonth()+1)+_dg2(d.getDate())+_dg2(d.getHours())+_dg2(d.getMinutes())+'.csv';
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download=fn; a.click();
 }
