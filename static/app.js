@@ -2096,7 +2096,7 @@ function dgExpandAll(v){ [...new Set(DANGA.map(r=>r['거래처']||'(미분류)')
 function renderDanga(){
   const th=document.getElementById('danga-thead'), tb=document.getElementById('danga-tbody'); if(!tb) return;
   const NC=DG_COLS.length+1;
-  th.innerHTML='<tr style="text-align:left">'+DG_COLS.map(c=>`<th style="padding:7px 6px;min-width:${c.w}px;${(c.n||c.pct)?'text-align:right':''};${c.calc?'background:#ecfdf5':''}">${c.label||c.k}${c.calc?' <span style="color:#059669;font-size:10px">자동</span>':''}</th>`).join('')+'<th></th></tr>';
+  th.innerHTML='<tr style="text-align:left">'+DG_COLS.map((c,ci)=>`<th style="padding:7px 6px;min-width:${c.w}px;position:relative;${(c.n||c.pct)?'text-align:right':''};${c.calc?'background:#ecfdf5':'background:#f3f4f6'}">${c.label||c.k}${c.calc?' <span style="color:#059669;font-size:10px">자동</span>':''}<span onmousedown="dgResizeStart(event,${ci})" title="드래그로 폭 조절" style="position:absolute;top:0;right:0;width:7px;height:100%;cursor:col-resize"></span></th>`).join('')+'<th></th></tr>';
   const sup=(document.getElementById('danga-supplier').value||''), q=(document.getElementById('danga-search').value||'').trim().toLowerCase();
   const groups={};
   DANGA.forEach((r,i)=>{
@@ -2132,7 +2132,30 @@ function renderDanga(){
   const unc=DANGA.filter(r=>(r._flag||[]).length&&(!sup||r['거래처']===sup)).length;
   const s=document.getElementById('danga-summary');
   if(s) s.innerHTML=`거래처 <b>${Object.keys(groups).length}</b>곳 · 총 <b>${DANGA.length}</b>개`+((q||sup)?` · 표시 ${shown}개`:'')+(unc?` · <span style="background:#fde68a;padding:1px 5px;border-radius:4px">⚠️ 확인필요 ${unc}개</span>`:'');
+  dgApplyFreeze();
 }
+// 열 고정(freeze): 헤더 실제 위치 측정해서 앞 N개 열을 sticky
+let dgFreeze=0;
+function dgSetFreeze(v){ dgFreeze=parseInt(v)||0; renderDanga(); }
+function dgApplyFreeze(){
+  const thead=document.getElementById('danga-thead'), tb=document.getElementById('danga-tbody'); if(!thead||!tb) return;
+  const ths=thead.querySelectorAll('th'); if(!ths.length) return;
+  const offs=[]; ths.forEach((t,i)=>{ offs[i]=t.offsetLeft; });
+  const apply=(cell,ci,bg,isHead)=>{
+    if(ci<dgFreeze){ cell.style.position='sticky'; cell.style.left=offs[ci]+'px'; cell.style.zIndex=isHead?7:4; if(bg)cell.style.background=bg; cell.style.boxShadow=(ci===dgFreeze-1)?'3px 0 5px rgba(0,0,0,.08)':''; }
+    else { if(cell.style.position==='sticky'){ cell.style.position=''; cell.style.left=''; cell.style.boxShadow=''; } }
+  };
+  ths.forEach((t,i)=>apply(t,i,(DG_COLS[i]&&DG_COLS[i].calc)?'#ecfdf5':'#f3f4f6',true));
+  tb.querySelectorAll('tr').forEach(tr=>{
+    const cells=tr.children; if(cells.length<DG_COLS.length) return;  // 그룹헤더(colspan) 제외
+    for(let i=0;i<dgFreeze;i++) apply(cells[i],i,(DG_COLS[i]&&DG_COLS[i].calc)?'#f7fdfb':'#fff',false);
+    for(let i=dgFreeze;i<DG_COLS.length;i++) apply(cells[i],i,'',false);
+  });
+}
+let _dgRz=null;
+function dgResizeStart(e,ci){ e.preventDefault(); e.stopPropagation(); _dgRz={ci,x:e.clientX,w:DG_COLS[ci].w}; document.body.style.userSelect='none'; document.addEventListener('mousemove',dgResizeMove); document.addEventListener('mouseup',dgResizeEnd); }
+function dgResizeMove(e){ if(_dgRz) DG_COLS[_dgRz.ci].w=Math.max(50,_dgRz.w+(e.clientX-_dgRz.x)); }
+function dgResizeEnd(){ document.removeEventListener('mousemove',dgResizeMove); document.removeEventListener('mouseup',dgResizeEnd); document.body.style.userSelect=''; if(_dgRz){ _dgRz=null; renderDanga(); } }
 function dangaEdit(i,k,v){
   if(!DANGA[i]) return; DANGA[i][k]=v;
   DG_COLS.forEach(c=>{ if(c.calc){ const el=document.getElementById(`dgc-${c.k}-${i}`); if(el){ const val=dgCalc(DANGA[i],c.k); el.textContent=c.pct?(val||''):_dgFmt(val); const neg=(typeof val==='number'&&val<0)||(c.pct&&parseFloat(val)<0); el.style.color=neg?'#dc2626':'#059669'; } } });

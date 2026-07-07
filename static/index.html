@@ -778,6 +778,12 @@
             <input id="danga-search" placeholder="🔍 제품·사이즈·카테고리 검색" oninput="renderDanga()" style="padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;width:200px" />
             <button onclick="dgExpandAll(false)" title="전체 접기" style="padding:8px 10px;border:1px solid #d1d5db;background:#fff;border-radius:8px;cursor:pointer;font-size:13px">▶ 접기</button>
             <button onclick="dgExpandAll(true)" title="전체 펼치기" style="padding:8px 10px;border:1px solid #d1d5db;background:#fff;border-radius:8px;cursor:pointer;font-size:13px">▼ 펼치기</button>
+            <select onchange="dgSetFreeze(this.value)" title="왼쪽 열 고정 (가로스크롤해도 안 밀림) · 헤더 오른쪽 끝을 드래그하면 폭 조절" style="padding:8px 8px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;cursor:pointer">
+              <option value="0">🧊 열고정: 안함</option>
+              <option value="1">거래처까지</option>
+              <option value="3">제품명까지</option>
+              <option value="6">사이즈까지</option>
+            </select>
             <button onclick="dangaAddRow()" style="padding:8px 12px;border:1px solid #d1d5db;background:#fff;border-radius:8px;cursor:pointer;font-size:13px">+ 행</button>
             <button onclick="dangaImport()" style="padding:8px 12px;border:0;background:#374151;color:#fff;border-radius:8px;cursor:pointer;font-size:13px">📋 붙여넣기</button>
             <button onclick="dangaDelSupplier()" style="padding:8px 12px;border:1px solid #fca5a5;background:#fff;color:#dc2626;border-radius:8px;cursor:pointer;font-size:13px">🗑 거래처삭제</button>
@@ -857,7 +863,7 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="/static/app.js?v=20260707h"></script>
+  <script src="/static/app.js?v=20260707i"></script>
   <!-- 마진/ROAS 계산기 (React 18 + htm, 빌드 없음) -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
