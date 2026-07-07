@@ -934,8 +934,12 @@ function renderReview(){
      const rev=+v.매출||0, cost=+v.원가||0, profit=(v.이익!=null?+v.이익:(rev-cost));
      const rate=rev?Math.round(profit/rev*100):0;
      const noCost=v.원가확인필요||cost===0;
-     const hi=(!noCost)&&(rate>=35);
-     if(noCost||hi) flagged.push({key:v.일자No,일자No:v.일자No,거래처:v.거래처,담당자:v.담당자,매출:rev,원가:cost,rate,품목:v.품목요약||'',사유:noCost?'원가 미입력':('고마진 '+rate+'%')});
+     let reasons=[];
+     if(noCost) reasons.push('원가 미입력');
+     else if(rate>=35) reasons.push('전표 고마진 '+rate+'%');
+     // 품목별 고마진(원가 입력된 품목만) — 전표 평균은 정상이어도 특정 품목이 35%↑면 검수
+     (v.품목상세||[]).forEach(it=>{const ic=+it.원가||0, im=+it.마진율||0; if(ic>0 && im>=35) reasons.push('품목 '+((it.품목||'').slice(0,12))+' '+im+'%');});
+     if(reasons.length) flagged.push({key:v.일자No,일자No:v.일자No,거래처:v.거래처,담당자:v.담당자,매출:rev,원가:cost,rate,품목:v.품목요약||'',사유:reasons.join(' · ')});
    });
  });
  const pending=flagged.filter(f=>!done.has(f.key));
