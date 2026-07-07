@@ -2114,3 +2114,64 @@ function dangaExport(){
   const fn='거래처단가'+String(d.getFullYear()).slice(2)+_dg2(d.getMonth()+1)+_dg2(d.getDate())+_dg2(d.getHours())+_dg2(d.getMinutes())+'.csv';
   const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download=fn; a.click();
 }
+
+// ── 단가 엑셀/CSV 업로드 (미리보기·검증·변경내역) ──
+function _dgCsvLine(line){ const out=[]; let cur='',q=false; for(let i=0;i<line.length;i++){ const ch=line[i]; if(q){ if(ch=='"'){ if(line[i+1]=='"'){cur+='"';i++;} else q=false; } else cur+=ch; } else { if(ch=='"') q=true; else if(ch==',') {out.push(cur);cur='';} else cur+=ch; } } out.push(cur); return out; }
+function dangaUpload(input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const isX=/\.xlsx?$/i.test(file.name); const rd=new FileReader();
+  rd.onload=e=>{ let grid=[];
+    try{
+      if(isX&&window.XLSX){ const wb=XLSX.read(e.target.result,{type:'array'}); grid=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:false}); }
+      else { const t=typeof e.target.result==='string'?e.target.result:new TextDecoder('utf-8').decode(e.target.result); grid=t.replace(/\r/g,'').replace(/^﻿/,'').split('\n').filter(l=>l.length).map(_dgCsvLine); }
+    }catch(err){ alert('파일 읽기 실패: '+(err.message||err)); return; }
+    dangaPreview(grid.map(r=>(r||[]).map(c=>String(c==null?'':c))));
+  };
+  if(isX) rd.readAsArrayBuffer(file); else rd.readAsText(file,'utf-8');
+  input.value='';
+}
+function _dgKey(r){ return ['거래처','제품명','옵션','모델명','사이즈'].map(k=>String(r[k]||'').trim()).join('|'); }
+let _dgUpload=null;
+function dangaPreview(grid){
+  if(!grid.length){ alert('빈 파일이에요.'); return; }
+  const header=grid[0].map(h=>String(h||'').trim());
+  const inputCols=DG_COLS.filter(c=>!c.calc);
+  const idx={}; inputCols.forEach(c=>{ const names=[c.k,c.label].filter(Boolean); idx[c.k]=header.findIndex(h=>names.includes(h)); });
+  const useHeader=Object.values(idx).some(v=>v>=0);
+  const rows=[]; const errors=[];
+  for(let i=1;i<grid.length;i++){
+    const cells=grid[i]; if(!cells.join('').trim()) continue;
+    const o={};
+    if(useHeader){ inputCols.forEach(c=>{ const p=idx[c.k]; o[c.k]=p>=0?String(cells[p]||'').trim():''; }); }
+    else { DG_COLS.forEach((c,j)=>{ if(!c.calc) o[c.k]=String(cells[j]||'').trim(); }); }
+    if(!o['거래처']&&!o['제품명']) continue;
+    const va=String(o['부가세']||'').trim();
+    if(va&&va!=='별도'&&va!=='포함') errors.push((i+1)+'행 부가세 "'+va+'" (별도/포함만 허용)');
+    const dc=o['업체할인율']; if(dc!==''&&dc!=null&&(isNaN(_dgN(dc))||_dgN(dc)<0||_dgN(dc)>100)) errors.push((i+1)+'행 업체할인율 "'+dc+'" (0~100 숫자)');
+    rows.push(o);
+  }
+  const map={}; DANGA.forEach((r,i)=>{ map[_dgKey(r)]=i; });
+  let nNew=0,nChg=0,nSame=0; const changes=[];
+  rows.forEach(o=>{
+    const k=_dgKey(o); const ei=map[k];
+    if(ei==null){ nNew++; o._new=true; }
+    else { const cur=DANGA[ei]; const diff=inputCols.filter(c=>String(cur[c.k]==null?'':cur[c.k])!==String(o[c.k]==null?'':o[c.k])); if(diff.length){ nChg++; o._ei=ei; if(changes.length<40) changes.push({nm:((o['제품명']||'')+' '+(o['옵션']||'')).trim(), fields:diff.map(c=>(c.label||c.k)+': '+(cur[c.k]||'∅')+'→'+(o[c.k]||'∅'))}); } else nSame++; }
+  });
+  _dgUpload=rows;
+  const body=document.getElementById('danga-preview-body');
+  body.innerHTML='<div style="margin-bottom:10px;font-size:15px">업로드 <b>'+rows.length+'</b>행 → <span style="color:#059669;font-weight:700">신규 '+nNew+'</span> · <span style="color:#d97706;font-weight:700">변경 '+nChg+'</span> · <span style="color:#6b7280">동일 '+nSame+'</span></div>'
+    +(errors.length?'<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 10px;margin-bottom:8px;color:#b91c1c;font-size:12px"><b>⚠️ 형식오류 '+errors.length+'건 (적용은 되지만 확인 권장):</b><br>'+errors.slice(0,12).map(_dgEsc).join('<br>')+(errors.length>12?'<br>…':'')+'</div>':'')
+    +(changes.length?'<div style="max-height:300px;overflow:auto;font-size:12px;border:1px solid #eee;border-radius:8px;padding:10px"><b>변경 내역:</b><br>'+changes.map(c=>'• <b>'+_dgEsc(c.nm)+'</b><br>&nbsp;&nbsp;'+c.fields.map(_dgEsc).join('<br>&nbsp;&nbsp;')).join('<br>')+'</div>':'<div style="color:#6b7280;font-size:12px">변경/신규 내역 없음</div>');
+  document.getElementById('danga-preview').style.display='flex';
+}
+function dangaApplyUpload(){
+  if(!_dgUpload) return;
+  const inputCols=DG_COLS.filter(c=>!c.calc);
+  _dgUpload.filter(o=>o._ei!=null).forEach(o=>{ inputCols.forEach(c=>{ DANGA[o._ei][c.k]=o[c.k]; }); });
+  const news=_dgUpload.filter(o=>o._new).map(o=>{ const n={}; inputCols.forEach(c=>n[c.k]=o[c.k]); return n; });
+  DANGA=news.concat(DANGA);
+  _dgUpload=null; document.getElementById('danga-preview').style.display='none';
+  dgBuildSupplier(); renderDanga();
+  alert('반영됐어요! 확인 후 💾저장을 눌러야 서버에 저장됩니다.');
+}
+function dangaCancelUpload(){ _dgUpload=null; document.getElementById('danga-preview').style.display='none'; }
