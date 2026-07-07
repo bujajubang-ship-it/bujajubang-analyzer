@@ -460,6 +460,7 @@ function load(){fetch('/jageum/api/data').then(r=>{if(r.status===401){location.h
     const pb=document.getElementById('period_bar');if(pb)pb.style.display='none';
     const tb=document.getElementById('tabbar');if(tb)tb.remove();
     document.getElementById('whoami').textContent='📈 '+(d._who||'영업사원')+' 님';
+    document.getElementById('period').textContent='영업 결산';
     showTab('sales');return;}
   chatWelcome();
   initPeriod()}).catch(()=>{period.textContent='데이터 없음'})}
