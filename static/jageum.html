@@ -303,11 +303,10 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
      <div id="vb_grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px"></div>
    </div>
    <div class="card" style="border-top:3px solid #16a34a">
-     <h2>✍️ 인생 노트 <span class="muted big">— 생각·방향·아이디어를 계속 적어요</span></h2>
-     <input id="life_title" class="search" placeholder="제목 (예: 올해의 방향, 새 사업 아이디어…)" style="margin-bottom:8px">
-     <textarea id="life_body" placeholder="오늘의 생각, 인생의 방향, 떠오른 아이디어를 자유롭게…" style="width:100%;min-height:120px;padding:12px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;resize:vertical"></textarea>
+     <h2>✍️ 인생 노트 <span class="muted big">— 메모하듯 막 적어요 (구글 킵처럼)</span></h2>
+     <textarea id="life_body" placeholder="지금 떠오른 생각·아이디어·감정을 그냥 막 적어요. 제목 필요 없어요…" style="width:100%;min-height:110px;padding:12px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;resize:vertical" onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey))lifeAdd()"></textarea>
      <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
-       <button onclick="lifeAdd()" style="background:#16a34a;color:#fff;border:none;border-radius:9px;padding:10px 22px;font-weight:700;cursor:pointer">+ 기록 남기기</button>
+       <button onclick="lifeAdd()" style="background:#16a34a;color:#fff;border:none;border-radius:9px;padding:10px 22px;font-weight:700;cursor:pointer">+ 메모 저장</button>
        <button onclick="lifeCompare()" style="background:#fff;color:#16a34a;border:1.5px solid #16a34a;border-radius:9px;padding:10px 18px;font-weight:700;cursor:pointer">🔗 과거와 비교</button>
      </div>
      <div id="life_compare" style="display:none;margin-top:12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px"></div>
@@ -879,16 +878,16 @@ function vbFiles(fl){
 }
 function vbRemove(i){if(!confirm('이 사진 삭제할까요?'))return;LIFE.비전보드.splice(i,1);saveLife();renderLife();}
 function lifeAdd(){
-  const t=document.getElementById('life_title').value.trim(), b=document.getElementById('life_body').value.trim();
-  if(!t&&!b){alert('내용을 적어주세요.');return;}
-  LIFE.글=LIFE.글||[]; LIFE.글.unshift({id:Date.now(),date:_ymd(),title:t||'(무제)',body:b});
-  document.getElementById('life_title').value='';document.getElementById('life_body').value='';
+  const b=document.getElementById('life_body').value.trim();
+  if(!b){alert('내용을 적어주세요.');return;}
+  LIFE.글=LIFE.글||[]; LIFE.글.unshift({id:Date.now(),date:_ymd(),title:'',body:b});
+  document.getElementById('life_body').value='';
   saveLife();renderLife();
 }
 function lifeDel(id){if(!confirm('이 기록 삭제할까요?'))return;LIFE.글=(LIFE.글||[]).filter(e=>e.id!==id);saveLife();renderLife();}
 function lifeCompare(){
-  const t=document.getElementById('life_title').value.trim(), b=document.getElementById('life_body').value.trim();
-  if(!t&&!b){alert('비교할 내용을 적어주세요.');return;}
+  const t='', b=document.getElementById('life_body').value.trim();
+  if(!b){alert('비교할 내용을 적어주세요.');return;}
   const box=document.getElementById('life_compare'); box.style.display='block';
   box.innerHTML='<span class="spin"></span> 과거 200편·생각의 지도와 비교 중… (Opus 분석, 10~25초)';
   fetch('/jageum/api/life/compare',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:t,text:b})}).then(r=>r.json()).then(d=>{
@@ -909,9 +908,12 @@ function renderLife(){
     +((LIFE.비전보드||[]).length?'':'<div class="muted" style="grid-column:1/-1;padding:10px">아직 사진이 없어요. 위에서 추가하세요.</div>');
   // 글
   const e=document.getElementById('life_entries');
-  if(e)e.innerHTML=(LIFE.글||[]).length?(LIFE.글||[]).map(en=>`<div style="border-left:3px solid #16a34a;background:#f6fdf8;border-radius:8px;padding:12px 14px;margin-bottom:10px">
-      <div style="display:flex;justify-content:space-between;gap:8px"><b style="font-size:15px">${esc(en.title)}</b><span class="muted" style="font-size:12px;white-space:nowrap">${en.date} <a onclick="lifeDel(${en.id})" style="cursor:pointer;color:#dc2626">삭제</a></span></div>
-      <div style="white-space:pre-wrap;margin-top:6px;font-size:14px;line-height:1.6">${esc(en.body)}</div></div>`).join(''):'<div class="muted" style="padding:8px">첫 기록을 남겨보세요. 매일 쌓이면 생각의 흐름이 보여요.</div>';
+  if(e)e.innerHTML=(LIFE.글||[]).length?(LIFE.글||[]).map(en=>{
+      const hasTitle=en.title&&en.title!=='(무제)';
+      return `<div style="border-left:3px solid #16a34a;background:#f6fdf8;border-radius:8px;padding:12px 14px;margin-bottom:10px">
+      <div style="display:flex;justify-content:${hasTitle?'space-between':'flex-end'};gap:8px;align-items:baseline">${hasTitle?`<b style="font-size:15px">${esc(en.title)}</b>`:''}<span class="muted" style="font-size:12px;white-space:nowrap">${en.date} <a onclick="lifeDel(${en.id})" style="cursor:pointer;color:#dc2626">삭제</a></span></div>
+      <div style="white-space:pre-wrap;margin-top:${hasTitle?'6px':'0'};font-size:14px;line-height:1.6">${esc(en.body)}</div></div>`;
+    }).join(''):'<div class="muted" style="padding:8px">메모하듯 막 적어보세요. 매일 쌓이면 생각의 흐름이 보여요.</div>';
   renderPast();
   lcRender();
 }
