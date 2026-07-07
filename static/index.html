@@ -799,7 +799,7 @@
       </div>
       <div id="site-chat-log" style="max-height:420px;overflow:auto;border:1px solid #eef0f3;border-radius:10px;padding:12px;background:#fafbfc;margin:12px 0"></div>
       <div style="display:flex;gap:8px">
-        <textarea id="site-chat-in" placeholder="예: 소싱 추천 탭에 마진 계산기를 넣고 싶어요 / 키워드 분석 결과를 엑셀로 받고 싶어요…" style="flex:1;min-height:54px;padding:11px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;resize:vertical" onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey))siteChatSend()"></textarea>
+        <textarea id="site-chat-in" placeholder="예: 소싱 추천 탭에 마진 계산기를 넣고 싶어요 / 키워드 분석 결과를 엑셀로 받고 싶어요…" style="flex:1;min-height:54px;max-height:220px;padding:11px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;resize:vertical;overflow-y:auto" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,220)+'px'" onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey))siteChatSend()"></textarea>
         <button onclick="siteChatSend()" id="site-chat-btn" style="background:#D70010;color:#fff;border:none;border-radius:10px;padding:0 20px;font-weight:700;cursor:pointer;white-space:nowrap">보내기</button>
       </div>
       <div style="font-size:12px;color:#9ca3af;margin-top:6px">💡 개발이 필요한 안이 정리되면 <b>대표 결재요청</b>으로 올라가요. (Ctrl/⌘+Enter로 전송)</div>
@@ -819,7 +819,7 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-  <script src="/static/app.js?v=20260706d"></script>
+  <script src="/static/app.js?v=20260707a"></script>
   <!-- 마진/ROAS 계산기 (React 18 + htm, 빌드 없음) -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>

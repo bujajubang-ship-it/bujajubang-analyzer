@@ -1718,6 +1718,11 @@ async function saveTrackerItem(id) {
     const el = document.getElementById(`trk-f-${f.key}-${id}`);
     if (el) payload[f.key] = el.value;
   });
+  // 로켓 파이프라인: 기대매출은 수동입력 없이 예상총마진 자동계산으로 저장
+  if (it.pipeline === 'rocket') {
+    const per = _trkNum(payload.initialPrice) * 0.881 - _trkNum(payload.unitPrice) * 350;
+    payload.expectedRevenue = String(Math.round(per * _trkNum(payload.orderQty)));
+  }
   await fetch(`/api/tracker/${id}`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -1785,11 +1790,32 @@ function fieldSummary(it) {
   return (chips.length || links.length) ? `<div class="trk-summary">${links.join('')}${chips.join('')}</div>` : '';
 }
 
+function _trkMarginHtml(price, unit, qty) {
+  const p = _trkNum(price), u = _trkNum(unit), q = _trkNum(qty);
+  const per = Math.round(p * 0.881 - u * 350);
+  const tot = Math.round(per * q);
+  const pc = per >= 0 ? '#059669' : '#dc2626', tc = tot >= 0 ? '#059669' : '#dc2626';
+  return `개당마진 <b style="color:${pc}">${per.toLocaleString('ko-KR')}원</b> = (판매가 × 0.881) − (단가 × <b>350</b>)<br>`
+       + `예상총마진 <b style="color:${tc}">${tot.toLocaleString('ko-KR')}원</b> = 개당마진 × 발주량${q ? ' (' + q + '개)' : ''}<br>`
+       + `<span style="color:#9ca3af;font-size:11px">※ 350 = 환율+판관비 상수 · 0.881 = 쿠팡 정산비율</span>`;
+}
+function trkCalcMargin(id) {
+  const g = k => { const e = document.getElementById(`trk-f-${k}-${id}`); return e ? e.value : ''; };
+  const box = document.getElementById(`trk-margin-${id}`);
+  if (box) box.innerHTML = _trkMarginHtml(g('initialPrice'), g('unitPrice'), g('orderQty'));
+}
 function editForm(id, it) {
+  const isRocket = it.pipeline === 'rocket';
+  const calcKeys = { initialPrice: 1, unitPrice: 1, orderQty: 1 };
   const fields = ITEM_FIELDS.map(f => {
+    if (isRocket && f.key === 'expectedRevenue') {
+      return `<label class="trk-f full"><span>마진 (자동계산)</span>`
+        + `<div id="trk-margin-${id}" style="padding:9px 11px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-size:13px;line-height:1.7">${_trkMarginHtml(it.initialPrice, it.unitPrice, it.orderQty)}</div></label>`;
+    }
+    const oninp = (isRocket && calcKeys[f.key]) ? ` oninput="trkCalcMargin('${id}')"` : '';
     const input = f.type === 'textarea'
       ? `<textarea id="trk-f-${f.key}-${id}" rows="2" placeholder="${f.ph}">${_trkEsc(it[f.key])}</textarea>`
-      : `<input id="trk-f-${f.key}-${id}" type="${f.type === 'number' ? 'number' : 'text'}" value="${_trkAttr(it[f.key])}" placeholder="${f.ph}" />`;
+      : `<input id="trk-f-${f.key}-${id}" type="${f.type === 'number' ? 'number' : 'text'}" value="${_trkAttr(it[f.key])}" placeholder="${f.ph}"${oninp} />`;
     return `<label class="trk-f${f.type === 'textarea' ? ' full' : ''}"><span>${f.label}</span>${input}</label>`;
   }).join('');
   return `<div class="trk-edit">
