@@ -91,17 +91,25 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
        <label class="sl_f">거래처<input id="sl_cust" placeholder="예: 울산솥집"></label>
        <label class="sl_f">담당자<select id="sl_owner"></select></label>
        <label class="sl_f">상태<select id="sl_stat" onchange="slFormMode()"><option value="진행중">진행중</option><option value="마감">마감</option></select></label>
-       <label class="sl_f">총 견적<input type="number" id="sl_quote" placeholder="0"></label>
-       <label class="sl_f">계약금<input type="number" id="sl_deposit" placeholder="0"></label>
-       <label class="sl_f">중도금<input type="number" id="sl_mid" placeholder="0"></label>
-       <label class="sl_f">미수<input type="number" id="sl_unpaid" placeholder="0"></label>
+       <label class="sl_f">총 견적<input type="number" id="sl_quote" placeholder="0" oninput="slRecash()"></label>
+       <label class="sl_f">계약금 <span style="color:#2563eb;font-weight:400">(입금연결)</span><input id="sl_deposit" readonly style="background:#eff6ff" placeholder="0"></label>
+       <label class="sl_f">중도금 <span style="color:#2563eb;font-weight:400">(입금연결)</span><input id="sl_mid" readonly style="background:#eff6ff" placeholder="0"></label>
+       <label class="sl_f">미수 <span style="color:#9ca3af;font-weight:400">(자동)</span><input id="sl_unpaid" readonly style="background:#f3f4f6" placeholder="0"></label>
        <label class="sl_f slm">매출<input type="number" id="sl_rev" placeholder="0" oninput="slCalc()"></label>
        <label class="sl_f slm">원가<input type="number" id="sl_cost" placeholder="0" oninput="slCalc()"></label>
        <label class="sl_f slm">판관비<input type="number" id="sl_sga" placeholder="0" oninput="slCalc()"></label>
        <label class="sl_f slm">영업이익<input id="sl_profit" readonly style="background:#f3f4f6"></label>
        <label class="sl_f slm">영업이익률<input id="sl_rate" readonly style="background:#f3f4f6"></label>
      </div>
-     <div style="margin-top:6px;font-size:12px;color:#9ca3af">✔ 진행중=현금(견적·계약금·중도금·미수) 관리 · 마감=매출·원가로 영업이익 확정 (마감 시 매출/원가 칸 입력)</div>
+     <!-- 입금 연결 -->
+     <div style="margin-top:12px;border:1px solid #dbeafe;background:#f8fbff;border-radius:10px;padding:12px">
+       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
+         <b style="font-size:14px;color:#1e40af">💰 입금 연결 <span style="font-weight:400;color:#9ca3af;font-size:12px">— 실제 입금된 것만 클릭해서 계약금/중도금으로</span></b>
+         <button onclick="openDeposits()" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:600;cursor:pointer;font-size:13px">+ 입금 내역에서 연결</button>
+       </div>
+       <div id="sl_links" style="margin-top:8px;font-size:13px;color:#9ca3af">연결된 입금이 없어요.</div>
+     </div>
+     <div style="margin-top:6px;font-size:12px;color:#9ca3af">✔ 진행중=현금(계약금·중도금은 실제 입금 연결) · 미수=총견적−받은금액 자동 · 마감=매출·원가로 영업이익 확정</div>
      <div style="margin-top:10px;display:flex;gap:8px">
        <button onclick="slSave()" id="sl_savebtn" style="background:#b91c1c;color:#fff;border:none;border-radius:9px;padding:10px 22px;font-weight:700;cursor:pointer">저장</button>
        <button onclick="slReset()" style="background:#fff;color:#374151;border:1.5px solid #e5e7eb;border-radius:9px;padding:10px 16px;font-weight:600;cursor:pointer">초기화</button>
@@ -112,6 +120,18 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    <div class="card" style="border-top:3px solid #b91c1c">
      <h2 style="margin:0 0 6px">📋 딜 목록 <span id="sl_count" class="muted big"></span></h2>
      <div style="overflow-x:auto"><table id="sl_table" style="font-size:13px"></table></div>
+   </div>
+
+   <!-- 입금 선택 모달 -->
+   <div id="dep_modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:120;align-items:flex-start;justify-content:center;overflow:auto;padding:24px 10px">
+     <div style="background:#fff;border-radius:14px;max-width:820px;width:100%;padding:18px">
+       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+         <h2 style="margin:0;font-size:16px">💰 입금 내역에서 연결 <span class="muted big">— 실제 입금만 (자금일보 기준)</span></h2>
+         <button onclick="document.getElementById('dep_modal').style.display='none'" style="border:none;background:#f3f4f6;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:15px">✕</button>
+       </div>
+       <input id="dep_search" placeholder="거래처·적요·담당자 검색" oninput="renderDeposits()" style="width:100%;padding:9px 12px;border:2px solid #e5e7eb;border-radius:9px;font-size:13px;margin-bottom:8px">
+       <div style="max-height:52vh;overflow:auto"><table id="dep_table" style="font-size:13px"></table></div>
+     </div>
    </div>
  </div>
  <style>.sl_f{display:flex;flex-direction:column;font-size:12px;color:#6b7280;font-weight:600;gap:3px}.sl_f input,.sl_f select{padding:8px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;color:#1f2937}.slm input{border-color:#fecaca}</style>
@@ -1391,8 +1411,44 @@ function apprAct(id,action){
   .then(()=>loadApprovals());
 }
 // ===== 📈 영업 결산 =====
-let SALES=[];
-function _n(id){return +(document.getElementById(id).value||0)||0;}
+let SALES=[], DEPOSITS=[], _slLinks=[];
+function _n(id){return +((document.getElementById(id).value||'0').toString().replace(/,/g,''))||0;}
+function slRecash(){
+  const dep=_slLinks.filter(l=>l.종류==='계약금').reduce((s,l)=>s+(+l.금액||0),0);
+  const mid=_slLinks.filter(l=>l.종류==='중도금').reduce((s,l)=>s+(+l.금액||0),0);
+  document.getElementById('sl_deposit').value=dep?dep.toLocaleString():'';
+  document.getElementById('sl_mid').value=mid?mid.toLocaleString():'';
+  const q=_n('sl_quote');document.getElementById('sl_unpaid').value=(q||dep||mid)?(q-dep-mid).toLocaleString():'';
+}
+function renderLinks(){
+  const el=document.getElementById('sl_links');if(!el)return;
+  el.innerHTML=_slLinks.length?_slLinks.map((l,i)=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#fff;border:1px solid #dbeafe;border-radius:7px;margin-bottom:5px;font-size:13px">
+    <span style="font-weight:700;color:${l.종류==='계약금'?'#2563eb':'#0891b2'};white-space:nowrap">${l.종류}</span>
+    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.date} · ${(l.거래처||'').replace(/</g,'&lt;')}${l.적요?(' · '+l.적요):''}</span>
+    <b style="white-space:nowrap">${won(+l.금액||0)}</b>
+    <a onclick="_slLinks.splice(${i},1);renderLinks();renderDeposits()" style="cursor:pointer;color:#dc2626;white-space:nowrap">해제</a></div>`).join(''):'연결된 입금이 없어요.';
+  slRecash();
+}
+function openDeposits(){
+  document.getElementById('dep_modal').style.display='flex';
+  document.getElementById('dep_table').innerHTML='<tr><td style="padding:12px;color:#9ca3af">불러오는 중…</td></tr>';
+  fetch('/jageum/api/deposits').then(r=>r.json()).then(d=>{DEPOSITS=d.deposits||[];renderDeposits();}).catch(()=>{document.getElementById('dep_table').innerHTML='<tr><td style="padding:12px;color:#dc2626">입금 내역을 불러오지 못했어요.</td></tr>';});
+}
+function renderDeposits(){
+  if(!document.getElementById('dep_table'))return;
+  const q=(document.getElementById('dep_search').value||'').toLowerCase();
+  const mine=new Set(_slLinks.map(l=>l.key));
+  const rows=DEPOSITS.filter(x=>!q||((x.거래처+x.적요+x.프로젝트).toLowerCase().includes(q)));
+  const th='<thead><tr><th>일자</th><th>거래처/적요</th><th>담당(프로젝트)</th><th class="num">금액</th><th>연결</th></tr></thead>';
+  const tb=rows.map(x=>{const idx=DEPOSITS.indexOf(x);const done=x.linked||mine.has(x.key);
+    const act=done?`<span class="muted" style="font-size:12px">✓ ${x.linked?((x.linked.deal||'')+' '+(x.linked.종류||'')):'연결됨'}</span>`
+      :`<button onclick="linkDeposit(${idx},'계약금')" style="background:#dbeafe;color:#1e40af;border:none;border-radius:6px;padding:4px 9px;cursor:pointer;font-size:12px;font-weight:600">계약금</button> <button onclick="linkDeposit(${idx},'중도금')" style="background:#cffafe;color:#0e7490;border:none;border-radius:6px;padding:4px 9px;cursor:pointer;font-size:12px;font-weight:600">중도금</button>`;
+    return `<tr><td style="white-space:nowrap">${x.date}</td><td>${(x.거래처||'').replace(/</g,'&lt;')}${x.적요?('<br><span class="muted" style="font-size:11px">'+x.적요.replace(/</g,'&lt;')+'</span>'):''}</td><td style="font-size:12px">${(x.프로젝트||'').replace(/</g,'&lt;')}</td><td class="num"><b>${won(x.금액)}</b></td><td style="white-space:nowrap">${act}</td></tr>`;}).join('');
+  document.getElementById('dep_table').innerHTML=th+'<tbody>'+(tb||'<tr><td colspan=5 style="text-align:center;color:#9ca3af;padding:12px">입금 내역이 없어요.</td></tr>')+'</tbody>';
+}
+function linkDeposit(idx,종류){const x=DEPOSITS[idx];if(!x)return;
+  if(_slLinks.some(l=>l.key===x.key)){alert('이미 연결된 입금이에요.');return;}
+  _slLinks.push({key:x.key,date:x.date,거래처:x.거래처,적요:x.적요,금액:x.금액,종류});renderLinks();renderDeposits();}
 function loadSales(){
   fetch('/jageum/api/sales').then(r=>r.json()).then(d=>{
     SALES=d.deals||[];
@@ -1445,16 +1501,18 @@ function slCalc(){const rev=_n('sl_rev'),c=_n('sl_cost'),s=_n('sl_sga');const pf
   document.getElementById('sl_profit').value=pf.toLocaleString();document.getElementById('sl_rate').value=rev?(Math.round(pf/rev*1000)/10)+'%':'-';}
 function slFormMode(){const st=document.getElementById('sl_stat').value;document.querySelectorAll('.slm').forEach(e=>e.style.opacity=(st==='마감')?'1':'0.45');}
 function slReset(){['sl_id','sl_cust','sl_quote','sl_deposit','sl_mid','sl_unpaid','sl_rev','sl_cost','sl_sga','sl_profit','sl_rate'].forEach(id=>document.getElementById(id).value='');
-  document.getElementById('sl_date').value=_ymd();document.getElementById('sl_stat').value='진행중';document.getElementById('sl_form_title').textContent='딜 추가';slFormMode();}
+  document.getElementById('sl_date').value=_ymd();document.getElementById('sl_stat').value='진행중';document.getElementById('sl_form_title').textContent='딜 추가';_slLinks=[];renderLinks();slFormMode();}
 function slEdit(id){const x=SALES.find(d=>d.id===id);if(!x)return;
   document.getElementById('sl_id').value=x.id;document.getElementById('sl_date').value=x.date||_ymd();document.getElementById('sl_cust').value=x.거래처||'';
   document.getElementById('sl_owner').value=x.담당자||'';document.getElementById('sl_stat').value=x.status||'진행중';
-  document.getElementById('sl_quote').value=x.총견적||'';document.getElementById('sl_deposit').value=x.계약금||'';document.getElementById('sl_mid').value=x.중도금||'';
-  document.getElementById('sl_unpaid').value=x.미수||'';document.getElementById('sl_rev').value=x.매출||'';document.getElementById('sl_cost').value=x.원가||'';document.getElementById('sl_sga').value=x.판관비||'';
-  slCalc();slFormMode();document.getElementById('sl_form_title').textContent='딜 수정 #'+x.id;window.scrollTo(0,0);}
+  document.getElementById('sl_quote').value=x.총견적||'';document.getElementById('sl_rev').value=x.매출||'';document.getElementById('sl_cost').value=x.원가||'';document.getElementById('sl_sga').value=x.판관비||'';
+  _slLinks=(x.입금연결||[]).slice();renderLinks();slCalc();slFormMode();document.getElementById('sl_form_title').textContent='딜 수정 #'+x.id;window.scrollTo(0,0);}
 function slSave(){const cust=document.getElementById('sl_cust').value.trim();if(!cust){alert('거래처를 입력하세요.');return;}
+  const dep=_slLinks.filter(l=>l.종류==='계약금').reduce((s,l)=>s+(+l.금액||0),0);
+  const mid=_slLinks.filter(l=>l.종류==='중도금').reduce((s,l)=>s+(+l.금액||0),0);
+  const quote=_n('sl_quote');
   const deal={date:document.getElementById('sl_date').value,거래처:cust,담당자:document.getElementById('sl_owner').value,status:document.getElementById('sl_stat').value,
-    총견적:_n('sl_quote'),계약금:_n('sl_deposit'),중도금:_n('sl_mid'),미수:_n('sl_unpaid'),매출:_n('sl_rev'),원가:_n('sl_cost'),판관비:_n('sl_sga')};
+    총견적:quote,계약금:dep,중도금:mid,미수:quote-dep-mid,입금연결:_slLinks,매출:_n('sl_rev'),원가:_n('sl_cost'),판관비:_n('sl_sga')};
   const id=document.getElementById('sl_id').value;if(id)deal.id=+id;
   document.getElementById('sl_savebtn').disabled=true;
   fetch('/jageum/api/sales',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({deal})}).then(r=>r.json()).then(()=>{document.getElementById('sl_savebtn').disabled=false;slReset();loadSales();}).catch(()=>{document.getElementById('sl_savebtn').disabled=false;alert('저장 실패');});}

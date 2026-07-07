@@ -996,6 +996,29 @@ async def sales_delete(request: Request):
     _save_deals(items)
     return JSONResponse({"ok": True})
 
+@app.get("/jageum/api/deposits")
+def sales_deposits(request: Request):
+    # 실제 입금 내역(자금일보 자금의증가) — 영업이 딜에 계약금/중도금으로 연결
+    if not _sales_auth(request):
+        return _AUTH401
+    d = json.loads(JAGEUM_FILE.read_text(encoding="utf-8")) if JAGEUM_FILE.exists() else {}
+    inc = d.get("자금의증가", [])
+    # 이미 딜에 연결된 입금 key 집합
+    linked = {}
+    for deal in _load_deals():
+        for L in (deal.get("입금연결") or []):
+            linked[L.get("key")] = {"deal": deal.get("거래처", ""), "종류": L.get("종류", "")}
+    out = []
+    for r in inc:
+        amt = r.get("금액") or 0
+        if not amt or amt <= 0:
+            continue
+        key = f"{r.get('일자','')}|{r.get('거래처명','')}|{(r.get('적요') or '')}|{amt}"
+        out.append({"key": key, "date": r.get("일자", ""), "거래처": r.get("거래처명", ""),
+                    "적요": r.get("적요", "") or "", "금액": amt, "프로젝트": r.get("프로젝트명", "") or "",
+                    "linked": linked.get(key)})
+    return JSONResponse({"deposits": out})
+
 @app.post("/jageum/api/ingest")
 async def jageum_ingest(request: Request):
     if request.headers.get("x-ingest-secret", "") != JAGEUM_INGEST_SECRET:
