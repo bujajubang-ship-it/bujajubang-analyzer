@@ -108,6 +108,13 @@ async def root(request: Request):
 async def api_me(request: Request):
     return JSONResponse({"role": _jageum_role(request)})
 
+@app.get("/danga")
+def danga_view_page(request: Request):
+    # 단가/마진 열람 — 로그인한 전 직원(영업팀 포함) 접근 가능
+    if not _jageum_role(request):
+        return FileResponse("static/site_login.html", headers={"Cache-Control": "no-store"})
+    return FileResponse("static/danga_view.html", headers={"Cache-Control": "no-store"})
+
 
 @app.get("/api/health")
 async def health():

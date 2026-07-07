@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ko"><head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>거래처 단가 / 마진 — 부자주방</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Malgun Gothic',sans-serif;background:#f3f4f6;color:#111}
+  .top{background:#fff;border-bottom:1px solid #e5e7eb;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .top h1{margin:0;font-size:18px}
+  .back{background:#1f2937;color:#fff;text-decoration:none;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:600}
+  .wrap{max-width:1500px;margin:14px auto;padding:0 14px}
+  .card{background:#fff;border:1px solid #e5e7eb;border-top:3px solid #D70010;border-radius:14px;padding:14px 16px}
+  select,input{padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:14px}
+  table{width:100%;border-collapse:collapse;font-size:13px;white-space:nowrap}
+  th{background:#f3f4f6;padding:8px 6px;text-align:left;position:sticky;top:0;z-index:1}
+  th.calc{background:#ecfdf5}
+  td{padding:5px 6px;border-top:1px solid #f0f0f0}
+  .grp td{background:#eef2ff;font-weight:700;cursor:pointer;border-top:2px solid #c7d2fe;padding:8px 12px}
+  .r{text-align:right}
+  .flag{background:#fde68a}
+</style></head><body>
+<div class="top">
+  <h1>💰 거래처 단가 / 마진 <span style="font-size:13px;color:#9ca3af;font-weight:400">— 전 직원 열람용 (읽기 전용)</span></h1>
+  <a class="back" href="/jageum">← 자금 대시보드</a>
+</div>
+<div class="wrap"><div class="card">
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+    <select id="sup" onchange="render()"></select>
+    <input id="q" placeholder="🔍 제품·사이즈·카테고리 검색" oninput="render()" style="width:240px"/>
+    <button onclick="expandAll(true)" style="padding:8px 10px;border:1px solid #d1d5db;background:#fff;border-radius:8px;cursor:pointer">▼ 펼치기</button>
+    <button onclick="expandAll(false)" style="padding:8px 10px;border:1px solid #d1d5db;background:#fff;border-radius:8px;cursor:pointer">▶ 접기</button>
+    <span id="sum" style="font-size:13px;color:#374151"></span>
+  </div>
+  <div style="overflow:auto;max-height:78vh;border:1px solid #eef0f3;border-radius:10px">
+    <table><thead id="thead"></thead><tbody id="tbody"></tbody></table>
+  </div>
+</div></div>
+<script>
+var DATA=[], COLLAPSED={};
+var COLS=[
+ {k:'거래처'},{k:'카테고리'},{k:'제품명'},{k:'옵션'},{k:'모델명'},{k:'사이즈'},
+ {k:'협정가',n:1},{k:'부가세'},{k:'업체할인율',n:1},
+ {k:'매입가',n:1,calc:1},{k:'매입배송비',n:1},
+ {k:'N판매가',n:1},{k:'N고객배송비',n:1,label:'고객부담배송비'},{k:'N마진',n:1,calc:1},{k:'N마진율',calc:1,pct:1},
+ {k:'C판매가',n:1},{k:'C고객배송비',n:1,label:'고객부담배송비'},{k:'C마진',n:1,calc:1},{k:'C마진율',calc:1,pct:1},
+ {k:'재고',n:1}
+];
+function N(v){var n=parseFloat(String(v==null?'':v).replace(/[^0-9.\-]/g,''));return isFinite(n)?n:0;}
+function fmt(v){if(v===''||v==null)return '';if(typeof v==='number')return v.toLocaleString('ko-KR');var s=String(v);if(/%/.test(s))return s;var n=parseFloat(s.replace(/,/g,''));return isNaN(n)?s:n.toLocaleString('ko-KR');}
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;');}
+function maeip(r){var h=N(r['협정가']);if(!h)return '';var d=N(r['업체할인율']);var v=(String(r['부가세']||'').indexOf('별도')>=0)?1.1:1;return Math.round(h*v*(1-d/100));}
+function margin(r,pk,ck){var c=maeip(r);if(c==='')return '';var sp=N(r[pk]);if(!sp)return '';return Math.round((sp+N(r[ck]))*0.94-c-N(r['매입배송비']));}
+function calc(r,k){
+ if(k==='매입가')return maeip(r);
+ if(k==='N마진')return margin(r,'N판매가','N고객배송비');
+ if(k==='C마진')return margin(r,'C판매가','C고객배송비');
+ if(k==='N마진율'){var s=N(r['N판매가']),m=margin(r,'N판매가','N고객배송비');return (!s||m==='')?'':(m/s*100).toFixed(2)+'%';}
+ if(k==='C마진율'){var s=N(r['C판매가']),m=margin(r,'C판매가','C고객배송비');return (!s||m==='')?'':(m/s*100).toFixed(2)+'%';}
+ return '';
+}
+function load(){fetch('/api/danga').then(function(r){return r.json();}).then(function(d){DATA=Array.isArray(d)?d:[];buildSup();render();}).catch(function(){});}
+function buildSup(){
+ var sel=document.getElementById('sup');var s=[];var seen={};
+ DATA.forEach(function(r){var g=r['거래처'];if(g&&!seen[g]){seen[g]=1;s.push(g);}});s.sort();
+ sel.innerHTML='<option value="">전체 거래처 ('+DATA.length+')</option>'+s.map(function(x){var c=DATA.filter(function(r){return r['거래처']===x;}).length;return '<option value="'+esc(x)+'">'+esc(x)+' ('+c+')</option>';}).join('');
+}
+function toggle(g){COLLAPSED[g]=!(COLLAPSED[g]===false?false:true);COLLAPSED[g]=!COLLAPSED[g]?true:COLLAPSED[g];render();}
+function tgl(g){COLLAPSED[g]=(COLLAPSED[g]===false);render();}
+function expandAll(v){var seen={};DATA.forEach(function(r){var g=r['거래처']||'(미분류)';seen[g]=1;});Object.keys(seen).forEach(function(g){COLLAPSED[g]=!v;});render();}
+function render(){
+ var thead=document.getElementById('thead'),tb=document.getElementById('tbody');
+ thead.innerHTML='<tr>'+COLS.map(function(c){return '<th class="'+(c.calc?'calc':'')+'" style="'+((c.n||c.pct)?'text-align:right;':'')+'">'+(c.label||c.k)+(c.calc?' <span style=\"color:#059669;font-size:10px\">자동</span>':'')+'</th>';}).join('')+'</tr>';
+ var sup=document.getElementById('sup').value,q=(document.getElementById('q').value||'').trim().toLowerCase();
+ var groups={};
+ DATA.forEach(function(r){
+  if(sup&&r['거래처']!==sup)return;
+  var hay=((r['제품명']||'')+' '+(r['카테고리']||'')+' '+(r['사이즈']||'')+' '+(r['옵션']||'')+' '+(r['모델명']||'')+' '+(r['거래처']||'')).toLowerCase();
+  if(q&&hay.indexOf(q)<0)return;
+  var g=r['거래처']||'(미분류)';(groups[g]=groups[g]||[]).push(r);
+ });
+ var html='',shown=0,keys=Object.keys(groups).sort();
+ keys.forEach(function(g){
+  var items=groups[g];var collapsed=q?false:(sup===g?false:(COLLAPSED[g]!==false));
+  html+='<tr class="grp" onclick="tgl(\''+esc(g).replace(/'/g,"")+'\')"><td colspan="'+COLS.length+'">'+(collapsed?'▶':'▼')+' '+esc(g)+' <span style="color:#6b7280;font-weight:400;font-size:12px">('+items.length+'개)</span></td></tr>';
+  if(collapsed)return;
+  items.forEach(function(r){
+   shown++;var flags=r._flag||[];
+   html+='<tr>'+COLS.map(function(c){
+    if(c.calc){var v=calc(r,c.k);var neg=(typeof v==='number'&&v<0)||(c.pct&&parseFloat(v)<0);return '<td class="r" style="background:#f7fdfb;color:'+(neg?'#dc2626':'#059669')+';font-weight:600">'+(c.pct?(v||''):fmt(v))+'</td>';}
+    var y=flags.indexOf(c.k)>=0;return '<td class="'+(c.n?'r':'')+(y?' flag':'')+'">'+(c.n?fmt(r[c.k]):esc(r[c.k]))+'</td>';
+   }).join('')+'</tr>';
+  });
+ });
+ tb.innerHTML=html;
+ document.getElementById('sum').innerHTML='거래처 <b>'+keys.length+'</b>곳 · 총 <b>'+DATA.length+'</b>개'+((q||sup)?' · 표시 '+shown+'개':'');
+}
+load();
+</script>
+</body></html>
