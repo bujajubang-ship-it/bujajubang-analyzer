@@ -2300,6 +2300,29 @@ let MZ_RESULTS=[];
 function _mzNorm(s){ return String(s==null?'':s).toLowerCase().replace(/[\s\-_()[\]./]/g,''); }
 // 모델코드 추출: 영문+숫자 조합 토큰(길이4+) — 예 JWB-330S→JWB330S, GCS-200N, WDS8000S
 function _mzCodes(s){ const out=[]; const t=String(s==null?'':s).toUpperCase().match(/[A-Z0-9][A-Z0-9\-]*/g)||[]; t.forEach(function(x){ const c=x.replace(/[^A-Z0-9]/g,''); if(c.length>=4&&/[A-Z]/.test(c)&&/\d/.test(c)) out.push(c); }); return out; }
+// IDF 가중 유사도 매칭 (흔한 단어는 약하게, 특징적 단어·코드는 강하게)
+function _mzTok(s){ return String(s==null?'':s).toLowerCase().split(/[^0-9a-z가-힣]+/).filter(t=>t.length>=2); }
+let _mzIdx=null;
+function mzBuildIndex(){
+  const inv={}, df={}, rows=[];
+  DANGA.forEach((d,i)=>{
+    const tset={}; _mzTok((d['제품명']||'')+' '+(d['옵션']||'')+' '+(d['사이즈']||'')).forEach(t=>tset[t]=1);
+    rows.push(d);
+    Object.keys(tset).forEach(t=>{ df[t]=(df[t]||0)+1; (inv[t]=inv[t]||[]).push(i); });
+    _mzCodes((d['모델명']||'')+' '+(d['옵션']||'')).forEach(c=>{ (inv['#'+c]=inv['#'+c]||[]).push(i); });
+  });
+  _mzIdx={inv,df,rows,N:DANGA.length};
+}
+function mzMatch(name){
+  if(!_mzIdx||_mzIdx.N!==DANGA.length) mzBuildIndex();
+  const cand={}, seen={};
+  _mzTok(name).forEach(t=>{ if(seen[t])return; seen[t]=1; const w=t.length*Math.log(1+_mzIdx.N/(1+(_mzIdx.df[t]||0))); (_mzIdx.inv[t]||[]).forEach(i=>{ cand[i]=(cand[i]||0)+w; }); });
+  _mzCodes(name).forEach(c=>{ (_mzIdx.inv['#'+c]||[]).forEach(i=>{ cand[i]=(cand[i]||0)+1000; }); });
+  let bi=-1, bs=0; for(const i in cand){ if(cand[i]>bs){ bs=cand[i]; bi=i; } }
+  if(bi<0) return {row:null,tier:''};
+  const tier = bs>=1000?'정확' : bs>=22?'추정' : bs>=11?'낮음' : '';
+  return tier?{row:_mzIdx.rows[bi],tier:tier}:{row:null,tier:''};
+}
 function mzUpload(input){
   const file=input.files&&input.files[0]; if(!file) return;
   const isX=/\.xlsx?$/i.test(file.name); const rd=new FileReader();
@@ -2332,13 +2355,11 @@ function mzAnalyze(grid){
     const row=grid[i]; if(!row||!row.join('').trim()) continue;
     const pname=(row[ci.name]||'').trim(); const price=_dgN(row[ci.price]); const pmodel=(ci.model>=0?(row[ci.model]||''):'').trim();
     if(!pname&&!price) continue;
-    // 모델코드 기반 정확 매칭 (헐거운 이름 substring 매칭은 오매칭이 심해서 제거)
-    let match=null;
-    const pcodes=_mzCodes(pname+' '+pmodel);
-    if(pcodes.length){ match=DANGA.find(d=>{ const dc=_mzCodes((d['모델명']||'')+' '+(d['옵션']||'')); return dc.some(c=>pcodes.indexOf(c)>=0); }); }
+    // IDF 유사도 매칭 (신뢰도: 정확=코드일치 / 추정 / 낮음)
+    const mm=mzMatch(pname+' '+pmodel); const match=mm.row;
     let cost='', margin='', rate='';
     if(match){ cost=dgMaeipga(match); if(cost!==''&&cost!=null){ margin=Math.round(price*(1-fee)-cost-_dgN(match['매입배송비'])); rate=price?(margin/price*100):0; } }
-    res.push({상품명:pname, 판매가:price, 매입가:cost, 마진:margin, 마진율:rate, matched:!!(match&&cost!==''&&cost!=null), 거래처:match?match['거래처']:'', 매칭제품:match?((match['제품명']||'')+' '+(match['모델명']||match['옵션']||'')).trim():''});
+    res.push({상품명:pname, 판매가:price, 매입가:cost, 마진:margin, 마진율:rate, matched:!!(match&&cost!==''&&cost!=null), tier:mm.tier||'', 거래처:match?match['거래처']:'', 매칭제품:match?((match['제품명']||'')+' '+(match['모델명']||match['옵션']||'')).trim():''});
   }
   MZ_RESULTS=res; mzRender();
 }
@@ -2356,11 +2377,13 @@ function mzRender(){
     else if(r.마진<0){ tag='<span style="background:#dc2626;color:#fff;padding:1px 7px;border-radius:5px;font-weight:700">역마진</span>'; bg='background:#fef2f2'; }
     else if(r.마진율<10){ tag='<span style="background:#fed7aa;color:#9a3412;padding:1px 7px;border-radius:5px;font-weight:700">저마진</span>'; }
     else tag='<span style="color:#059669">정상</span>';
-    html+='<tr style="border-top:1px solid #f0f0f0;'+bg+'"><td style="padding:6px">'+_dgEsc(r.상품명)+'</td><td style="padding:6px;text-align:right">'+_dgFmt(r.판매가)+'</td><td style="padding:6px;text-align:right">'+(r.matched?_dgFmt(r.매입가):'-')+'</td><td style="padding:6px;text-align:right;font-weight:600;color:'+(r.matched&&r.마진<0?'#dc2626':'#059669')+'">'+(r.matched?_dgFmt(r.마진):'-')+'</td><td style="padding:6px;text-align:right">'+(r.matched&&r.마진율!==''?r.마진율.toFixed(1)+'%':'-')+'</td><td style="padding:6px">'+tag+'</td><td style="padding:6px;font-size:12px;color:#6b7280">'+_dgEsc(r.매칭제품)+(r.거래처?' ('+_dgEsc(r.거래처)+')':'')+'</td></tr>';
+    const tb2=r.tier==='정확'?'<span style="background:#dcfce7;color:#166534;padding:0 5px;border-radius:4px;font-size:11px;margin-left:4px">🟢정확</span>':r.tier==='추정'?'<span style="background:#fef9c3;color:#854d0e;padding:0 5px;border-radius:4px;font-size:11px;margin-left:4px">🟡추정</span>':r.tier==='낮음'?'<span style="background:#f3f4f6;color:#9ca3af;padding:0 5px;border-radius:4px;font-size:11px;margin-left:4px">⚪낮음</span>':'';
+    html+='<tr style="border-top:1px solid #f0f0f0;'+bg+'"><td style="padding:6px">'+_dgEsc(r.상품명)+'</td><td style="padding:6px;text-align:right">'+_dgFmt(r.판매가)+'</td><td style="padding:6px;text-align:right">'+(r.matched?_dgFmt(r.매입가):'-')+'</td><td style="padding:6px;text-align:right;font-weight:600;color:'+(r.matched&&r.마진<0?'#dc2626':'#059669')+'">'+(r.matched?_dgFmt(r.마진):'-')+'</td><td style="padding:6px;text-align:right">'+(r.matched&&r.마진율!==''?r.마진율.toFixed(1)+'%':'-')+'</td><td style="padding:6px;white-space:nowrap">'+tag+tb2+'</td><td style="padding:6px;font-size:12px;color:#6b7280">'+_dgEsc(r.매칭제품)+(r.거래처?' ('+_dgEsc(r.거래처)+')':'')+'</td></tr>';
   });
   tb.innerHTML=html||'<tr><td colspan="7" style="padding:20px;text-align:center;color:#9ca3af">쇼핑몰 데이터를 올려주세요</td></tr>';
+  const exact=MZ_RESULTS.filter(r=>r.matched&&r.tier==='정확').length;
   const s=document.getElementById('mz-summary');
-  if(s) s.innerHTML='총 <b>'+MZ_RESULTS.length+'</b>개 · <span style="color:#dc2626;font-weight:700">🔴 역마진 '+loss+'</span> · <span style="color:#d97706;font-weight:700">🟠 저마진 '+low+'</span> · 🟢 정상 '+(MZ_RESULTS.length-loss-low-un)+' · ⚪ 미확인 '+un+(only?' (역마진만 표시중)':'');
+  if(s) s.innerHTML='총 <b>'+MZ_RESULTS.length+'</b>개 · <span style="color:#dc2626;font-weight:700">🔴 역마진 '+loss+'</span> · <span style="color:#d97706;font-weight:700">🟠 저마진 '+low+'</span> · 🟢 정상 '+(MZ_RESULTS.length-loss-low-un)+' · ⚪ 미확인 '+un+' · <span style="color:#166534">(정확매칭 '+exact+')</span>'+(only?' · 역마진만':'');
 }
 
 // 쿠팡 실판매가 자동 불러오기 (서버가 Wing에서 수집한 데이터)
