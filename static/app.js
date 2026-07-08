@@ -2324,12 +2324,14 @@ function mzBuildIndex(){
 }
 function mzMatch(name){
   if(!_mzIdx||_mzIdx.N!==DANGA.length) mzBuildIndex();
-  const cand={}, seen={};
-  _mzTok(name).forEach(t=>{ if(seen[t])return; seen[t]=1; const w=t.length*Math.log(1+_mzIdx.N/(1+(_mzIdx.df[t]||0))); (_mzIdx.inv[t]||[]).forEach(i=>{ cand[i]=(cand[i]||0)+w; }); });
-  _mzCodes(name).forEach(c=>{ (_mzIdx.inv['#'+c]||[]).forEach(i=>{ cand[i]=(cand[i]||0)+1000; }); });
+  const cand={}, cnt={}, seen={};
+  _mzTok(name).forEach(t=>{ if(seen[t])return; seen[t]=1; const w=t.length*Math.log(1+_mzIdx.N/(1+(_mzIdx.df[t]||0))); (_mzIdx.inv[t]||[]).forEach(i=>{ cand[i]=(cand[i]||0)+w; cnt[i]=(cnt[i]||0)+1; }); });  // cnt=겹친 단어 수
+  _mzCodes(name).forEach(c=>{ (_mzIdx.inv['#'+c]||[]).forEach(i=>{ cand[i]=(cand[i]||0)+1000; cnt[i]=(cnt[i]||0)+2; }); });
   let bi=-1, bs=0; for(const i in cand){ if(cand[i]>bs){ bs=cand[i]; bi=i; } }
   if(bi<0) return {row:null,tier:''};
-  const tier = bs>=1000?'정확' : bs>=22?'추정' : bs>=11?'낮음' : '';
+  const n=cnt[bi]||0;
+  // 정확=코드일치 / 추정·낮음은 '2단어 이상' 겹쳐야만 (단어 하나만 겹치는 엉뚱매칭 차단)
+  const tier = bs>=1000?'정확' : (n>=2&&bs>=35)?'추정' : (n>=2&&bs>=22)?'낮음' : '';
   return tier?{row:_mzIdx.rows[bi],tier:tier}:{row:null,tier:''};
 }
 function mzUpload(input){
