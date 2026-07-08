@@ -991,16 +991,49 @@ def jageum_data(request: Request):
 # ===== 영업 결산 (딜 관리) =====
 SALES_DEALS_FILE = data_path("sales_deals.json")
 
+_SALES_BAK = data_path("sales_deals.bak.json")
+
 def _load_deals():
-    if SALES_DEALS_FILE.exists():
+    # 본파일 → 백업파일 순으로 시도 (손상/빈파일이면 백업에서 복구)
+    for f in (SALES_DEALS_FILE, _SALES_BAK):
         try:
-            return json.loads(SALES_DEALS_FILE.read_text(encoding="utf-8"))
+            if f.exists():
+                data = json.loads(f.read_text(encoding="utf-8"))
+                if isinstance(data, list):
+                    return data
         except Exception:
-            return []
+            continue
     return []
 
 def _save_deals(items):
-    SALES_DEALS_FILE.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
+    payload = json.dumps(items, ensure_ascii=False)
+    # 원자적 쓰기(임시→rename): 저장 중 프로세스 종료/재배포에도 파일 손상 방지
+    try:
+        tmp = data_path("sales_deals.json.tmp")
+        tmp.write_text(payload, encoding="utf-8")
+        tmp.replace(SALES_DEALS_FILE)
+    except Exception:
+        SALES_DEALS_FILE.write_text(payload, encoding="utf-8")
+    # 백업본은 '데이터가 있을 때만' 갱신 → 실수로 빈 저장돼도 마지막 유효본 보존
+    try:
+        if items:
+            _SALES_BAK.write_text(payload, encoding="utf-8")
+    except Exception:
+        pass
+
+@app.get("/jageum/api/_diag")
+def jageum_diag(request: Request):
+    if _jageum_role(request) != "boss":
+        return _AUTH401
+    info = {"DATA_DIR": str(DATA_DIR), "env_DATA_DIR": os.getenv("DATA_DIR", "(unset)"),
+            "dir_exists": DATA_DIR.exists(), "sales_exists": SALES_DEALS_FILE.exists(),
+            "sales_bak_exists": _SALES_BAK.exists(), "deals": len(_load_deals())}
+    try:
+        info["files"] = sorted(f.name + "(" + str(f.stat().st_size) + "b)"
+                               for f in DATA_DIR.iterdir() if f.is_file())
+    except Exception as e:
+        info["files_err"] = str(e)
+    return JSONResponse(info)
 
 @app.get("/jageum/api/sales")
 def sales_list(request: Request):
