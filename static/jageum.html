@@ -160,6 +160,28 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
        <div style="max-height:52vh;overflow:auto"><table id="vch_table" style="font-size:13px"></table></div>
      </div>
    </div>
+
+   <!-- 영업 AI 비서 -->
+   <div class="card" id="slchat_card" style="border-top:3px solid #5b21b6">
+     <h2>💬 영업 AI 비서 <span class="muted big">— 기능 문의 · 개선 요청(사장님 결재)</span></h2>
+     <div class="note">영업 결산 기능이 어떻게 동작하는지 물어보세요. 고치거나 추가하고 싶은 게 있으면 AI가 사장님께 결재 요청을 올리고, 승인되면 개발자(클로드코드)가 반영합니다.</div>
+     <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+       <span id="slchat_who" style="background:#f5f3ff;color:#5b21b6;border-radius:7px;padding:6px 12px;font-size:13px;font-weight:700">…</span>
+       <span class="muted" style="font-size:12px">계정으로 대화 중 <span style="font-size:11px">(로그인 계정 기준 자동)</span></span>
+     </div>
+     <div id="slchat_log" style="max-height:360px;overflow:auto;border:1px solid #eef0f4;border-radius:10px;padding:12px;background:#fafbfc;margin-bottom:10px"></div>
+     <div style="display:flex;gap:8px">
+       <input id="slchat_in" placeholder="예: 보드에서 담당자별로 색 다르게 해줘 / 견적서 단계에 예상마감일 넣어줘 / 내 미수 얼마야?" style="flex:1;padding:11px 13px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px">
+       <button onclick="slChatSend()" id="slchat_btn" style="background:#5b21b6;color:#fff;border:none;border-radius:10px;padding:0 22px;font-weight:700;cursor:pointer">전송</button>
+     </div>
+   </div>
+
+   <!-- 영업 결재함 (사장님 전용) -->
+   <div class="card" id="sl_appr_card" style="border-top:3px solid #d97706;display:none">
+     <h2>📋 영업 결재함 <span class="muted big" id="sl_appr_count"></span></h2>
+     <div class="note">영업 AI가 올린 기능 수정 요청입니다. 승인하면 개발자(클로드코드)가 반영합니다.</div>
+     <div id="sl_appr_list"></div>
+   </div>
  </div>
  <style>
  .sl_sec{font-size:12px;font-weight:700;color:#b91c1c;margin:16px 0 7px;border-bottom:1px solid #f3d4d6;padding-bottom:5px}
@@ -537,6 +559,7 @@ function load(){fetch('/jageum/api/data').then(r=>{if(r.status===401){location.h
   document.getElementById('whoami').textContent = MYROLE==='boss'?'👑 대표님':(MYROLE==='staff'?'🧑‍💼 경리':'');
   {const _wl=document.getElementById('chat_who_label'); if(_wl)_wl.textContent=MYROLE==='boss'?'👑 사장님':(MYROLE==='staff'?'🧑‍💼 경리':'게스트');}
   window._who=d._who||'';
+  slInit();
   if(MYROLE==='boss'){document.getElementById('approval_card').style.display='';loadApprovals();loadPersonal();
     document.getElementById('tabbar').style.display='flex';showTab('biz');}
   else if(MYROLE==='staff'){  // 경리: 개인/전체/인생 탭 제거, 사업+영업결산만
@@ -1508,6 +1531,79 @@ function apprChat(id){
 function apprAct(id,action){
  fetch('/jageum/api/approvals/'+id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})})
   .then(()=>loadApprovals());
+}
+// ===== 영업 결산 AI 비서 + 결재함 =====
+function slInit(){
+  const wl=document.getElementById('slchat_who');
+  if(wl)wl.textContent=MYROLE==='boss'?'👑 사장님':(MYROLE==='staff'?'🧑‍💼 경리':('📈 '+(window._who||'영업담당')+' 님'));
+  slWelcome();
+  if(MYROLE==='boss'){const c=document.getElementById('sl_appr_card');if(c)c.style.display='';loadSalesApprovals();}
+}
+let slChatMsgs=[];
+function slWelcome(){
+  if(slChatMsgs.length)return;
+  slChatMsgs.push({role:'assistant',content:'안녕하세요 📈 영업 결산 AI 비서예요. 이 탭 기능이 궁금하거나("보드가 어떻게 나뉘어요?"), 고치고 싶은 게 있으면("견적서 단계에 예상 마감일 칸 넣어줘") 편하게 말씀해 주세요. 개선 요청은 사장님 결재 후 반영됩니다.'});
+  slChatRender();
+}
+function slChatRender(){
+  const box=document.getElementById('slchat_log');if(!box)return;
+  box.innerHTML=slChatMsgs.map(m=>{const me=m.role==='user';
+    return `<div style="display:flex;justify-content:${me?'flex-end':'flex-start'};margin:6px 0"><div style="max-width:80%;padding:9px 13px;border-radius:12px;font-size:13.5px;line-height:1.6;white-space:pre-wrap;${me?'background:#5b21b6;color:#fff':'background:#fff;border:1px solid #e5e7eb'}">${m.content.replace(/</g,'&lt;')}</div></div>`;}).join('');
+  box.scrollTop=box.scrollHeight;
+}
+function slChatSend(){
+  const inp=document.getElementById('slchat_in');const t=inp.value.trim();if(!t)return;
+  inp.value='';slChatMsgs.push({role:'user',content:t});slChatRender();
+  const btn=document.getElementById('slchat_btn');btn.disabled=true;slChatMsgs.push({role:'assistant',content:'…'});slChatRender();
+  fetch('/jageum/api/sales_chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:slChatMsgs.filter(m=>m.content!=='…')})})
+   .then(r=>r.json()).then(d=>{slChatMsgs.pop();
+     if(d.error){slChatMsgs.push({role:'assistant',content:'⚠️ '+d.error});}
+     else{slChatMsgs.push({role:'assistant',content:d.reply||'(응답 없음)'});
+       if(d.approval){slChatMsgs.push({role:'assistant',content:'📋 결재 요청을 올렸습니다: "'+d.approval.title+'" → 사장님 확인 후 반영됩니다.'});if(MYROLE==='boss')loadSalesApprovals();}}
+     slChatRender();btn.disabled=false;
+   }).catch(()=>{slChatMsgs.pop();slChatMsgs.push({role:'assistant',content:'⚠️ 연결 실패'});slChatRender();btn.disabled=false;});
+}
+document.getElementById('slchat_in').addEventListener('keydown',e=>{if(e.key==='Enter')slChatSend();});
+let SL_APPRS=[];
+function loadSalesApprovals(){
+  fetch('/jageum/api/approvals').then(r=>r.json()).then(d=>{
+    SL_APPRS=(d.items||[]).filter(a=>a.source==='영업결산').slice().reverse();
+    const pend=SL_APPRS.filter(a=>a.status==='대기').length;
+    const cnt=document.getElementById('sl_appr_count');if(cnt)cnt.textContent=pend?`· 대기 ${pend}건`:'· 대기 없음';
+    renderSalesApprovals();
+  });
+}
+function renderSalesApprovals(){
+  const list=document.getElementById('sl_appr_list');if(!list)return;
+  list.innerHTML=SL_APPRS.length?SL_APPRS.map(a=>{
+    const c=a.status==='승인'?'#059669':a.status==='반려'?'#9ca3af':'#d97706';
+    const th=a.thread||[];
+    const thHtml=th.length?'<div style="background:#f8fafc;border:1px solid #eef0f4;border-radius:8px;padding:8px 10px;margin-top:8px;max-height:280px;overflow:auto">'+th.map(m=>`<div style="margin:5px 0"><b style="color:${m.role==='user'?'#1d4ed8':'#7c3aed'};font-size:12px">${m.role==='user'?'👑 사장님':'🤖 AI'}</b><div style="white-space:pre-wrap;font-size:13px;line-height:1.5">${(m.text||'').replace(/</g,'&lt;')}</div></div>`).join('')+'</div>':'';
+    return `<div style="border:1px solid #eef0f4;border-radius:10px;padding:12px;margin:8px 0">
+      <div style="font-weight:700">${a.title} <span style="color:${c};font-size:12px">[${a.status}]</span></div>
+      <div class="muted" style="font-size:13px;margin:4px 0;white-space:normal">${a.desc}</div>
+      <div class="muted" style="font-size:11px">요청: ${a.who}</div>
+      ${thHtml}
+      <div style="margin-top:8px;display:flex;gap:6px">
+        <input id="slapprin_${a.id}" placeholder="이 안건, 무슨 기능을 어떻게 바꾸는지 물어보세요" style="flex:1;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px" onkeydown="if(event.key==='Enter')slApprChat(${a.id})">
+        <button onclick="slApprChat(${a.id})" style="background:#5b21b6;color:#fff;border:none;border-radius:7px;padding:7px 14px;cursor:pointer">💬 질문</button>
+      </div>
+      ${a.status==='대기'?`<div style="margin-top:8px;display:flex;gap:8px">
+        <button onclick="slApprAct(${a.id},'approve')" style="background:#059669;color:#fff;border:none;border-radius:7px;padding:7px 16px;cursor:pointer;font-weight:600">✅ 승인 (Yes)</button>
+        <button onclick="slApprAct(${a.id},'reject')" style="background:#fff;color:#dc2626;border:1px solid #fca5a5;border-radius:7px;padding:7px 14px;cursor:pointer">반려</button></div>`:''}
+    </div>`;
+  }).join(''):'<div class="muted" style="font-size:13px">아직 영업 결재 요청이 없습니다.</div>';
+}
+function slApprChat(id){
+  const el=document.getElementById('slapprin_'+id);if(!el)return;const msg=el.value.trim();if(!msg)return;
+  const a=SL_APPRS.find(x=>x.id===id);if(!a)return;
+  a.thread=a.thread||[];a.thread.push({role:'user',text:msg});a.thread.push({role:'assistant',text:'⏳ 답변 생성 중…'});renderSalesApprovals();
+  fetch('/jageum/api/approvals/'+id+'/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg})})
+   .then(r=>r.json()).then(d=>{if(d.thread)a.thread=d.thread;else if(d.error){a.thread.pop();a.thread.push({role:'assistant',text:'오류: '+d.error});}renderSalesApprovals();})
+   .catch(()=>{a.thread.pop();a.thread.push({role:'assistant',text:'네트워크 오류'});renderSalesApprovals();});
+}
+function slApprAct(id,action){
+  fetch('/jageum/api/approvals/'+id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})}).then(()=>loadSalesApprovals());
 }
 // ===== 📈 영업 결산 =====
 let SALES=[], DEPOSITS=[], _slLinks=[];

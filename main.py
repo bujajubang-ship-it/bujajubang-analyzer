@@ -1650,6 +1650,98 @@ async def jageum_approval_chat(aid: int, request: Request):
     return JSONResponse({"reply": reply, "thread": thread})
 
 
+# ===== 영업 결산 AI 비서 (기능 문의 + 개선 결재요청) =====
+def _sales_data_summary(role: str, who: str) -> str:
+    deals = _load_deals()
+    if role == "sales":
+        deals = [d for d in deals if d.get("담당자") == who]
+    if not deals:
+        return "현재 등록된 거래처(딜)가 없습니다."
+    STAGES = ["계약", "견적서", "중도금", "발주", "배송", "잔금"]
+    def _stg(d):
+        return d.get("단계") or ("잔금" if d.get("status") == "마감" else "계약")
+    def _i(v):
+        try:
+            return int(v or 0)
+        except Exception:
+            return 0
+    by_stage = {}
+    for d in deals:
+        s = _stg(d); by_stage[s] = by_stage.get(s, 0) + 1
+    closed = [d for d in deals if d.get("status") == "마감"]
+    prog = [d for d in deals if d.get("status") != "마감"]
+    tot_quote = sum(_i(d.get("총견적")) for d in deals)
+    tot_mis = sum(_i(d.get("미수")) for d in deals)
+    rev = sum(_i(d.get("매출")) for d in closed)
+    prof = sum(_i(d.get("매출")) - _i(d.get("원가")) - _i(d.get("판관비")) for d in closed)
+    lines = [f"- 총 거래처(딜): {len(deals)}건 (진행중 {len(prog)} · 마감 {len(closed)})",
+             "- 단계별: " + ", ".join(f"{s} {by_stage.get(s, 0)}" for s in STAGES),
+             f"- 총견적 합계: {tot_quote:,}원 · 미수 합계: {tot_mis:,}원",
+             f"- 마감 매출: {rev:,}원 · 영업이익: {prof:,}원"]
+    for d in deals[:25]:
+        lines.append(f"  · {d.get('거래처','')} | {d.get('담당자','')} | 단계 {_stg(d)} | {d.get('status','진행중')} | 견적 {_i(d.get('총견적')):,} | 미수 {_i(d.get('미수')):,}")
+    return "\n".join(lines)
+
+
+@app.post("/jageum/api/sales_chat")
+async def jageum_sales_chat(request: Request):
+    # 영업 결산 AI: 사장·경리·영업사원
+    if not _sales_auth(request):
+        return _AUTH401
+    data = await request.json()
+    messages = data.get("messages", [])
+    role = _jageum_role(request)
+    who = _jageum_who(request) or ("사장님" if role == "boss" else "영업담당")
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return JSONResponse({"error": "ANTHROPIC_API_KEY 미설정"}, status_code=500)
+    summary = _sales_data_summary(role, who)
+    whorole = "사장님" if role == "boss" else ("경리" if role == "staff" else "영업 담당자")
+    system = f"""당신은 부자홀딩스(업소용 주방기기 셀러)의 '영업 결산' 대시보드를 돕는 AI 비서입니다.
+지금 '{who}'님({whorole})과 대화 중입니다. 한국어 존댓말로 친절하고 실무적으로 답하세요.
+
+[영업 결산 탭 기능 설명]
+- 거래처(딜)별로 진행 상황을 파이프라인 6단계로 관리합니다: 계약(도면설계) → 견적서 → 중도금 → 발주 → 배송 → 잔금.
+- 두 가지 화면: 🗂️보드(단계별 칸반 — 어느 거래처가 어느 단계에 있는지), 📋목록(거래처 옆 미니 진행바). 단계·담당자·기간·상태(진행중/마감) 필터로 정렬해 봅니다.
+- 각 거래처 정보: 총견적, 계약금·중도금(실제 입금 내역을 '입금연결'로 자동 반영), 미수(=총견적−받은금액 자동), 마감 시 이카운트 판매조회 전표에서 매출·원가·판관비를 가져와 영업이익 확정.
+- 상단에 담당자별 매출/이익/미수 집계 카드가 있습니다.
+
+[현재 영업 데이터]
+{summary}
+
+규칙:
+- 기능이 어떻게 동작하는지 물으면 위 설명을 바탕으로 쉽게 알려주세요.
+- 숫자 질문은 위 실제 데이터로 구체적으로 답하세요. (원 단위)
+- 이 탭 기능을 고치거나 추가하는 협의가 정리되면, 답변 맨 끝에 별도 줄로 정확히 이 형식을 출력하세요:
+[결재요청] 제목 | 무엇을 어떻게 바꿀지 한 문장 요약
+- 단순 상담/질문이면 결재요청을 넣지 마세요. 실제로 코드/기능 변경이 필요할 때만.
+- 승인·결정은 사장님 몫입니다. 모르는 건 모른다고 하세요."""
+    body = {
+        "model": "claude-opus-4-8", "max_tokens": 1500, "system": system,
+        "messages": [{"role": m["role"], "content": m["content"]} for m in messages[-12:]],
+    }
+    headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
+    async with httpx.AsyncClient(timeout=90) as client:
+        r = await client.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
+        if r.status_code != 200:
+            return JSONResponse({"error": f"AI 오류: {r.text[:200]}"}, status_code=500)
+        rd = r.json()
+    text = "".join(b.get("text", "") for b in rd.get("content", []) if b.get("type") == "text")
+    approval = None
+    import re as _re
+    mt = _re.search(r"\[결재요청\]\s*(.+?)\s*\|\s*(.+)", text)
+    if mt:
+        title, desc = mt.group(1).strip(), mt.group(2).strip()
+        text = text[:mt.start()].rstrip()
+        items = _load_approvals()
+        aid = (max([a["id"] for a in items], default=0) + 1)
+        items.append({"id": aid, "title": title, "desc": desc, "who": who,
+                      "status": "대기", "ts": "", "thread": [], "source": "영업결산"})
+        _save_approvals(items)
+        approval = {"id": aid, "title": title, "desc": desc}
+    return JSONResponse({"reply": text, "approval": approval})
+
+
 # ===== 소싱 사이트 AI 개선 상담 + 결재함 =====
 SITE_APPROVALS_FILE = data_path("site_approvals.json")
 
