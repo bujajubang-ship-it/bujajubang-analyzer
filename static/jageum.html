@@ -74,7 +74,9 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
            <option value="q">이번 분기</option><option value="y2026">2026 전체</option><option value="all" selected>전체</option>
          </select>
          <select id="sl_person" onchange="renderDeals()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px"><option value="">담당자 전체</option></select>
+         <select id="sl_stagef" onchange="renderDeals()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px"><option value="">단계 전체</option></select>
          <select id="sl_status" onchange="renderDeals()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px"><option value="">상태 전체</option><option value="진행중">진행중</option><option value="마감">마감</option></select>
+         <div class="plview-toggle"><button id="sl_vb" class="on" onclick="slSetView('board')">🗂️ 보드</button><button id="sl_vl" onclick="slSetView('list')">📋 목록</button></div>
        </div>
      </div>
      <!-- 요약 KPI -->
@@ -92,6 +94,7 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
        <label class="sl_f">일자<input type="date" id="sl_date"></label>
        <label class="sl_f">거래처<input id="sl_cust" placeholder="예: 울산솥집"></label>
        <label class="sl_f">담당자<select id="sl_owner"></select></label>
+       <label class="sl_f">진행 단계<select id="sl_stage"></select></label>
        <label class="sl_f">상태<select id="sl_stat" onchange="slFormMode()"><option value="진행중">진행중</option><option value="마감">마감</option></select></label>
      </div>
      <div class="sl_sec">💵 현금 <span>— 진행중 관리 · 계약금·중도금은 아래 '입금 연결'에서 자동</span></div>
@@ -129,8 +132,9 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
 
    <!-- 거래처 목록 -->
    <div class="card" style="border-top:3px solid #b91c1c">
-     <h2 style="margin:0 0 6px">📋 거래처 목록 <span id="sl_count" class="muted big"></span></h2>
-     <div style="overflow-x:auto"><table id="sl_table" style="font-size:13px"></table></div>
+     <h2 style="margin:0 0 6px">📋 거래처 진행 현황 <span id="sl_count" class="muted big"></span></h2>
+     <div id="sl_board_wrap"><div id="sl_board" class="plboard"></div></div>
+     <div id="sl_list_wrap" style="display:none;overflow-x:auto"><table id="sl_table" style="font-size:13px"></table></div>
    </div>
 
    <!-- 입금 선택 모달 -->
@@ -167,6 +171,30 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
  .sl_f .sub{font-size:10px;font-weight:600;color:#9ca3af;background:#f3f4f6;border-radius:4px;padding:1px 5px;margin-left:3px}
  .sl_f .sub.b{color:#1e40af;background:#dbeafe}
  .slm input{border-color:#fecaca}
+ /* ── 진행 파이프라인 ── */
+ .plview-toggle{display:flex;gap:0;border:1px solid #d1d5db;border-radius:8px;overflow:hidden}
+ .plview-toggle button{border:none;background:#fff;color:#6b7280;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer}
+ .plview-toggle button.on{background:#b91c1c;color:#fff}
+ .plboard{display:grid;grid-template-columns:repeat(6,minmax(150px,1fr));gap:8px;overflow-x:auto;padding-bottom:6px}
+ .plcol{background:#f9fafb;border:1px solid #eef0f2;border-radius:10px;min-width:150px;display:flex;flex-direction:column}
+ .plcol-head{font-size:12px;font-weight:700;color:#374151;padding:9px 10px;border-bottom:2px solid #b91c1c;border-radius:10px 10px 0 0;background:#fff;text-align:center;line-height:1.35}
+ .plcol-head small{display:block;color:#9ca3af;font-weight:500;font-size:10px}
+ .plcol-head .cnt{color:#b91c1c}
+ .plcol-body{padding:8px;display:flex;flex-direction:column;gap:7px;min-height:40px}
+ .plcard{background:#fff;border:1px solid #e5e7eb;border-left:3px solid #b91c1c;border-radius:8px;padding:8px 9px;cursor:pointer;transition:.12s;font-size:12px}
+ .plcard:hover{box-shadow:0 2px 8px rgba(0,0,0,.08);transform:translateY(-1px)}
+ .plcard.done{border-left-color:#059669;background:#f0fdf4}
+ .plcard .c-name{font-weight:700;color:#1f2937;font-size:13px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ .plcard .c-meta{color:#6b7280;font-size:11px}
+ .plcard .c-mis{color:#dc2626;font-weight:600}
+ .plcol-empty{color:#c9ced4;font-size:11px;text-align:center;padding:6px 0}
+ /* 미니 진행바(목록 행) */
+ .track{display:flex;align-items:center;gap:0;min-width:220px}
+ .track .seg{flex:1;height:5px;background:#e5e7eb;border-radius:2px;margin:0 1px}
+ .track .seg.done{background:#b91c1c}
+ .track .seg.cur{background:#b91c1c;box-shadow:0 0 0 2px #fecaca}
+ .track-lbl{font-size:11px;font-weight:700;color:#b91c1c;white-space:nowrap;margin-left:7px}
+ .track-lbl.done{color:#059669}
  </style>
  <div id="edit_modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;align-items:flex-start;justify-content:center;overflow:auto;padding:30px 10px">
    <div style="background:#fff;border-radius:14px;max-width:760px;width:100%;padding:20px">
@@ -1520,9 +1548,50 @@ function renderDeposits(){
 function linkDeposit(idx,종류){const x=DEPOSITS[idx];if(!x)return;
   if(_slLinks.some(l=>l.key===x.key)){alert('이미 연결된 입금이에요.');return;}
   _slLinks.push({key:x.key,date:x.date,거래처:x.거래처,적요:x.적요,금액:x.금액,종류});renderLinks();renderDeposits();}
+// ===== 진행 파이프라인 단계 =====
+const SL_STAGES=[
+  {k:'계약',sub:'도면설계'},
+  {k:'견적서',sub:''},
+  {k:'중도금',sub:''},
+  {k:'발주',sub:''},
+  {k:'배송',sub:''},
+  {k:'잔금',sub:''},
+];
+const SL_STAGE_KEYS=SL_STAGES.map(s=>s.k);
+let SL_VIEW='board';
+function _stageIdx(x){const s=x.단계||(x.status==='마감'?'잔금':'계약');const i=SL_STAGE_KEYS.indexOf(s);return i<0?0:i;}
+function slSetView(v){SL_VIEW=v;
+  document.getElementById('sl_vb').classList.toggle('on',v==='board');
+  document.getElementById('sl_vl').classList.toggle('on',v==='list');
+  document.getElementById('sl_board_wrap').style.display=(v==='board')?'':'none';
+  document.getElementById('sl_list_wrap').style.display=(v==='list')?'':'none';
+  renderDeals();}
+// 목록용 미니 진행바
+function stageTrack(x){const cur=_stageIdx(x);const done=(x.status==='마감');
+  const segs=SL_STAGES.map((s,i)=>{let c='seg';if(done||i<cur)c+=' done';else if(i===cur)c+=' cur';return `<span class="${c}" title="${s.k}"></span>`;}).join('');
+  return `<div class="track">${segs}<span class="track-lbl${done?' done':''}">${done?'✓ 완료':SL_STAGE_KEYS[cur]}</span></div>`;}
+// 칸반 보드
+function renderBoard(rows){
+  const cols=SL_STAGES.map((s,i)=>{
+    const items=rows.filter(x=>_stageIdx(x)===i);
+    const cards=items.map(x=>{const mis=(+x.미수||0);const done=(x.status==='마감');
+      return `<div class="plcard${done?' done':''}" onclick="slEdit(${x.id})">
+        <div class="c-name">${(x.거래처||'').replace(/</g,'&lt;')}</div>
+        <div class="c-meta">${x.담당자||'미지정'} · 견적 ${won(+x.총견적||0)}${mis?` · <span class="c-mis">미수 ${won(mis)}</span>`:(done?' · <span style="color:#059669">마감</span>':'')}</div>
+      </div>`;}).join('');
+    return `<div class="plcol"><div class="plcol-head">${s.k}${s.sub?`<small>${s.sub}</small>`:''}<span class="cnt"> · ${items.length}</span></div>
+      <div class="plcol-body">${cards||'<div class="plcol-empty">—</div>'}</div></div>`;
+  }).join('');
+  document.getElementById('sl_board').innerHTML=cols;
+}
 function loadSales(){
   fetch('/jageum/api/sales').then(r=>r.json()).then(d=>{
     SALES=d.deals||[];
+    // 단계 셀렉트 채우기 (폼·필터)
+    const stageSel=document.getElementById('sl_stage');
+    if(stageSel&&!stageSel.options.length)stageSel.innerHTML=SL_STAGES.map(s=>`<option value="${s.k}">${s.k}${s.sub?' ('+s.sub+')':''}</option>`).join('');
+    const stagef=document.getElementById('sl_stagef');
+    if(stagef&&stagef.options.length<=1)stagef.innerHTML='<option value="">단계 전체</option>'+SL_STAGES.map(s=>`<option value="${s.k}">${s.k}</option>`).join('');
     const owners=[...new Set(['김성주','성기민',...SALES.map(x=>x.담당자).filter(Boolean)])];
     const ownerSel=document.getElementById('sl_owner'), personSel=document.getElementById('sl_person');
     const mine=(MYROLE==='sales')?(window._who||d._who||''):'';
@@ -1534,12 +1603,14 @@ function loadSales(){
 }
 function _slFilter(){
   const per=document.getElementById('sl_period').value, ps=document.getElementById('sl_person').value, st=document.getElementById('sl_status').value;
+  const stg=(document.getElementById('sl_stagef')||{}).value||'';
   const now=new Date(); const ym=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
   const lm=new Date(now.getFullYear(),now.getMonth()-1,1); const lym=lm.getFullYear()+'-'+String(lm.getMonth()+1).padStart(2,'0');
   const q=Math.floor(now.getMonth()/3);
   return SALES.filter(x=>{
     if(ps&&x.담당자!==ps)return false;
     if(st&&(x.status||'진행중')!==st)return false;
+    if(stg&&SL_STAGE_KEYS[_stageIdx(x)]!==stg)return false;
     const dt=(x.date||''); const dym=dt.slice(0,7);
     if(per==='this'&&dym!==ym)return false;
     if(per==='last'&&dym!==lym)return false;
@@ -1563,10 +1634,13 @@ function renderDeals(){
   const keys=Object.keys(byp);
   document.getElementById('sl_byperson').innerHTML=keys.length?('<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'+keys.map(o=>`<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:9px;padding:8px 12px;font-size:13px"><b>${o}</b> · ${byp[o].n}건 · 매출 ${won(byp[o].rev)} · 이익 ${won(byp[o].prof)}${byp[o].unpaid?` · <span style="color:#dc2626">미수 ${won(byp[o].unpaid)}</span>`:''}</div>`).join('')+'</div>'):'';
   document.getElementById('sl_count').textContent='· '+rows.length+'건';
-  const th='<thead><tr><th>일자</th><th>거래처</th><th>담당자</th><th>상태</th><th class="num">총견적</th><th class="num">매출</th><th class="num">영업이익</th><th class="num">미수</th><th></th></tr></thead>';
-  const tb=rows.map(x=>{const st=x.status||'진행중';const pf=(st==='마감')?((+x.매출||0)-(+x.원가||0)-(+x.판관비||0)):0;const sc=st==='마감'?'#059669':'#d97706';
-    return `<tr><td>${x.date||''}</td><td>${(x.거래처||'').replace(/</g,'&lt;')}</td><td>${x.담당자||''}</td><td><span style="color:${sc};font-weight:700">${st}</span></td><td class="num">${won(+x.총견적||0)}</td><td class="num">${st==='마감'?won(+x.매출||0):'-'}</td><td class="num" style="color:#059669">${st==='마감'?won(pf):'-'}</td><td class="num" style="color:${(+x.미수||0)?'#dc2626':'#9ca3af'}">${won(+x.미수||0)}</td><td style="white-space:nowrap"><a onclick="slEdit(${x.id})" style="cursor:pointer;color:#2563eb">수정</a> <a onclick="slDel(${x.id})" style="cursor:pointer;color:#dc2626">삭제</a></td></tr>`;}).join('');
-  document.getElementById('sl_table').innerHTML=th+'<tbody>'+(tb||'<tr><td colspan=9 style="text-align:center;color:#9ca3af;padding:14px">등록된 거래처가 없어요. 위에서 추가하세요.</td></tr>')+'</tbody>';
+  // 단계 순으로 정렬 (진행 상황별)
+  const srows=rows.slice().sort((a,b)=>_stageIdx(a)-_stageIdx(b)||(b.id||0)-(a.id||0));
+  if(SL_VIEW==='board'){renderBoard(srows);return;}
+  const th='<thead><tr><th>일자</th><th>거래처</th><th>담당자</th><th style="min-width:230px">진행 단계</th><th>상태</th><th class="num">총견적</th><th class="num">매출</th><th class="num">영업이익</th><th class="num">미수</th><th></th></tr></thead>';
+  const tb=srows.map(x=>{const st=x.status||'진행중';const pf=(st==='마감')?((+x.매출||0)-(+x.원가||0)-(+x.판관비||0)):0;const sc=st==='마감'?'#059669':'#d97706';
+    return `<tr><td>${x.date||''}</td><td>${(x.거래처||'').replace(/</g,'&lt;')}</td><td>${x.담당자||''}</td><td>${stageTrack(x)}</td><td><span style="color:${sc};font-weight:700">${st}</span></td><td class="num">${won(+x.총견적||0)}</td><td class="num">${st==='마감'?won(+x.매출||0):'-'}</td><td class="num" style="color:#059669">${st==='마감'?won(pf):'-'}</td><td class="num" style="color:${(+x.미수||0)?'#dc2626':'#9ca3af'}">${won(+x.미수||0)}</td><td style="white-space:nowrap"><a onclick="slEdit(${x.id})" style="cursor:pointer;color:#2563eb">수정</a> <a onclick="slDel(${x.id})" style="cursor:pointer;color:#dc2626">삭제</a></td></tr>`;}).join('');
+  document.getElementById('sl_table').innerHTML=th+'<tbody>'+(tb||'<tr><td colspan=10 style="text-align:center;color:#9ca3af;padding:14px">등록된 거래처가 없어요. 위에서 추가하세요.</td></tr>')+'</tbody>';
 }
 let VOUCHERS=[];
 function openVouchers(){
@@ -1595,10 +1669,11 @@ function slCalc(){const rev=_n('sl_rev'),c=_n('sl_cost'),s=_n('sl_sga');const pf
   document.getElementById('sl_profit').value=pf.toLocaleString();document.getElementById('sl_rate').value=rev?(Math.round(pf/rev*1000)/10)+'%':'-';}
 function slFormMode(){const st=document.getElementById('sl_stat').value;document.querySelectorAll('.slm').forEach(e=>e.style.opacity=(st==='마감')?'1':'0.45');}
 function slReset(){['sl_id','sl_cust','sl_quote','sl_deposit','sl_mid','sl_unpaid','sl_rev','sl_cost','sl_sga','sl_profit','sl_rate'].forEach(id=>document.getElementById(id).value='');
-  document.getElementById('sl_date').value=_ymd();document.getElementById('sl_stat').value='진행중';document.getElementById('sl_form_title').textContent='거래처 추가';_slLinks=[];window._slVoucher=null;renderLinks();slFormMode();}
+  document.getElementById('sl_date').value=_ymd();document.getElementById('sl_stat').value='진행중';document.getElementById('sl_stage').value='계약';document.getElementById('sl_form_title').textContent='거래처 추가';_slLinks=[];window._slVoucher=null;renderLinks();slFormMode();}
 function slEdit(id){const x=SALES.find(d=>d.id===id);if(!x)return;
   document.getElementById('sl_id').value=x.id;document.getElementById('sl_date').value=x.date||_ymd();document.getElementById('sl_cust').value=x.거래처||'';
   document.getElementById('sl_owner').value=x.담당자||'';document.getElementById('sl_stat').value=x.status||'진행중';
+  document.getElementById('sl_stage').value=x.단계||(x.status==='마감'?'잔금':'계약');
   document.getElementById('sl_quote').value=x.총견적||'';document.getElementById('sl_rev').value=x.매출||'';document.getElementById('sl_cost').value=x.원가||'';document.getElementById('sl_sga').value=x.판관비||'';
   _slLinks=(x.입금연결||[]).slice();window._slVoucher=x.전표연결||null;renderLinks();slCalc();slFormMode();document.getElementById('sl_form_title').textContent='거래처 수정 #'+x.id;window.scrollTo(0,0);}
 function slSave(){const cust=document.getElementById('sl_cust').value.trim();if(!cust){alert('거래처를 입력하세요.');return;}
@@ -1606,6 +1681,7 @@ function slSave(){const cust=document.getElementById('sl_cust').value.trim();if(
   const mid=_slLinks.filter(l=>l.종류==='중도금').reduce((s,l)=>s+(+l.금액||0),0);
   const quote=_n('sl_quote');
   const deal={date:document.getElementById('sl_date').value,거래처:cust,담당자:document.getElementById('sl_owner').value,status:document.getElementById('sl_stat').value,
+    단계:document.getElementById('sl_stage').value,
     총견적:quote,계약금:dep,중도금:mid,미수:quote-dep-mid,입금연결:_slLinks,전표연결:(window._slVoucher||null),매출:_n('sl_rev'),원가:_n('sl_cost'),판관비:_n('sl_sga')};
   const id=document.getElementById('sl_id').value;if(id)deal.id=+id;
   document.getElementById('sl_savebtn').disabled=true;
