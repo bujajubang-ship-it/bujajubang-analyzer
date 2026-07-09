@@ -100,6 +100,7 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
      <div class="sl_sec">💵 현금 <span>— 진행중 관리 · 계약금·중도금은 아래 '입금 연결'에서 자동</span></div>
      <div class="sl_row">
        <label class="sl_f">총 견적<input type="number" id="sl_quote" placeholder="0" oninput="slRecash()"></label>
+       <label class="sl_f">공급가 <span class="sub">부가세제외·자동</span><input id="sl_supply" readonly style="background:#f3f4f6" placeholder="0"></label>
        <label class="sl_f">계약금 <span class="sub b">입금연결</span><input id="sl_deposit" readonly style="background:#eff6ff" placeholder="0"></label>
        <label class="sl_f">중도금 <span class="sub b">입금연결</span><input id="sl_mid" readonly style="background:#eff6ff" placeholder="0"></label>
        <label class="sl_f">미수 <span class="sub">자동</span><input id="sl_unpaid" readonly style="background:#f3f4f6" placeholder="0"></label>
@@ -1608,12 +1609,24 @@ function slApprAct(id,action){
 // ===== 📈 영업 결산 =====
 let SALES=[], DEPOSITS=[], _slLinks=[];
 function _n(id){return +((document.getElementById(id).value||'0').toString().replace(/,/g,''))||0;}
+// 부가세 포함 청구액(마감=매출, 진행중=총견적) · 공급가(부가세 제외)=매출/1.1 (이카운트 매출은 VAT포함 금액합계)
+function _slBase(x){return (x.status==='마감')?(+x.매출||0):(+x.총견적||0);}
+function _slSupply(x){const s=+x.공급가||0;if(s>0)return s;const b=_slBase(x);return b?Math.round(b/1.1):0;}
+// 폼의 공급가 칸 자동계산 (마감이고 전표 공급가액 있으면 그 값, 아니면 매출/총견적÷1.1)
+function slSupplyForm(){
+  const st=document.getElementById('sl_stat').value;
+  const vSup=(window._slVoucher&&+window._slVoucher.공급가)||0;
+  const base=st==='마감'?_n('sl_rev'):_n('sl_quote');
+  const sup=(st==='마감'&&vSup>0)?vSup:(base?Math.round(base/1.1):0);
+  const el=document.getElementById('sl_supply');if(el)el.value=sup?sup.toLocaleString():'';
+}
 function slRecash(){
   const dep=_slLinks.filter(l=>l.종류==='계약금').reduce((s,l)=>s+(+l.금액||0),0);
   const mid=_slLinks.filter(l=>l.종류==='중도금').reduce((s,l)=>s+(+l.금액||0),0);
   document.getElementById('sl_deposit').value=dep?dep.toLocaleString():'';
   document.getElementById('sl_mid').value=mid?mid.toLocaleString():'';
   const q=_n('sl_quote');document.getElementById('sl_unpaid').value=(q||dep||mid)?(q-dep-mid).toLocaleString():'';
+  slSupplyForm();
 }
 function renderLinks(){
   const el=document.getElementById('sl_links');if(!el)return;
@@ -1726,9 +1739,9 @@ function renderDeals(){
     `<div class="kpi"><div class="l">영업이익</div><div class="v" style="color:#059669">${won(prof)}</div><div class="s">이익률 ${rate}%</div></div>`+
     `<div class="kpi"><div class="l">미수금</div><div class="v" style="color:#dc2626">${won(unpaid)}</div><div class="s">받을 잔금</div></div>`+
     `<div class="kpi"><div class="l">진행중</div><div class="v">${cP}건</div><div class="s">견적합계 ${won(quote)}</div></div>`;
-  const byp={};rows.forEach(x=>{const o=x.담당자||'미지정';byp[o]=byp[o]||{n:0,rev:0,prof:0,unpaid:0};byp[o].n++;const m=(x.status==='마감');byp[o].rev+=(m?(+x.매출||0):0);byp[o].prof+=(m?((+x.매출||0)-(+x.원가||0)-(+x.판관비||0)):0);byp[o].unpaid+=(+x.미수||0);});
+  const byp={};rows.forEach(x=>{const o=x.담당자||'미지정';byp[o]=byp[o]||{n:0,rev:0,prof:0,unpaid:0,billed:0,supply:0,cost:0};byp[o].n++;const m=(x.status==='마감');byp[o].rev+=(m?(+x.매출||0):0);byp[o].prof+=(m?((+x.매출||0)-(+x.원가||0)-(+x.판관비||0)):0);byp[o].unpaid+=(+x.미수||0);byp[o].billed+=_slBase(x);byp[o].supply+=_slSupply(x);byp[o].cost+=(m?(+x.원가||0):0);});
   const keys=Object.keys(byp);
-  document.getElementById('sl_byperson').innerHTML=keys.length?('<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'+keys.map(o=>`<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:9px;padding:8px 12px;font-size:13px"><b>${o}</b> · ${byp[o].n}건 · 매출 ${won(byp[o].rev)} · 이익 ${won(byp[o].prof)}${byp[o].unpaid?` · <span style="color:#dc2626">미수 ${won(byp[o].unpaid)}</span>`:''}</div>`).join('')+'</div>'):'';
+  document.getElementById('sl_byperson').innerHTML=keys.length?('<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'+keys.map(o=>`<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:9px;padding:8px 12px;font-size:13px;line-height:1.75"><b>${o}</b> · ${byp[o].n}건<br><span style="color:#374151">매출<span style="color:#9ca3af">(부가세포함)</span> ${won(byp[o].billed)} · 공급가<span style="color:#9ca3af">(제외)</span> ${won(byp[o].supply)} · 원가 ${won(byp[o].cost)}</span><br><span>이익 <b style="color:#059669">${won(byp[o].prof)}</b>${byp[o].unpaid?` · <span style="color:#dc2626">미수 ${won(byp[o].unpaid)}</span>`:''}</span></div>`).join('')+'</div>'):'';
   document.getElementById('sl_count').textContent='· '+rows.length+'건';
   // 단계 순으로 정렬 (진행 상황별)
   const srows=rows.slice().sort((a,b)=>_stageIdx(a)-_stageIdx(b)||(b.id||0)-(a.id||0));
@@ -1757,14 +1770,14 @@ function renderVouchers(){
 function pickVoucher(idx){const v=VOUCHERS[idx];if(!v)return;
   document.getElementById('sl_rev').value=v.매출||0;document.getElementById('sl_cost').value=v.원가||0;
   if(!document.getElementById('sl_cust').value.trim())document.getElementById('sl_cust').value=v.거래처||'';
-  document.getElementById('sl_stat').value='마감';window._slVoucher={일자No:v.일자No,매출:v.매출,원가:v.원가,이익:v.이익};
+  document.getElementById('sl_stat').value='마감';window._slVoucher={일자No:v.일자No,매출:v.매출,공급가:v.공급가||0,원가:v.원가,이익:v.이익};
   slCalc();slFormMode();document.getElementById('vch_modal').style.display='none';
   if(v.원가확인필요)alert('이 전표는 이카운트에 원가 미입력 품목이 있어요(원가 0). 이카운트에서 원가 등록 후 다시 가져오세요.');
 }
 function slCalc(){const rev=_n('sl_rev'),c=_n('sl_cost'),s=_n('sl_sga');const pf=rev-c-s;
-  document.getElementById('sl_profit').value=pf.toLocaleString();document.getElementById('sl_rate').value=rev?(Math.round(pf/rev*1000)/10)+'%':'-';}
-function slFormMode(){const st=document.getElementById('sl_stat').value;document.querySelectorAll('.slm').forEach(e=>e.style.opacity=(st==='마감')?'1':'0.45');}
-function slReset(){['sl_id','sl_cust','sl_quote','sl_deposit','sl_mid','sl_unpaid','sl_rev','sl_cost','sl_sga','sl_profit','sl_rate'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('sl_profit').value=pf.toLocaleString();document.getElementById('sl_rate').value=rev?(Math.round(pf/rev*1000)/10)+'%':'-';slSupplyForm();}
+function slFormMode(){const st=document.getElementById('sl_stat').value;document.querySelectorAll('.slm').forEach(e=>e.style.opacity=(st==='마감')?'1':'0.45');slSupplyForm();}
+function slReset(){['sl_id','sl_cust','sl_quote','sl_supply','sl_deposit','sl_mid','sl_unpaid','sl_rev','sl_cost','sl_sga','sl_profit','sl_rate'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('sl_date').value=_ymd();document.getElementById('sl_stat').value='진행중';document.getElementById('sl_stage').value='계약';document.getElementById('sl_form_title').textContent='거래처 추가';_slLinks=[];window._slVoucher=null;renderLinks();slFormMode();}
 function slEdit(id){const x=SALES.find(d=>d.id===id);if(!x)return;
   document.getElementById('sl_id').value=x.id;document.getElementById('sl_date').value=x.date||_ymd();document.getElementById('sl_cust').value=x.거래처||'';
@@ -1776,9 +1789,12 @@ function slSave(){const cust=document.getElementById('sl_cust').value.trim();if(
   const dep=_slLinks.filter(l=>l.종류==='계약금').reduce((s,l)=>s+(+l.금액||0),0);
   const mid=_slLinks.filter(l=>l.종류==='중도금').reduce((s,l)=>s+(+l.금액||0),0);
   const quote=_n('sl_quote');
-  const deal={date:document.getElementById('sl_date').value,거래처:cust,담당자:document.getElementById('sl_owner').value,status:document.getElementById('sl_stat').value,
+  const st=document.getElementById('sl_stat').value;
+  const vSup=(window._slVoucher&&+window._slVoucher.공급가)||0;
+  const supply=(st==='마감'&&vSup>0)?vSup:0;  // 마감·전표 공급가액 있을 때만 저장(그 외엔 매출/견적÷1.1로 즉시계산)
+  const deal={date:document.getElementById('sl_date').value,거래처:cust,담당자:document.getElementById('sl_owner').value,status:st,
     단계:document.getElementById('sl_stage').value,
-    총견적:quote,계약금:dep,중도금:mid,미수:quote-dep-mid,입금연결:_slLinks,전표연결:(window._slVoucher||null),매출:_n('sl_rev'),원가:_n('sl_cost'),판관비:_n('sl_sga')};
+    총견적:quote,공급가:supply,계약금:dep,중도금:mid,미수:quote-dep-mid,입금연결:_slLinks,전표연결:(window._slVoucher||null),매출:_n('sl_rev'),원가:_n('sl_cost'),판관비:_n('sl_sga')};
   const id=document.getElementById('sl_id').value;if(id)deal.id=+id;
   document.getElementById('sl_savebtn').disabled=true;
   fetch('/jageum/api/sales',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({deal})}).then(r=>r.json()).then(()=>{document.getElementById('sl_savebtn').disabled=false;slReset();loadSales();}).catch(()=>{document.getElementById('sl_savebtn').disabled=false;alert('저장 실패');});}

@@ -1102,6 +1102,7 @@ def sale_vouchers(request: Request):
         for v in (sd.get("전표") or []):
             out.append({"일자No": v.get("일자No", ""), "거래처": v.get("거래처", ""),
                         "담당자": v.get("담당자", ""), "매출": v.get("매출", 0),
+                        "공급가": v.get("공급가", v.get("공급가액", 0)),
                         "원가": v.get("원가", 0), "이익": v.get("이익", 0),
                         "원가확인필요": v.get("원가확인필요", False), "품목": v.get("품목요약", "")})
     if role == "sales":  # 영업사원은 본인 전표만
