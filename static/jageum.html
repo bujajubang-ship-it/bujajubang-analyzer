@@ -340,7 +340,8 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
 
  <details class="card" id="pl_card" style="border-top:3px solid #5b21b6">
    <summary style="cursor:pointer;list-style:none;font-size:15px;font-weight:600;color:#1f2937">📊 손익계산서 (이카운트 발생주의) <span class="muted" style="font-weight:400;font-size:12px" id="pl_label">— 펼치기</span></summary>
-   <div class="note" style="margin-top:8px">실제 번/쓴 것 기준 손익 (현금흐름과 다른 개념). 자주 보진 않는 참고용.</div>
+   <div class="note" style="margin-top:8px">실제 번/쓴 것 기준 손익 (발생주의 — 현금흐름과 다른 개념). 월별로 나눠 볼 수 있어요.</div>
+   <div style="margin:10px 0"><label style="font-size:13px;color:#374151;font-weight:600">📅 조회 월 </label><select id="pl_month" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px"><option value="전체">전체 누계</option></select></div>
    <div class="kpis" style="margin-bottom:12px">
      <div class="kpi"><div class="l">매출</div><div class="v" id="pl_sales" style="color:#1f2937">-</div><div class="s" id="pl_sales_d"></div></div>
      <div class="kpi"><div class="l">매출총이익 (마진)</div><div class="v" id="pl_gp" style="color:#059669">-</div><div class="s" id="pl_gp_r"></div></div>
@@ -1477,24 +1478,45 @@ function renderSettle(){
  html+=`<tr><td style="padding-left:18px" class="muted">└ API 구매확정전 추정(참고)</td><td class="muted">상한</td><td class="num muted">${cafe24Auto().toLocaleString()}</td></tr>`;
  document.querySelector('#t_settle tbody').innerHTML=html;
 }
+let _plMonth='전체';
 function renderPL(){
- const pl=D.손익; const card=document.getElementById('pl_card');
- if(!pl||!pl.rows||!pl.rows.length){card.style.display='none';return}
+ const plm=D.손익월별; const card=document.getElementById('pl_card');
+ // 월 선택기 채우기(1회): 손익월별 있으면 월 옵션 추가
+ const sel=document.getElementById('pl_month');
+ if(sel&&plm&&plm.months&&plm.months.length&&sel.dataset.filled!=='1'){
+   sel.innerHTML='<option value="전체">전체 누계</option>'+plm.months.map(m=>`<option value="${m}">${m.slice(0,4)}년 ${+m.slice(5)}월</option>`).join('');
+   sel.dataset.filled='1'; sel.value=_plMonth;
+   sel.onchange=()=>{_plMonth=sel.value;renderPL();};
+ }
+ // 데이터 소스: 월별 손익(발생주의) 우선, 없으면 기존 손익
+ let rows, valOf, label;
+ if(plm&&plm.rows&&plm.rows.length){
+   rows=plm.rows;
+   if(_plMonth!=='전체'&&plm.months&&plm.months.includes(_plMonth)){
+     valOf=r=>(r.월별||{})[_plMonth]||0; label=_plMonth.slice(0,4)+'년 '+(+_plMonth.slice(5))+'월';
+   } else { valOf=r=>r.집계||0; label=(plm.당기명||'올해')+' 누계'; }
+ } else {
+   const pl=D.손익;
+   if(!pl||!pl.rows||!pl.rows.length){card.style.display='none';return}
+   rows=pl.rows; valOf=r=>r.당기||0; label=pl.당기명||'올해';
+ }
  card.style.display='';
- pl_label.textContent='— '+(pl.당기명||'올해')+' (펼치기)';
- pl_cn.textContent=pl.당기명||'올해';
- const M={}; pl.rows.forEach(r=>{M[r.과목.replace(/\s/g,'')]=r});
- const sales=M['1.매출']||{당기:0}, gp=M['3.매출총이익']||{당기:0};
- const op=M['5.영업손익']||M['5.영업이익']||{당기:0};
- const net=M['12.당기순이익']||pl.rows.find(r=>r.과목.includes('당기순이익'))||{당기:0};
+ pl_label.textContent='— '+label+' (펼치기)';
+ pl_cn.textContent=label;
+ const M={}; rows.forEach(r=>{M[r.과목.replace(/\s/g,'')]=r});
+ const gv=k=>{const r=M[k];return r?valOf(r):0;};
+ const sales=gv('1.매출'), gp=gv('3.매출총이익');
+ const op=M['5.영업손익']?valOf(M['5.영업손익']):(M['5.영업이익']?valOf(M['5.영업이익']):0);
+ let net=gv('12.당기순이익'); if(!M['12.당기순이익']){const r=rows.find(r=>r.과목.includes('당기순이익'));net=r?valOf(r):0;}
  const pct=(a,b)=>b?Math.round(a/b*100):0;
- pl_sales.textContent=won(sales.당기); pl_sales_d.textContent='';
- pl_gp.textContent=won(gp.당기); pl_gp_r.textContent='마진율 '+pct(gp.당기,sales.당기)+'%';
- pl_op.textContent=won(op.당기); pl_op.style.color=op.당기<0?'#dc2626':'#059669'; pl_op_r.textContent='영업이익률 '+pct(op.당기,sales.당기)+'%';
- pl_net.textContent=won(net.당기); pl_net.style.color=net.당기<0?'#dc2626':'#059669'; pl_net_d.textContent='';
- document.querySelector('#t_pl tbody').innerHTML=pl.rows.map(r=>
-   `<tr style="${r.major?'background:#faf8ff;font-weight:600':''}"><td style="${r.major?'':'padding-left:20px'}">${r.과목}</td><td class="num" style="${r.당기<0?'color:#dc2626':''}">${r.당기.toLocaleString()}</td></tr>`
- ).join('');
+ pl_sales.textContent=won(sales); pl_sales_d.textContent='';
+ pl_gp.textContent=won(gp); pl_gp_r.textContent='마진율 '+pct(gp,sales)+'%';
+ pl_op.textContent=won(op); pl_op.style.color=op<0?'#dc2626':'#059669'; pl_op_r.textContent='영업이익률 '+pct(op,sales)+'%';
+ pl_net.textContent=won(net); pl_net.style.color=net<0?'#dc2626':'#059669'; pl_net_d.textContent='';
+ document.querySelector('#t_pl tbody').innerHTML=rows.map(r=>{
+   const v=valOf(r);
+   return `<tr style="${r.major?'background:#faf8ff;font-weight:600':''}"><td style="${r.major?'':'padding-left:20px'}">${r.과목}</td><td class="num" style="${v<0?'color:#dc2626':''}">${v.toLocaleString()}</td></tr>`;
+ }).join('');
 }
 let aggKey='부서명';
 function renderAgg(){const inc=(D.자금의증가||[]).filter(real),dec=(D.자금의감소||[]).filter(isOpex);
