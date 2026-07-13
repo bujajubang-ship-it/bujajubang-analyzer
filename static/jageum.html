@@ -363,7 +363,7 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
 
  <div class="card" id="settle_card" style="border-top:3px solid #059669">
    <h2>📅 월말 결산 — 팀별 매출·비용·순익</h2>
-   <div class="note">매월 팀별 현금흐름 결산 · 담당자=본인매출−직접비용(기여이익) · 매입·본사운영비·인건비는 본사·공통 · 태양광은 영업외</div>
+   <div class="note">매월 팀별 현금흐름 결산 · 담당자=본인매출−직접비용(기여이익) · 매입·본사운영비·인건비는 본사·공통 · ☀️전력매출(태양광)은 별도 행</div>
    <div class="tabs" id="closedim"><button class="on" data-cd="순익">순익 보기</button><button data-cd="매출">매출 보기</button><button data-cd="비용">비용 보기</button></div>
    <div class="scroll" style="overflow-x:auto"><table id="t_close"></table></div>
  </div>
@@ -1296,14 +1296,19 @@ function svToggleDone(i){const key=(window._ck||[])[i];if(!key)return;M.체크�
 let closeDim='순익';
 function renderClose(){
  const ml=D.months_list||[]; if(!ml.length||!D.months) return;
- const teams=['쇼핑몰','영업·성기민','영업·김성주','영업·대표','본사·공통'];
- const tlabel={'쇼핑몰':'🛒 쇼핑몰','영업·성기민':'🧑‍💼 성기민','영업·김성주':'🧑‍💼 김성주','영업·대표':'👑 대표','본사·공통':'🏢 본사·공통'};
+ const teams=['쇼핑몰','영업·성기민','영업·김성주','영업·대표','본사·공통','태양광'];
+ const tlabel={'쇼핑몰':'🛒 쇼핑몰','영업·성기민':'🧑‍💼 성기민','영업·김성주':'🧑‍💼 김성주','영업·대표':'👑 대표','본사·공통':'🏢 본사·공통','태양광':'☀️ 전력매출'};
+ const _solarManual=M.태양광수동||{};
  // [team][month] = {매출,비용}
  const data={}; teams.forEach(t=>data[t]={});
  ml.forEach(k=>{
    const m=D.months[k];
-   (m.자금의증가||[]).filter(real).forEach(r=>{const t=dept(r); if(data[t]){(data[t][k]=data[t][k]||{매출:0,비용:0}).매출+=r.금액;}});
+   // 매출: 태양광은 아래에서 D.태양광(+수동)으로 별도 집계 → 여기선 제외(이중집계 방지)
+   (m.자금의증가||[]).filter(real).forEach(r=>{const t=dept(r); if(data[t]&&t!=='태양광'){(data[t][k]=data[t][k]||{매출:0,비용:0}).매출+=r.금액;}});
    (m.자금의감소||[]).filter(opexReal).forEach(r=>{const t=dept(r); if(data[t]){(data[t][k]=data[t][k]||{매출:0,비용:0}).비용+=r.금액;}});
+   // ☀️ 전력매출(태양광): 통장 자동수집분(D.태양광) + 경리 수동입력분 — 대시보드 KPI 카드와 동일 기준
+   const solar=((D.태양광||{})[k]||0)+(+(_solarManual[k]||0));
+   if(solar){(data['태양광'][k]=data['태양광'][k]||{매출:0,비용:0}).매출+=solar;}
  });
  const val=(t,k)=>{const c=data[t][k]||{매출:0,비용:0}; return closeDim==='매출'?c.매출:closeDim==='비용'?c.비용:(c.매출-c.비용);};
  const stick='position:sticky;left:0;z-index:1;';
