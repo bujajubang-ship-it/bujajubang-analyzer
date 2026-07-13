@@ -1449,6 +1449,68 @@ def _save_approvals(items):
     JAGEUM_APPROVALS_FILE.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
     _kv_backup("jageum_approvals", items)
 
+# ===== 결재요청 공통: 세부사항 확정 규칙 + 파서 + 생성 헬퍼 =====
+# 담당자가 올리는 모든 결재(자금·영업결산·소싱)에 동일 적용.
+# 목적: 결재를 올리기 전에 AI가 담당자와 '개발에 필요한 세부사항'을 확정 → 사장님은 승인만.
+_APPROVAL_SPEC_RULE = """- 이 기능을 실제로 고치거나 추가하려면, '결재요청'을 올리기 전에 담당자와 세부사항을 먼저 확정해야 합니다. 개발자가 코드를 짤 때 반드시 필요한 아래 4가지가 대화에서 아직 확정되지 않았으면, 결재요청을 올리지 말고 담당자에게 하나씩 되물어 확정하세요(추측 금지):
+  · 데이터 출처 — 이 숫자·항목이 어디서 오는가 (예: 이카운트 매출 전표 / 통장 입금 / 정산예정 / 경리 수기입력)
+  · 적용 범위·시작 시점 — 언제부터, 어느 화면·항목에 적용하는가
+  · 예외 처리 — 데이터가 없거나 애매한 경우 어떻게 처리하는가
+  · 계산 기준 — 무엇을 더하고 빼는가, 중복·이중집계 위험은 없는가
+- 위 4가지가 대화에서 충분히 확정됐다고 판단될 때만, 답변 맨 끝에 별도 줄로 아래 형식을 정확히 출력하세요(형식 바깥에 다른 말 붙이지 말 것):
+[결재요청]
+제목: (짧은 제목)
+요약: (무엇을 어떻게 바꾸는지 한 문장)
+스펙:
+- 데이터 출처: (확정된 내용)
+- 적용 범위: (확정된 내용)
+- 예외 처리: (확정된 내용)
+- 계산 기준: (확정된 내용)
+- 단순 상담·질문·설명이면 결재요청을 넣지 마세요. 실제 코드/기능 변경이 필요하고 위 세부사항이 확정됐을 때만 올리세요."""
+
+def _parse_approval(text: str):
+    """AI 답변에서 [결재요청]을 파싱. 신형(블록: 제목/요약/스펙) 우선, 구형(제목 | 요약) 폴백.
+    반환: (head_text, title, desc, spec) 또는 None."""
+    import re as _re
+    idx = text.find("[결재요청]")
+    if idx < 0:
+        return None
+    head = text[:idx].rstrip()
+    block = text[idx + len("[결재요청]"):]
+    tm = _re.search(r"제목\s*[:：]\s*(.+)", block)
+    sm = _re.search(r"요약\s*[:：]\s*(.+)", block)
+    if tm and sm:
+        title = tm.group(1).strip()
+        desc = sm.group(1).strip()
+        spm = _re.search(r"스펙\s*[:：]\s*(.*)$", block, _re.S)
+        spec = (spm.group(1).strip() if spm else "")
+        return head, title, desc, spec
+    # 구형: [결재요청] 제목 | 요약
+    first = (block.strip().splitlines() or [""])[0]
+    om = _re.match(r"\s*(.+?)\s*\|\s*(.+)", first)
+    if om:
+        return head, om.group(1).strip(), om.group(2).strip(), ""
+    return None
+
+def _conv_from_messages(messages, limit: int = 16):
+    """담당자↔AI 대화(결재 근거)를 안건에 저장할 형태로 변환."""
+    out = []
+    for m in (messages or [])[-limit:]:
+        role = m.get("role")
+        if role in ("user", "assistant"):
+            out.append({"role": role, "text": (m.get("content") or "").strip()})
+    return out
+
+def _new_approval_item(items, title, desc, spec, who, conv, source=None):
+    """결재 안건 dict 생성(+id 채번). 저장은 호출측에서."""
+    aid = (max([a["id"] for a in items], default=0) + 1)
+    item = {"id": aid, "title": title, "desc": desc, "spec": spec, "who": who,
+            "status": "대기", "ts": "", "thread": [], "대화": conv}
+    if source:
+        item["source"] = source
+    items.append(item)
+    return item
+
 def _jageum_summary() -> str:
     """대시보드 데이터를 AI가 보기 좋게 요약(토큰 절약)."""
     if not JAGEUM_FILE.exists():
@@ -1558,9 +1620,7 @@ async def jageum_chat(request: Request):
 
 규칙:
 - 숫자는 실제 데이터 기반으로 구체적으로 답하세요. (만원 단위)
-- 대시보드 기능 수정/추가가 필요한 협의가 정리되면, 답변 맨 끝에 별도 줄로 다음 형식을 정확히 출력하세요:
-[결재요청] 제목 | 무엇을 어떻게 바꿀지 한 문장 요약
-- 단순 상담/질문이면 결재요청을 넣지 마세요. 실제로 코드/기능 변경이 필요할 때만.
+{_APPROVAL_SPEC_RULE}
 - 모르는 건 모른다고 하세요."""
     body = {
         "model": "claude-opus-4-8", "max_tokens": 1500, "system": system,
@@ -1573,19 +1633,15 @@ async def jageum_chat(request: Request):
             return JSONResponse({"error": f"AI 오류: {r.text[:200]}"}, status_code=500)
         rd = r.json()
     text = "".join(b.get("text","") for b in rd.get("content",[]) if b.get("type")=="text")
-    # 결재요청 추출
+    # 결재요청 추출 (세부사항 확정 스펙 + 담당자 대화 함께 저장)
     approval = None
-    import re as _re
-    mt = _re.search(r"\[결재요청\]\s*(.+?)\s*\|\s*(.+)", text)
-    if mt:
-        title, desc = mt.group(1).strip(), mt.group(2).strip()
-        text = text[:mt.start()].rstrip()
+    parsed = _parse_approval(text)
+    if parsed:
+        text, title, desc, spec = parsed
         items = _load_approvals()
-        aid = (max([a["id"] for a in items], default=0) + 1)
-        items.append({"id": aid, "title": title, "desc": desc, "who": who,
-                      "status": "대기", "ts": "", "thread": []})
+        item = _new_approval_item(items, title, desc, spec, who, _conv_from_messages(messages))
         _save_approvals(items)
-        approval = {"id": aid, "title": title, "desc": desc}
+        approval = {"id": item["id"], "title": title, "desc": desc}
     return JSONResponse({"reply": text, "approval": approval})
 
 @app.get("/jageum/api/approvals")
@@ -1634,7 +1690,12 @@ async def jageum_approval_chat(aid: int, request: Request):
 [결재 안건]
 제목: {appr.get('title','')}
 요청 내용: {appr.get('desc','')}
-요청자: {appr.get('who','')}"""
+요청자: {appr.get('who','')}
+확정 스펙:
+{appr.get('spec','') or '(스펙 없음 — 구버전 안건)'}
+
+[담당자가 이 안건을 올릴 때 AI와 확정한 대화]
+{chr(10).join(('· '+m.get('role','')+': '+m.get('text','')) for m in appr.get('대화',[])) or '(대화 기록 없음)'}"""
     conv = [{"role": m.get("role"), "content": m.get("text", "")} for m in thread if m.get("role") in ("user", "assistant")]
     conv.append({"role": "user", "content": msg})
     body = {"model": "claude-opus-4-8", "max_tokens": 1200, "system": system, "messages": conv[-16:]}
@@ -1713,9 +1774,7 @@ async def jageum_sales_chat(request: Request):
 규칙:
 - 기능이 어떻게 동작하는지 물으면 위 설명을 바탕으로 쉽게 알려주세요.
 - 숫자 질문은 위 실제 데이터로 구체적으로 답하세요. (원 단위)
-- 이 탭 기능을 고치거나 추가하는 협의가 정리되면, 답변 맨 끝에 별도 줄로 정확히 이 형식을 출력하세요:
-[결재요청] 제목 | 무엇을 어떻게 바꿀지 한 문장 요약
-- 단순 상담/질문이면 결재요청을 넣지 마세요. 실제로 코드/기능 변경이 필요할 때만.
+{_APPROVAL_SPEC_RULE}
 - 승인·결정은 사장님 몫입니다. 모르는 건 모른다고 하세요."""
     body = {
         "model": "claude-opus-4-8", "max_tokens": 1500, "system": system,
@@ -1729,17 +1788,13 @@ async def jageum_sales_chat(request: Request):
         rd = r.json()
     text = "".join(b.get("text", "") for b in rd.get("content", []) if b.get("type") == "text")
     approval = None
-    import re as _re
-    mt = _re.search(r"\[결재요청\]\s*(.+?)\s*\|\s*(.+)", text)
-    if mt:
-        title, desc = mt.group(1).strip(), mt.group(2).strip()
-        text = text[:mt.start()].rstrip()
+    parsed = _parse_approval(text)
+    if parsed:
+        text, title, desc, spec = parsed
         items = _load_approvals()
-        aid = (max([a["id"] for a in items], default=0) + 1)
-        items.append({"id": aid, "title": title, "desc": desc, "who": who,
-                      "status": "대기", "ts": "", "thread": [], "source": "영업결산"})
+        item = _new_approval_item(items, title, desc, spec, who, _conv_from_messages(messages), source="영업결산")
         _save_approvals(items)
-        approval = {"id": aid, "title": title, "desc": desc}
+        approval = {"id": item["id"], "title": title, "desc": desc}
     return JSONResponse({"reply": text, "approval": approval})
 
 
@@ -1752,10 +1807,18 @@ def _load_site_approvals():
             return json.loads(SITE_APPROVALS_FILE.read_text(encoding="utf-8"))
         except Exception:
             return []
+    data = _kv_restore("site_approvals")   # 재배포 초기화 → Lightsail 백업 복원
+    if isinstance(data, list):
+        try:
+            SITE_APPROVALS_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+        return data
     return []
 
 def _save_site_approvals(items):
     SITE_APPROVALS_FILE.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
+    _kv_backup("site_approvals", items)
 
 @app.post("/api/site_chat")
 async def site_chat(request: Request):
@@ -1781,9 +1844,7 @@ async def site_chat(request: Request):
 
 규칙:
 - 사이트 기능·UX·소싱 전략·쿠팡 운영 개선을 구체적으로 제안하세요.
-- 실제로 코드/기능 변경(개발)이 필요한 안이 정리되면, 답변 맨 끝에 별도 줄로 정확히 이 형식을 출력하세요:
-[결재요청] 제목 | 무엇을 어떻게 바꿀지 한 문장 요약
-- 단순 상담·질문·설명이면 결재요청을 넣지 마세요. 실제 개발 작업이 필요할 때만.
+{_APPROVAL_SPEC_RULE}
 - 모르는 건 모른다고 하세요."""
     body = {
         "model": "claude-opus-4-8", "max_tokens": 1500, "system": system,
@@ -1797,17 +1858,13 @@ async def site_chat(request: Request):
         rd = r.json()
     text = "".join(b.get("text","") for b in rd.get("content",[]) if b.get("type")=="text")
     approval = None
-    import re as _re
-    mt = _re.search(r"\[결재요청\]\s*(.+?)\s*\|\s*(.+)", text)
-    if mt:
-        title, desc = mt.group(1).strip(), mt.group(2).strip()
-        text = text[:mt.start()].rstrip()
+    parsed = _parse_approval(text)
+    if parsed:
+        text, title, desc, spec = parsed
         items = _load_site_approvals()
-        aid = (max([a["id"] for a in items], default=0) + 1)
-        items.append({"id": aid, "title": title, "desc": desc, "who": who,
-                      "status": "대기", "ts": ""})
+        item = _new_approval_item(items, title, desc, spec, who, _conv_from_messages(messages))
         _save_site_approvals(items)
-        approval = {"id": aid, "title": title, "desc": desc}
+        approval = {"id": item["id"], "title": title, "desc": desc}
     return JSONResponse({"reply": text, "approval": approval})
 
 @app.get("/api/site_approvals")

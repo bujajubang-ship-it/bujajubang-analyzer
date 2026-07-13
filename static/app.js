@@ -2027,11 +2027,16 @@ function loadSiteApprovals(){
     const items=(d.items||[]).slice().reverse();
     _updateApprovalAlarm(items.filter(a=>(a.status||'대기')==='대기').length);
     if (!items.length){ box.innerHTML='<div style="color:#9ca3af">대기 중인 결재 요청이 없어요.</div>'; return; }
+    const esc=s=>String(s||'').replace(/</g,'&lt;');
     box.innerHTML=items.map(a=>{
       const st=a.status||'대기';
       const color=st==='승인'?'#16a34a':(st==='반려'?'#b91c1c':'#d97706');
       const acts=st==='대기'?`<button onclick="siteApprovalAct(${a.id},'approve')" style="background:#16a34a;color:#fff;border:none;border-radius:7px;padding:6px 12px;cursor:pointer;font-size:13px;font-weight:600">승인</button> <button onclick="siteApprovalAct(${a.id},'reject')" style="background:#fee2e2;color:#b91c1c;border:none;border-radius:7px;padding:6px 12px;cursor:pointer;font-size:13px;font-weight:600">반려</button>`:`<span style="color:${color};font-weight:700">${st}</span>`;
-      return `<div style="display:flex;align-items:center;gap:12px;padding:10px;border:1px solid #eee;border-radius:10px;margin-bottom:8px"><div style="flex:1;min-width:0"><div style="font-weight:600;font-size:14px">${(a.title||'').replace(/</g,'&lt;')}</div><div style="font-size:12px;color:#9ca3af">${(a.desc||'').replace(/</g,'&lt;')} · ${a.who||''}</div></div>${acts}</div>`;
+      let extra='';
+      if(a.spec) extra+='<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:8px 10px;margin-top:6px"><div style="font-size:11px;font-weight:700;color:#c2410c;margin-bottom:3px">📋 확정 스펙 (담당자와 합의됨)</div><div style="white-space:pre-wrap;font-size:12px;line-height:1.5;color:#7c2d12">'+esc(a.spec)+'</div></div>';
+      const cv=a.대화||[];
+      if(cv.length) extra+='<details style="margin-top:6px"><summary style="cursor:pointer;font-size:12px;color:#9ca3af">🗣️ 담당자와 확정한 대화 ('+cv.length+')</summary><div style="background:#fafafa;border:1px solid #eee;border-radius:8px;padding:8px 10px;margin-top:5px;max-height:220px;overflow:auto">'+cv.map(m=>'<div style="margin:4px 0"><b style="font-size:11px;color:'+(m.role==='user'?'#1d4ed8':'#7c3aed')+'">'+(m.role==='user'?'🧑 담당자':'🤖 AI')+'</b><div style="white-space:pre-wrap;font-size:12px;line-height:1.5">'+esc(m.text)+'</div></div>').join('')+'</div></details>';
+      return `<div style="padding:10px;border:1px solid #eee;border-radius:10px;margin-bottom:8px"><div style="display:flex;align-items:center;gap:12px"><div style="flex:1;min-width:0"><div style="font-weight:600;font-size:14px">${esc(a.title)}</div><div style="font-size:12px;color:#9ca3af">${esc(a.desc)} · ${a.who||''}</div></div>${acts}</div>${extra}</div>`;
     }).join('');
   }).catch(()=>{});
 }

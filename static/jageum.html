@@ -180,7 +180,7 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    <!-- 영업 결재함 (사장님 전용) -->
    <div class="card" id="sl_appr_card" style="border-top:3px solid #d97706;display:none">
      <h2>📋 영업 결재함 <span class="muted big" id="sl_appr_count"></span></h2>
-     <div class="note">영업 AI가 올린 기능 수정 요청입니다. 승인하면 개발자(클로드코드)가 반영합니다.</div>
+     <div class="note">영업 담당자가 AI와 <b>세부사항까지 확정</b>해 올린 요청입니다. 스펙·대화를 보고 <b>승인만</b> 누르면 개발자(클로드코드)가 바로 반영합니다.</div>
      <div id="sl_appr_list"></div>
    </div>
  </div>
@@ -446,7 +446,7 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
 
  <div class="card" id="approval_card" style="border-top:3px solid #d97706;display:none">
    <h2>📋 결재함 <span class="muted big" id="appr_count"></span></h2>
-   <div class="note">AI가 올린 기능 수정 요청입니다. 사장님이 승인하면 개발자(클로드코드)가 반영합니다.</div>
+   <div class="note">담당자가 AI와 <b>세부사항까지 확정</b>해 올린 요청입니다. 아래 스펙·대화를 보고 <b>승인만</b> 누르면 개발자(클로드코드)가 바로 반영합니다.</div>
    <div id="appr_list"></div>
  </div>
  </div><!--/view-biz-->
@@ -1505,6 +1505,18 @@ function loadApprovals(){
   renderApprovals();
  });
 }
+// 결재 안건의 '확정 스펙 + 담당자 대화'를 보여주는 공통 렌더 (사장님은 읽고 승인만)
+function _apprSpecConv(a){
+  let h='';
+  if(a.spec){
+    h+='<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:8px 10px;margin-top:6px"><div style="font-size:11px;font-weight:700;color:#0369a1;margin-bottom:3px">📋 확정 스펙 (담당자와 합의됨)</div><div style="white-space:pre-wrap;font-size:12px;line-height:1.5;color:#0c4a6e">'+String(a.spec).replace(/</g,'&lt;')+'</div></div>';
+  }
+  const cv=a.대화||[];
+  if(cv.length){
+    h+='<details style="margin-top:6px"><summary style="cursor:pointer;font-size:12px;color:#6b7280">🗣️ 담당자와 확정한 대화 ('+cv.length+') 펼치기</summary><div style="background:#fafafe;border:1px solid #eef0f4;border-radius:8px;padding:8px 10px;margin-top:5px;max-height:240px;overflow:auto">'+cv.map(m=>'<div style="margin:4px 0"><b style="color:'+(m.role==='user'?'#1d4ed8':'#7c3aed')+';font-size:11px">'+(m.role==='user'?'🧑 담당자':'🤖 AI')+'</b><div style="white-space:pre-wrap;font-size:12px;line-height:1.5">'+String(m.text||'').replace(/</g,'&lt;')+'</div></div>').join('')+'</div></details>';
+  }
+  return h;
+}
 function renderApprovals(){
   appr_list.innerHTML=APPRS.length?APPRS.map(a=>{
     const c=a.status==='승인'?'#059669':a.status==='반려'?'#9ca3af':'#d97706';
@@ -1514,6 +1526,7 @@ function renderApprovals(){
       <div style="font-weight:700">${a.title} <span style="color:${c};font-size:12px">[${a.status}]</span></div>
       <div class="muted" style="font-size:13px;margin:4px 0;white-space:normal">${a.desc}</div>
       <div class="muted" style="font-size:11px">요청: ${a.who}</div>
+      ${_apprSpecConv(a)}
       ${thHtml}
       <div style="margin-top:8px;display:flex;gap:6px">
         <input id="apprin_${a.id}" placeholder="이 안건, 무슨 기능을 어떻게 바꾸는지 물어보세요" style="flex:1;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px" onkeydown="if(event.key==='Enter')apprChat(${a.id})">
@@ -1589,6 +1602,7 @@ function renderSalesApprovals(){
       <div style="font-weight:700">${a.title} <span style="color:${c};font-size:12px">[${a.status}]</span></div>
       <div class="muted" style="font-size:13px;margin:4px 0;white-space:normal">${a.desc}</div>
       <div class="muted" style="font-size:11px">요청: ${a.who}</div>
+      ${_apprSpecConv(a)}
       ${thHtml}
       <div style="margin-top:8px;display:flex;gap:6px">
         <input id="slapprin_${a.id}" placeholder="이 안건, 무슨 기능을 어떻게 바꾸는지 물어보세요" style="flex:1;padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px" onkeydown="if(event.key==='Enter')slApprChat(${a.id})">
