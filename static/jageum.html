@@ -470,6 +470,11 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    <div class="card" style="border-top:3px solid #16a34a">
      <h2>✍️ 인생 노트 <span class="muted big">— 메모하듯 막 적어요 (구글 킵처럼)</span></h2>
      <textarea id="life_body" placeholder="지금 떠오른 생각·아이디어·감정을 그냥 막 적어요. 제목 필요 없어요…" style="width:100%;min-height:110px;padding:12px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;resize:vertical" onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey))lifeAdd()"></textarea>
+     <div id="life_imgstrip" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"></div>
+     <div style="margin-top:8px">
+       <label style="display:inline-flex;align-items:center;gap:6px;background:#f0fdf4;border:1.5px dashed #86efac;color:#16a34a;border-radius:8px;padding:7px 12px;font-size:13px;font-weight:600;cursor:pointer">📷 사진 첨부<input id="life_imgfile" type="file" accept="image/*" multiple style="display:none" onchange="lifeImgFiles(this.files);this.value=''"></label>
+       <span class="muted" style="font-size:12px;margin-left:6px">이 메모에 사진을 붙여요 (여러 장 가능)</span>
+     </div>
      <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
        <button onclick="lifeAdd()" style="background:#16a34a;color:#fff;border:none;border-radius:9px;padding:10px 22px;font-weight:700;cursor:pointer">+ 메모 저장</button>
        <button onclick="lifeCompare()" style="background:#fff;color:#16a34a;border:1.5px solid #16a34a;border-radius:9px;padding:10px 18px;font-weight:700;cursor:pointer">🔗 과거와 비교</button>
@@ -1087,11 +1092,42 @@ function vbFiles(fl){
   });
 }
 function vbRemove(i){if(!confirm('이 사진 삭제할까요?'))return;LIFE.비전보드.splice(i,1);saveLife();renderLife();}
+// 메모 첨부 사진 (임시 보관 → 메모 저장 시 글에 포함)
+let _lifePendingImgs=[];
+function _imgToDataURL(file, cb){
+  if(!file || !file.type.startsWith('image/'))return;
+  const r=new FileReader();
+  r.onload=ev=>{const img=new Image();img.onload=()=>{
+    const max=820;let w=img.width,h=img.height;
+    if(w>h&&w>max){h=Math.round(h*max/w);w=max}else if(h>=w&&h>max){w=Math.round(w*max/h);h=max}
+    const cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(img,0,0,w,h);
+    cb(cv.toDataURL('image/jpeg',0.82));
+  };img.src=ev.target.result;};
+  r.readAsDataURL(file);
+}
+function lifeImgFiles(fl){
+  [...fl].forEach(file=>{
+    if(_lifePendingImgs.length>=8){alert('메모당 사진은 최대 8장이에요.');return;}
+    _imgToDataURL(file,src=>{_lifePendingImgs.push(src);renderPendingImgs();});
+  });
+}
+function renderPendingImgs(){
+  const el=document.getElementById('life_imgstrip'); if(!el)return;
+  el.innerHTML=_lifePendingImgs.map((src,i)=>`<div style="position:relative;width:76px;height:76px;border-radius:8px;overflow:hidden;border:1px solid #d1fae5"><img src="${src}" style="width:100%;height:100%;object-fit:cover"><span onclick="_lifePendingImgs.splice(${i},1);renderPendingImgs()" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.55);color:#fff;border-radius:50%;width:18px;height:18px;text-align:center;line-height:18px;cursor:pointer;font-size:12px">×</span></div>`).join('');
+}
+function lifeImgView(id,i){
+  const en=(LIFE.글||[]).find(e=>e.id===id); if(!en||!en.imgs||!en.imgs[i])return; const src=en.imgs[i];
+  const ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px;cursor:zoom-out';
+  ov.onclick=()=>ov.remove();
+  const im=document.createElement('img');im.src=src;im.style.cssText='max-width:100%;max-height:100%;border-radius:10px';
+  ov.appendChild(im);document.body.appendChild(ov);
+}
 function lifeAdd(){
   const b=document.getElementById('life_body').value.trim();
-  if(!b){alert('내용을 적어주세요.');return;}
-  LIFE.글=LIFE.글||[]; LIFE.글.unshift({id:Date.now(),date:_ymd(),title:'',body:b});
-  document.getElementById('life_body').value='';
+  if(!b && !_lifePendingImgs.length){alert('내용이나 사진을 넣어주세요.');return;}
+  LIFE.글=LIFE.글||[]; LIFE.글.unshift({id:Date.now(),date:_ymd(),title:'',body:b,imgs:_lifePendingImgs.slice()});
+  document.getElementById('life_body').value=''; _lifePendingImgs=[]; renderPendingImgs();
   saveLife();renderLife();
 }
 function lifeDel(id){if(!confirm('이 기록 삭제할까요?'))return;LIFE.글=(LIFE.글||[]).filter(e=>e.id!==id);saveLife();renderLife();}
@@ -1122,7 +1158,8 @@ function renderLife(){
       const hasTitle=en.title&&en.title!=='(무제)';
       return `<div style="border-left:3px solid #16a34a;background:#f6fdf8;border-radius:8px;padding:12px 14px;margin-bottom:10px">
       <div style="display:flex;justify-content:${hasTitle?'space-between':'flex-end'};gap:8px;align-items:baseline">${hasTitle?`<b style="font-size:15px">${esc(en.title)}</b>`:''}<span class="muted" style="font-size:12px;white-space:nowrap">${en.date} <a onclick="lifeDel(${en.id})" style="cursor:pointer;color:#dc2626">삭제</a></span></div>
-      <div style="white-space:pre-wrap;margin-top:${hasTitle?'6px':'0'};font-size:14px;line-height:1.6">${esc(en.body)}</div></div>`;
+      <div style="white-space:pre-wrap;margin-top:${hasTitle?'6px':'0'};font-size:14px;line-height:1.6">${esc(en.body)}</div>
+      ${(en.imgs&&en.imgs.length)?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${en.imgs.map((src,i)=>`<img src="${src}" onclick="lifeImgView(${en.id},${i})" style="width:88px;height:88px;object-fit:cover;border-radius:8px;border:1px solid #d1fae5;cursor:zoom-in">`).join('')}</div>`:''}</div>`;
     }).join(''):'<div class="muted" style="padding:8px">메모하듯 막 적어보세요. 매일 쌓이면 생각의 흐름이 보여요.</div>';
   renderPast();
   lcRender();
