@@ -66,8 +66,10 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
  <div id="view_sales" style="display:none">
    <div class="card" style="border-top:3px solid #b91c1c">
      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-       <h2 style="margin:0">📈 영업 결산 <span class="muted big">— 거래처별 진행·마감 현황 (ERP 판매조회 연동 예정)</span></h2>
+       <h2 style="margin:0">📈 영업 결산 <span class="muted big">— 거래처별 진행·마감 현황 (판매 넘긴 뒤 🔄새로고침)</span></h2>
        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+         <button id="sl_refresh" onclick="salesRefresh()" title="이카운트에서 방금 넘긴 판매를 지금 가져옵니다" style="background:#ecfdf5;color:#047857;border:1.5px solid #a7f3d0;border-radius:8px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">🔄 ERP 새로고침</button>
+         <span id="sl_refresh_msg" style="font-size:12px;font-weight:600"></span>
          <a href="/danga" target="_blank" style="text-decoration:none;background:#faf5ff;color:#7c3aed;border:1.5px solid #ddd6fe;border-radius:8px;padding:6px 12px;font-size:13px;font-weight:600;white-space:nowrap">📊 단가/마진 보기</a>
          <select id="sl_period" onchange="renderDeals()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px">
            <option value="this">이번달</option><option value="last">지난달</option>
@@ -1611,6 +1613,33 @@ function apprAct(id,action){
   .then(()=>loadApprovals());
 }
 // ===== 영업 결산 AI 비서 + 결재함 =====
+// ===== ERP 새로고침 (영업직원 온디맨드 판매조회 재수집) =====
+let _slRefreshing=false;
+function salesRefresh(){
+  if(_slRefreshing)return;
+  const btn=document.getElementById('sl_refresh'), msg=document.getElementById('sl_refresh_msg');
+  _slRefreshing=true; if(btn){btn.disabled=true;btn.style.opacity='.6';btn.style.cursor='wait';}
+  if(msg){msg.textContent='이카운트에서 판매 가져오는 중… (1~2분)';msg.style.color='#d97706';}
+  fetch('/jageum/api/sales_refresh',{method:'POST'}).then(r=>r.json()).then(d=>{
+    if(d.status==='error'){_finishRefresh('연결 실패 — 잠시 후 다시 시도해 주세요','#dc2626');return;}
+    _pollRefresh(0);   // busy/started 둘 다 폴링
+  }).catch(()=>_finishRefresh('네트워크 오류 — 다시 시도해 주세요','#dc2626'));
+}
+function _pollRefresh(n){
+  if(n>30){_finishRefresh('시간이 오래 걸려요. 잠시 후 "📥 판매조회에서 가져오기"를 눌러보세요','#d97706');return;}
+  setTimeout(()=>{
+    fetch('/jageum/api/sales_refresh/status').then(r=>r.json()).then(s=>{
+      const msg=document.getElementById('sl_refresh_msg');
+      if(s.running){if(msg)msg.textContent='이카운트에서 판매 가져오는 중… ('+((n+1)*10)+'초)';_pollRefresh(n+1);}
+      else _finishRefresh('✅ 최신 판매 반영 완료 — "📥 판매조회에서 가져오기"를 눌러보세요','#059669');
+    }).catch(()=>_pollRefresh(n+1));
+  },10000);
+}
+function _finishRefresh(text,color){
+  const btn=document.getElementById('sl_refresh'), msg=document.getElementById('sl_refresh_msg');
+  _slRefreshing=false; if(btn){btn.disabled=false;btn.style.opacity='1';btn.style.cursor='pointer';}
+  if(msg){msg.textContent=text;msg.style.color=color||'#059669';}
+}
 function slInit(){
   const wl=document.getElementById('slchat_who');
   if(wl)wl.textContent=MYROLE==='boss'?'👑 사장님':(MYROLE==='staff'?'🧑‍💼 경리':('📈 '+(window._who||'영업담당')+' 님'));

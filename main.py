@@ -1150,6 +1150,28 @@ def sales_deposits(request: Request):
                     "linked": linked.get(key)})
     return JSONResponse({"deposits": out})
 
+@app.post("/jageum/api/sales_refresh")
+async def sales_refresh(request: Request):
+    """영업직원이 이카운트 판매조회로 넘긴 뒤 눌러 판매 데이터를 즉시 재수집(온디맨드).
+    실시간 아님 — Lightsail 수집기를 1회 돌리고 중복실행은 잠금으로 막는다."""
+    if not _sales_auth(request):
+        return _AUTH401
+    try:
+        r = httpx.post(f"{_KV_BASE}/scrape_sales", headers={"x-secret": _KV_SECRET}, timeout=15)
+        return JSONResponse(r.json())
+    except Exception as e:
+        return JSONResponse({"status": "error", "msg": str(e)[:150]}, status_code=502)
+
+@app.get("/jageum/api/sales_refresh/status")
+async def sales_refresh_status(request: Request):
+    if not _sales_auth(request):
+        return _AUTH401
+    try:
+        r = httpx.get(f"{_KV_BASE}/scrape_sales_status", headers={"x-secret": _KV_SECRET}, timeout=10)
+        return JSONResponse(r.json())
+    except Exception:
+        return JSONResponse({"running": False, "msg": "상태 확인 실패"})
+
 @app.post("/jageum/api/ingest")
 async def jageum_ingest(request: Request):
     if request.headers.get("x-ingest-secret", "") != JAGEUM_INGEST_SECRET:
