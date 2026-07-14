@@ -946,19 +946,36 @@ JAGEUM_MANUAL_FILE = data_path("jageum_manual.json")
 #       결재·수동입력을 항상 켜진 Lightsail 서버에 자동 백업하고, 로컬이 비면 복원한다. =====
 _KV_BASE = os.getenv("CNMAKER_BASE", "http://43.200.232.189")
 _KV_SECRET = os.getenv("CNMAKER_SECRET", "bj-cnmaker-2026")
-def _kv_backup(key, obj):
+def _kv_backup(key, obj, timeout=6):
     try:
-        httpx.post(f"{_KV_BASE}/kv/{key}", json=obj, headers={"x-secret": _KV_SECRET}, timeout=6)
+        httpx.post(f"{_KV_BASE}/kv/{key}", json=obj, headers={"x-secret": _KV_SECRET}, timeout=timeout)
     except Exception:
         pass
-def _kv_restore(key):
+def _kv_restore(key, timeout=6):
     try:
-        r = httpx.get(f"{_KV_BASE}/kv/{key}", headers={"x-secret": _KV_SECRET}, timeout=6)
+        r = httpx.get(f"{_KV_BASE}/kv/{key}", headers={"x-secret": _KV_SECRET}, timeout=timeout)
         if r.status_code == 200:
             return r.json().get("data")
     except Exception:
         pass
     return None
+
+def _load_jageum():
+    """대시보드 데이터 로드. 로컬 파일이 없으면(재배포로 초기화) Lightsail KV에서 복원 →
+    재배포·재시작 직후에도 대시보드가 빈 화면으로 뜨지 않게 한다(자금일보·손익·입금 등 메인 데이터)."""
+    if JAGEUM_FILE.exists():
+        try:
+            return json.loads(JAGEUM_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    data = _kv_restore("jageum_data", timeout=25)   # 2.6MB라 여유 타임아웃
+    if isinstance(data, dict) and data:
+        try:
+            JAGEUM_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+        return data
+    return {}
 def _load_manual():
     if JAGEUM_MANUAL_FILE.exists():
         try:
@@ -982,7 +999,7 @@ def jageum_data(request: Request):
     # 영업사원은 회사 자금 데이터 접근 불가 — 역할·이름만 (프론트가 영업결산 탭만 노출)
     if role == "sales":
         return JSONResponse({"_role": "sales", "_who": _jageum_who(request)})
-    d = json.loads(JAGEUM_FILE.read_text(encoding="utf-8")) if JAGEUM_FILE.exists() else {"period": "", "자금현황": [], "자금의증가": [], "자금의감소": []}
+    d = _load_jageum() or {"period": "", "자금현황": [], "자금의증가": [], "자금의감소": []}
     d["수동입력"] = _load_manual()
     d["_role"] = role
     d["_who"] = _jageum_who(request)
@@ -1095,7 +1112,7 @@ def sale_vouchers(request: Request):
     if not _sales_auth(request):
         return _AUTH401
     role = _jageum_role(request); who = _jageum_who(request)
-    d = json.loads(JAGEUM_FILE.read_text(encoding="utf-8")) if JAGEUM_FILE.exists() else {}
+    d = _load_jageum()
     sales = d.get("영업손익", {}) or {}
     out = []
     for month, sd in sales.items():
@@ -1115,7 +1132,7 @@ def sales_deposits(request: Request):
     # 실제 입금 내역(자금일보 자금의증가) — 영업이 딜에 계약금/중도금으로 연결
     if not _sales_auth(request):
         return _AUTH401
-    d = json.loads(JAGEUM_FILE.read_text(encoding="utf-8")) if JAGEUM_FILE.exists() else {}
+    d = _load_jageum()
     inc = d.get("자금의증가", [])
     # 이미 딜에 연결된 입금 key 집합
     linked = {}
@@ -1138,7 +1155,13 @@ async def jageum_ingest(request: Request):
     if request.headers.get("x-ingest-secret", "") != JAGEUM_INGEST_SECRET:
         return JSONResponse({"ok": False, "error": "forbidden"}, status_code=403)
     body = await request.body()
-    JAGEUM_FILE.write_text(body.decode("utf-8"), encoding="utf-8")
+    text = body.decode("utf-8")
+    JAGEUM_FILE.write_text(text, encoding="utf-8")
+    # 재배포에도 살아남게 Lightsail KV에 백업 (다음 재배포 후 첫 로드에서 자동 복원)
+    try:
+        _kv_backup("jageum_data", json.loads(text), timeout=25)
+    except Exception:
+        pass
     return JSONResponse({"ok": True})
 
 @app.post("/jageum/api/manual")
@@ -1522,12 +1545,9 @@ def _new_approval_item(items, title, desc, spec, who, conv, source=None):
 
 def _jageum_summary() -> str:
     """대시보드 데이터를 AI가 보기 좋게 요약(토큰 절약)."""
-    if not JAGEUM_FILE.exists():
+    d = _load_jageum()
+    if not d:
         return "(자금 데이터 없음)"
-    try:
-        d = json.loads(JAGEUM_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        return "(데이터 로드 실패)"
     months = d.get("months", {})
     lines = ["[자금 대시보드 데이터 요약]"]
     def real(r): return (r.get("상대계정명") or "").strip() != ""
