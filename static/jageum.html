@@ -283,6 +283,7 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    <div id="asset_total" style="font-size:34px;font-weight:800;color:#5b21b6;line-height:1.2">-</div>
    <div id="asset_net" style="font-size:14px;color:#374151;margin-top:2px"></div>
    <div class="asset-items" id="asset_items"></div>
+   <div id="asset_audit" style="margin-top:14px"></div>
  </div>
  </div><!--/view-biz-->
 
@@ -1467,6 +1468,30 @@ function renderAssets(){
   ['💳 대출 (부채)',-loan, editLink("openEdit('대출')",'대출 수정')+D3(loans)],
  ];
  asset_items.innerHTML=items.map(([nm,val,det])=>`<details class="asset-item"><summary><span>${nm}</span><b style="color:${val<0?'#dc2626':'#5b21b6'}">${won(val)}</b></summary><div class="asset-detail">${det}</div></details>`).join('');
+ // ── 조회 상태 점검 (자동 스크래핑 실패로 자산이 빠졌는지 즉시 확인) ──
+ const monOk=Object.keys(D.months||{}).length>0;
+ const cuVal=(c.정산예정||0)+(c.미구매확정||0), nvVal=naverAmt(), cf24=cafe24Amt();
+ const BADGE={ok:'<span style="color:#059669;font-weight:700">🟢 정상</span>',fail:'<span style="color:#dc2626;font-weight:700">🔴 조회 실패</span>',zero:'<span style="color:#9ca3af;font-weight:700">⚪ 값 없음</span>',manual:'<span style="color:#7c3aed;font-weight:700">✋ 수동</span>'};
+ const autoStat=(ok,val)=> !ok?'fail':(val>0?'ok':'zero');
+ const rowsA=[
+   ['🏦 통장 잔액','자동',autoStat((D.자금현황||[]).some(b=>(b.계정명||'').includes('보통예금')),cash),cash],
+   ['📦 쿠팡 정산예정','자동',autoStat(!!(D.정산예정&&D.정산예정.쿠팡),cuVal),cuVal],
+   ['📦 네이버 정산예정','자동',autoStat(!!(D.정산예정&&D.정산예정.네이버),nvVal),nvVal],
+   ['🛍️ 카페24 묶인돈','수동','manual',cf24],
+   ['🧾 미수금 (B2B)',misuIsManual()?'수동':'자동', misuIsManual()?'manual':autoStat(!!(D.미수금),misu), misu],
+   ['🤝 선급금 (선지급)','수동','manual',seonyz],
+   ['☀️ 투자자산','자동(파생)',autoStat(monOk,invest),invest],
+   ['🏛️ 정부지원','자동(파생)',autoStat(monOk,gov),gov],
+   ['💳 대출 (부채)','수동','manual',loan],
+ ];
+ const failCnt=rowsA.filter(r=>r[2]==='fail').length;
+ let auditHtml='';
+ if(failCnt) auditHtml+=`<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:9px;padding:10px 13px;margin-bottom:10px;font-size:13.5px;color:#b91c1c;font-weight:600">⚠️ ${failCnt}개 항목이 <b>조회 실패</b> — 실질총자산이 그만큼 실제보다 적게 나오고 있어요. 위 기간바의 <b>🔄 데이터 새로고침</b>을 눌러 다시 가져와 보세요.</div>`;
+ auditHtml+='<div class="muted" style="font-size:12px;font-weight:700;margin-bottom:6px">🔎 항목별 조회 상태</div>';
+ auditHtml+='<div style="overflow-x:auto"><table style="width:100%;font-size:13px;border-collapse:collapse"><thead><tr style="color:#6b7280;text-align:left"><th style="padding:4px 6px">항목</th><th>출처</th><th>상태</th><th class="num">금액</th></tr></thead><tbody>'+
+   rowsA.map(([nm,src,s,v])=>`<tr style="border-top:1px solid #f1f2f4"><td style="padding:5px 6px">${nm}</td><td class="muted">${src}</td><td>${BADGE[s]}</td><td class="num" style="${s==='fail'?'color:#dc2626':''}">${won(v)}</td></tr>`).join('')+'</tbody></table></div>';
+ auditHtml+=`<div style="margin-top:12px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.7"><b style="color:#5b21b6">💡 선급금이 줄었는데 총자산도 줄었다면?</b><br>선급금이 줄면 그만큼 <b>물건이 나간 것</b>이고, 그 대금(매출채권)은 아래 중 하나에 있어야 해요:<br>· <b>쇼핑몰 판매</b> → 정산예정: 쿠팡 <b>${won(cuVal)}</b> · 네이버 <b>${won(nvVal)}</b> · 카페24 <b>${won(cf24)}</b><br>· <b>B2B 외상</b> → 미수금 <b>${won(misu)}</b><br>현재 선급금 <b>${won(seonyz)}</b>. <b>선급금은 줄었는데 위 정산예정·미수금이 안 늘었다면</b> → ① 위 정산/미수가 🔴조회 실패했거나 ② 아직 플랫폼에 묶여 정산 전이거나 ③ 경리가 선급금만 줄이고 매출전표를 아직 안 올린 경우예요.</div>`;
+ document.getElementById('asset_audit').innerHTML=auditHtml;
 }
 function renderSettle(){
  const c=(D.정산예정&&D.정산예정.쿠팡)||{};
