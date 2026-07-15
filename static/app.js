@@ -2116,6 +2116,63 @@ function crRender(d){
   box.innerHTML=html;
 }
 
+// ===== 엑셀 일괄 추천 =====
+let _crBulk=[];
+function crUpload(){
+  const el=document.getElementById('cr-file'); const f=el.files[0];
+  if(!f)return;
+  document.getElementById('cr-file-name').textContent=f.name+' 분석 중…';
+  const box=document.getElementById('cr-result');
+  box.innerHTML='<div class="cr-empty">🤖 엑셀을 읽고 상품별로 카테고리를 분석하고 있어요… (상품 수에 따라 20~60초)</div>';
+  const rd=new FileReader();
+  rd.onload=function(){
+    fetch('/api/category_recommend_bulk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file:String(rd.result)})})
+      .then(r=>r.json()).then(d=>{
+        if(d.error){ document.getElementById('cr-file-name').textContent=f.name+' — 실패'; box.innerHTML='<div class="cr-empty">오류: '+d.error+'</div>'; return; }
+        document.getElementById('cr-file-name').textContent=f.name+' ✓ ('+(d.count||0)+'개)';
+        crRenderBulk(d);
+      }).catch(()=>{ box.innerHTML='<div class="cr-empty">네트워크 오류 — 다시 시도해주세요.</div>'; });
+  };
+  rd.readAsDataURL(f);
+  el.value='';
+}
+function crRenderBulk(d){
+  const res=d.results||[]; _crBulk=res;
+  const box=document.getElementById('cr-result');
+  if(!res.length){ box.innerHTML='<div class="cr-empty">상품을 찾지 못했어요. 첫 열에 상품명이 있는지 확인해주세요.</div>'; return; }
+  const won=n=>Number(n||0).toLocaleString();
+  let html='<div class="cr-sect">엑셀 일괄 추천 — '+res.length+'개 상품 (수수료 최저 카테고리 · 부가세 포함)</div>';
+  html+='<button class="cr-dl" onclick="crDownloadBulk()">⬇ 결과 엑셀(CSV) 다운로드</button>';
+  html+='<table style="margin-top:10px"><thead><tr><th class="l">상품명</th><th>판매가</th><th>추정사이즈</th><th class="l">추천 카테고리</th><th>수수료</th><th>총부담</th><th>노출</th></tr></thead><tbody>';
+  res.forEach(function(x){
+    const rc=x.추천;
+    html+='<tr><td class="l" style="max-width:250px;font-size:12.5px">'+String(x.상품명).replace(/</g,'&lt;')+'</td>'
+      +'<td>'+won(x.판매가)+'원</td><td>'+(x.사이즈||'-')+'</td>';
+    if(rc){
+      html+='<td class="l"><span class="catname">'+rc.경로+'</span></td>'
+        +'<td>'+rc.수수료율+'%</td><td class="total">'+won(rc.총부담)+'원</td>'
+        +'<td><span class="badge b-'+(rc.노출||'중')+'">'+(rc.노출||'중')+'</span></td>';
+    } else { html+='<td class="l" colspan="4" style="color:#9aa1ab">추천 없음</td>'; }
+    html+='</tr>';
+  });
+  html+='</tbody></table>';
+  if(d.truncated) html+='<div class="cr-note">💡 상품이 40개를 넘어 처음 40개만 분석했어요. 나눠서 올려주세요.</div>';
+  box.innerHTML=html;
+}
+function crDownloadBulk(){
+  if(!_crBulk.length)return;
+  const H=['상품명','판매가','추정사이즈','추천카테고리','수수료율','수수료액','물류비','총부담(부가세포함)','노출'];
+  const lines=[H.join(',')];
+  _crBulk.forEach(function(x){
+    const rc=x.추천||{};
+    const row=[x.상품명,x.판매가,x.사이즈||'',rc.경로||'',rc.수수료율||'',rc.수수료액||'',rc.물류비||'',rc.총부담||'',rc.노출||''];
+    lines.push(row.map(v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"').join(','));
+  });
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(['﻿'+lines.join('\n')],{type:'text/csv'}));
+  a.download='카테고리추천결과.csv'; a.click();
+}
+
 loadMe();
 
 // ═══════════ 💰 거래처 단가 / 마진 v3 (20컬럼·자동계산) ═══════════

@@ -2028,6 +2028,106 @@ async def category_recommend(request: Request):
     return JSONResponse({"상품명": name, "판매가": price, "사이즈": size, "물류비": logi_v,
                          "부가세포함": True, "추천": rows, "note": note})
 
+@app.post("/api/category_recommend_bulk")
+async def category_recommend_bulk(request: Request):
+    """엑셀 업로드(base64) → 상품마다 사이즈 추정 + 수수료 최저 카테고리 추천(일괄)."""
+    if not _site_auth(request):
+        return _AUTH401
+    data = await request.json()
+    b64 = data.get("file", "") or ""
+    if "," in b64[:64]:
+        b64 = b64.split(",", 1)[1]
+    import base64 as _b64, io as _io
+    try:
+        raw = _b64.b64decode(b64)
+        import openpyxl
+        ws = openpyxl.load_workbook(_io.BytesIO(raw), data_only=True).active
+    except Exception as e:
+        return JSONResponse({"error": "엑셀을 읽지 못했어요: " + str(e)[:120]}, status_code=400)
+    grid = list(ws.iter_rows(values_only=True))
+    if not grid:
+        return JSONResponse({"error": "빈 파일이에요"}, status_code=400)
+    # 헤더 행 찾기(상품명 포함) + 상품명/판매가 열
+    hidx = 0; name_col = 0; price_col = None
+    for i, r in enumerate(grid[:6]):
+        cells = [str(c).strip() if c is not None else "" for c in r]
+        if any("상품명" in c for c in cells):
+            hidx = i
+            for j, c in enumerate(cells):
+                if "상품명" in c:
+                    name_col = j
+            for pref in ("권장가격", "쿠팡가격", "판매가", "가격"):
+                for j, c in enumerate(cells):
+                    if pref in c:
+                        price_col = j; break
+                if price_col is not None:
+                    break
+            break
+    products = []
+    for r in grid[hidx + 1:]:
+        nm = str(r[name_col]).strip() if name_col < len(r) and r[name_col] is not None else ""
+        if not nm:
+            continue
+        pr = 0
+        if price_col is not None and price_col < len(r) and r[price_col] is not None:
+            digits = re.sub(r"[^0-9]", "", str(r[price_col]))
+            pr = int(digits) if digits else 0
+        products.append({"name": nm, "price": pr})
+    if not products:
+        return JSONResponse({"error": "상품명을 못 찾았어요. 첫 열 헤더에 '상품명'이 있는지 확인해주세요."}, status_code=400)
+    truncated = len(products) > 40
+    products = products[:40]
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return JSONResponse({"error": "ANTHROPIC_API_KEY 미설정"}, status_code=500)
+    catlist = ", ".join(_COMM.get("기본", {}).keys())
+    plist = "\n".join(f"{i+1}. {p['name']} | {p['price']}원" for i, p in enumerate(products))
+    system = f"""당신은 쿠팡 카테고리 매칭 전문가입니다. 아래 상품 목록의 '각 상품'에 대해 두 가지를 판단하세요.
+(1) 로켓그로스 사이즈 유형 추정: 극소형/소형/중형/대형1/대형2/특대형 (상품 부피·무게로. 예: 눈썹가위=극소형, 싱크대수전=특대형, 프라이팬=중형)
+(2) 규정상 실제로 맞는 카테고리 후보 2~3개 (억지 분류 금지)
+[대분류 목록]: {catlist}
+각 후보: 대분류(목록에서 정확히), 중분류·소분류(알면), 노출(상/중/하).
+오직 아래 JSON만 출력(설명 금지):
+{{"products":[{{"n":1,"사이즈":"극소형","candidates":[{{"대분류":"주방용품","중분류":"조리도구","소분류":"매셔","노출":"상"}}]}}]}}"""
+    body = {"model": "claude-opus-4-8", "max_tokens": 4096, "system": system,
+            "messages": [{"role": "user", "content": plist}]}
+    headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
+    async with httpx.AsyncClient(timeout=180) as client:
+        r = await client.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
+        if r.status_code != 200:
+            return JSONResponse({"error": f"AI 오류: {r.text[:200]}"}, status_code=500)
+        rd = r.json()
+    text = "".join(b.get("text", "") for b in rd.get("content", []) if b.get("type") == "text")
+    mt = re.search(r"\{.*\}", text, re.S)
+    try:
+        parsed = json.loads(mt.group(0)) if mt else {"products": []}
+    except Exception:
+        parsed = {"products": []}
+    VAT = 1.1
+    by_n = {int(x.get("n", 0)): x for x in parsed.get("products", []) if str(x.get("n", "")).isdigit()}
+    results = []
+    for i, prod in enumerate(products):
+        ai = by_n.get(i + 1, {})
+        size = ai.get("사이즈", "극소형")
+        logi_v = round(_SIZE_FEE.get(size, 3850) * VAT)
+        cands = []
+        seen = set()
+        for c in ai.get("candidates", []):
+            dae = (c.get("대분류") or "").strip()
+            if not dae:
+                continue
+            rate, path = _comm_rate(dae, (c.get("중분류") or "").strip(), (c.get("소분류") or "").strip())
+            if path in seen:
+                continue
+            seen.add(path)
+            comm = round(prod["price"] * rate / 100 * VAT)
+            cands.append({"경로": path, "수수료율": rate, "수수료액": comm,
+                          "물류비": logi_v, "총부담": comm + logi_v, "노출": c.get("노출", "중")})
+        cands.sort(key=lambda x: (x["수수료율"], x["총부담"]))
+        results.append({"상품명": prod["name"], "판매가": prod["price"], "사이즈": size,
+                        "추천": (cands[0] if cands else None), "대안": cands[1:3]})
+    return JSONResponse({"count": len(results), "truncated": truncated, "results": results})
+
 
 # ===== CN메이커 (CN인사이더 → 부자주방 상세페이지) — Lightsail 중개 =====
 CNMAKER_BASE = os.getenv("CNMAKER_BASE", "http://43.200.232.189")

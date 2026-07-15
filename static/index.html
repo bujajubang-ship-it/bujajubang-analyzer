@@ -883,6 +883,11 @@
       #catrec-page .b-상{ background:#e7f7ec;color:#16a34a; } #catrec-page .b-중{ background:#fef3e2;color:#d97706; } #catrec-page .b-하{ background:#fdeaea;color:#dc2626; }
       #catrec-page .cr-note{ margin-top:12px;font-size:12px;color:#92620b;background:#fff8e6;border:1px solid #fde9b8;border-radius:8px;padding:9px 12px; }
       #catrec-page .cr-hint{ color:#9aa1ab;font-size:11.5px;margin-top:16px; }
+      #catrec-page .cr-bulk{ margin-top:14px; background:#fbfbfc; border:1px dashed #cfd3da; border-radius:12px; padding:13px 16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+      #catrec-page .cr-bulk-head{ font-weight:800; font-size:13.5px; }
+      #catrec-page .cr-file-btn{ background:#111827; color:#fff; border-radius:8px; padding:8px 14px; font-size:13px; font-weight:700; cursor:pointer; }
+      #catrec-page .cr-bulk-hint{ font-size:11.5px; color:#9aa1ab; }
+      #catrec-page .cr-dl{ margin:10px 0 0; background:#16a34a; color:#fff; border:none; border-radius:8px; padding:9px 16px; font-size:13px; font-weight:800; cursor:pointer; }
       #catrec-page .cr-empty{ color:var(--cr-mut);text-align:center;padding:40px 0;font-size:14px; }
     </style>
     <h1>🏷️ 카테고리 추천 <span>상품에 제일 유리한 쿠팡 카테고리 찾기</span></h1>
@@ -897,7 +902,12 @@
       </div>
       <button class="cr-btn" id="cr-btn" onclick="crAnalyze()">분석하기 →</button>
     </div>
-    <div id="cr-result"><div class="cr-empty">상품 정보를 넣고 <b>분석하기</b>를 눌러보세요.</div></div>
+    <div class="cr-bulk">
+      <div class="cr-bulk-head">📄 여러 개 한 번에 — 엑셀 올리기</div>
+      <label class="cr-file-btn">📎 엑셀 파일 선택<input type="file" id="cr-file" accept=".xlsx,.xls" onchange="crUpload()" style="display:none"></label>
+      <span id="cr-file-name" class="cr-bulk-hint">첫 열 '상품명', 판매가는 '권장가격/쿠팡가격' 열 자동 인식 · 사이즈는 AI가 추정 (최대 40개)</span>
+    </div>
+    <div id="cr-result"><div class="cr-empty">상품 하나는 위에서 <b>분석하기</b>, 여러 개는 <b>엑셀 올리기</b>를 눌러보세요.</div></div>
     <div class="cr-hint">※ 모든 금액은 <b>부가세 포함(실제 차감액)</b> — 쿠팡 수수료·물류비는 부가세 별도라 ×1.1. 수수료는 공식 수수료표(소분류→중분류→대분류 순 매칭) · 물류비는 로켓그로스 사이즈별 정가 · 노출은 AI 판단 · 세부는 WING 상품등록 시 최종 확인.</div>
   </section>
 
