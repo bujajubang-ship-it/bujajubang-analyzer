@@ -1208,6 +1208,58 @@ async def jageum_ingest(request: Request):
         pass
     return JSONResponse({"ok": True})
 
+# ===== 자산 스냅샷 (현금·자산 흐름 시계열 추적 — 화면에 표시되는 값 그대로 하루 1줄 적재) =====
+ASSET_SNAP_FILE = data_path("asset_snapshots.json")
+
+def _load_snaps():
+    if ASSET_SNAP_FILE.exists():
+        try:
+            d = json.loads(ASSET_SNAP_FILE.read_text(encoding="utf-8"))
+            if isinstance(d, list):
+                return d
+        except Exception:
+            pass
+    data = _kv_restore("jageum_asset_snap")   # 재배포 초기화 → Lightsail 백업 복원
+    if isinstance(data, list):
+        try:
+            ASSET_SNAP_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+        return data
+    return []
+
+def _save_snaps(items):
+    try:
+        ASSET_SNAP_FILE.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+    try:
+        _kv_backup("jageum_asset_snap", items, timeout=15)
+    except Exception:
+        pass
+
+@app.get("/jageum/api/asset_snapshots")
+def asset_snapshots_get(request: Request):
+    if not _jageum_auth(request):   # 사장·경리
+        return _AUTH401
+    return JSONResponse({"snaps": _load_snaps()})
+
+@app.post("/jageum/api/asset_snapshot")
+async def asset_snapshot_post(request: Request):
+    if not _jageum_auth(request):
+        return _AUTH401
+    body = await request.json()
+    snap = body.get("snap") or {}
+    date = (snap.get("date") or "").strip()
+    if not date:
+        return JSONResponse({"error": "no date"}, status_code=400)
+    items = [s for s in _load_snaps() if s.get("date") != date]   # 그날 값은 최신으로 덮어씀(upsert)
+    items.append(snap)
+    items.sort(key=lambda s: s.get("date", ""))
+    items = items[-400:]   # 최근 400일만 유지 (용량 안전)
+    _save_snaps(items)
+    return JSONResponse({"ok": True, "count": len(items)})
+
 @app.post("/jageum/api/manual")
 async def jageum_manual(request: Request):
     if not _jageum_auth(request):

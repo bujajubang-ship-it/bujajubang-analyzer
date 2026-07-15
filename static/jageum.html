@@ -285,6 +285,12 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    <div class="asset-items" id="asset_items"></div>
    <div id="asset_audit" style="margin-top:14px"></div>
  </div>
+ <div class="card" id="snap_card">
+   <h2 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">💧 현금·자산 흐름 <span class="muted big">— 매일 쌓이는 스냅샷으로 변화 추적</span></h2>
+   <div class="note">대시보드를 열 때마다 그날 자산이 자동 기록돼요. 며칠 쌓이면 어느 항목이 얼마 늘고 줄었는지 한눈에 보입니다.</div>
+   <div style="margin-top:10px"><canvas id="snapChart" height="90"></canvas></div>
+   <div style="overflow-x:auto;margin-top:12px"><table id="snap_table" style="width:100%;font-size:12.5px;border-collapse:collapse"></table></div>
+ </div>
  </div><!--/view-biz-->
 
  <div id="view_personal" style="display:none">
@@ -1492,6 +1498,40 @@ function renderAssets(){
    rowsA.map(([nm,src,s,v])=>`<tr style="border-top:1px solid #f1f2f4"><td style="padding:5px 6px">${nm}</td><td class="muted">${src}</td><td>${BADGE[s]}</td><td class="num" style="${s==='fail'?'color:#dc2626':''}">${won(v)}</td></tr>`).join('')+'</tbody></table></div>';
  auditHtml+=`<div style="margin-top:12px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.7"><b style="color:#5b21b6">💡 선급금이 줄었는데 총자산도 줄었다면?</b><br>선급금이 줄면 그만큼 <b>물건이 나간 것</b>이고, 그 대금(매출채권)은 아래 중 하나에 있어야 해요:<br>· <b>쇼핑몰 판매</b> → 정산예정: 쿠팡 <b>${won(cuVal)}</b> · 네이버 <b>${won(nvVal)}</b> · 카페24 <b>${won(cf24)}</b><br>· <b>B2B 외상</b> → 미수금 <b>${won(misu)}</b><br>현재 선급금 <b>${won(seonyz)}</b>. <b>선급금은 줄었는데 위 정산예정·미수금이 안 늘었다면</b> → ① 위 정산/미수가 🔴조회 실패했거나 ② 아직 플랫폼에 묶여 정산 전이거나 ③ 경리가 선급금만 줄이고 매출전표를 아직 안 올린 경우예요.</div>`;
  document.getElementById('asset_audit').innerHTML=auditHtml;
+ // ── 오늘 자산 스냅샷 저장 (하루 1회, 화면값 그대로) + 흐름 표시 ──
+ if((MYROLE==='boss'||MYROLE==='staff') && !window._snapDone){
+   window._snapDone=true;
+   const snap={date:_ymd(),통장:cash,정산예정:settle,쿠팡:cuVal,네이버:nvVal,카페24:cf24,미수금:misu,선급금:seonyz,투자:invest,정부지원:gov,대출:loan,실질총자산:total,순자산:net};
+   fetch('/jageum/api/asset_snapshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({snap})}).then(()=>loadSnaps()).catch(()=>loadSnaps());
+ }
+}
+let SNAPS=[], chSnap=null;
+function loadSnaps(){
+  fetch('/jageum/api/asset_snapshots').then(r=>r.ok?r.json():{snaps:[]}).then(d=>{SNAPS=d.snaps||[];renderSnaps();}).catch(()=>{});
+}
+function renderSnaps(){
+  const tbl=document.getElementById('snap_table'); if(!tbl)return;
+  if(!SNAPS.length){tbl.innerHTML='<tbody><tr><td class="muted" style="padding:10px">아직 기록이 없어요. 오늘부터 매일 자동으로 쌓입니다. (하루만 지나도 변화가 보여요)</td></tr></tbody>';return;}
+  const labels=SNAPS.map(s=>(s.date||'').slice(5));
+  const cv=document.getElementById('snapChart');
+  if(chSnap)chSnap.destroy();
+  chSnap=new Chart(cv,{type:'line',data:{labels,datasets:[
+    {label:'실질총자산',data:SNAPS.map(s=>s.실질총자산||0),borderColor:'#5b21b6',backgroundColor:'rgba(91,33,182,.06)',fill:true,tension:.2,borderWidth:2,pointRadius:2},
+    {label:'순자산',data:SNAPS.map(s=>s.순자산||0),borderColor:'#059669',borderWidth:2,pointRadius:2,fill:false,tension:.2}
+  ]},options:{plugins:{legend:{position:'top'},tooltip:{callbacks:{label:c=>c.dataset.label+' '+won(c.parsed.y)}}},scales:{y:{ticks:{callback:v=>(v/1e8).toFixed(2)+'억'}}}}});
+  const cols=[['통장','통장'],['정산예정','정산예정'],['미수금','미수금'],['선급금','선급금'],['투자','투자'],['대출','대출'],['실질총자산','실질총자산'],['순자산','순자산']];
+  const rev=SNAPS.slice().reverse().slice(0,14);
+  const idxOf=d=>SNAPS.findIndex(s=>s.date===d);
+  let th='<thead><tr style="color:#6b7280"><th style="text-align:left;padding:4px 6px">날짜</th>'+cols.map(c=>`<th class="num" style="padding:4px 6px">${c[0]}</th>`).join('')+'</tr></thead>';
+  let tb='<tbody>'+rev.map(s=>{
+    const i=idxOf(s.date), prev=i>0?SNAPS[i-1]:null;
+    return '<tr style="border-top:1px solid #f1f2f4"><td style="padding:5px 6px;font-weight:600;white-space:nowrap">'+(s.date||'').slice(5)+'</td>'+cols.map(c=>{
+      const v=s[c[1]]||0, dv=prev?(v-(prev[c[1]]||0)):0;
+      const dtxt=(prev&&dv)?`<div style="font-size:10.5px;color:${dv<0?'#dc2626':'#059669'}">${dv>0?'+':''}${Math.round(dv/10000).toLocaleString()}만</div>`:'';
+      return `<td class="num" style="padding:5px 6px">${Math.round(v/10000).toLocaleString()}만${dtxt}</td>`;
+    }).join('')+'</tr>';
+  }).join('')+'</tbody>';
+  tbl.innerHTML=th+tb;
 }
 function renderSettle(){
  const c=(D.정산예정&&D.정산예정.쿠팡)||{};
