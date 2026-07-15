@@ -1172,6 +1172,28 @@ async def sales_refresh_status(request: Request):
     except Exception:
         return JSONResponse({"running": False, "msg": "상태 확인 실패"})
 
+@app.post("/jageum/api/data_refresh")
+async def data_refresh(request: Request):
+    """자금일보 전체 데이터가 안 땡겨왔을 때 사장·경리가 눌러 이카운트에서 즉시 재수집(온디맨드).
+    Lightsail run_daily.sh 1회 실행 → Render로 재전송. 중복 실행은 잠금으로 막는다(2~4분 소요)."""
+    if not _jageum_auth(request):
+        return _AUTH401
+    try:
+        r = httpx.post(f"{_KV_BASE}/scrape_jageum", headers={"x-secret": _KV_SECRET}, timeout=15)
+        return JSONResponse(r.json())
+    except Exception as e:
+        return JSONResponse({"status": "error", "msg": str(e)[:150]}, status_code=502)
+
+@app.get("/jageum/api/data_refresh/status")
+async def data_refresh_status(request: Request):
+    if not _jageum_auth(request):
+        return _AUTH401
+    try:
+        r = httpx.get(f"{_KV_BASE}/scrape_jageum_status", headers={"x-secret": _KV_SECRET}, timeout=10)
+        return JSONResponse(r.json())
+    except Exception:
+        return JSONResponse({"running": False, "msg": "상태 확인 실패"})
+
 @app.post("/jageum/api/ingest")
 async def jageum_ingest(request: Request):
     if request.headers.get("x-ingest-secret", "") != JAGEUM_INGEST_SECRET:

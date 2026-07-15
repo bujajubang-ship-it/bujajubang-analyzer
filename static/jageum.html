@@ -60,6 +60,8 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    <button data-p="q1">1Q</button><button data-p="q2">2Q</button><button data-p="q3">3Q</button><button data-p="q4">4Q</button>
    <select id="month_sel"></select>
    <span id="period_label" class="muted"></span>
+   <button id="jg_refresh" onclick="dataRefresh()" title="이카운트에서 자금 데이터를 지금 다시 가져옵니다 (2~4분)" style="margin-left:auto;background:#eff6ff;color:#1d4ed8;border:1.5px solid #bfdbfe;border-radius:8px;padding:5px 12px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">🔄 데이터 새로고침</button>
+   <span id="jg_refresh_msg" style="font-size:12px;font-weight:600;white-space:nowrap"></span>
  </div></div>
 
  <!-- ===== 📈 영업 결산 ===== -->
@@ -1638,6 +1640,33 @@ function _pollRefresh(n){
 function _finishRefresh(text,color){
   const btn=document.getElementById('sl_refresh'), msg=document.getElementById('sl_refresh_msg');
   _slRefreshing=false; if(btn){btn.disabled=false;btn.style.opacity='1';btn.style.cursor='pointer';}
+  if(msg){msg.textContent=text;msg.style.color=color||'#059669';}
+}
+// ===== 자금일보 전체 데이터 새로고침 (금액 안 땡겨왔을 때 온디맨드 재수집) =====
+let _jgRefreshing=false;
+function dataRefresh(){
+  if(_jgRefreshing)return;
+  const btn=document.getElementById('jg_refresh'), msg=document.getElementById('jg_refresh_msg');
+  _jgRefreshing=true; if(btn){btn.disabled=true;btn.style.opacity='.6';btn.style.cursor='wait';}
+  if(msg){msg.textContent='이카운트에서 자금 데이터 가져오는 중… (2~4분)';msg.style.color='#d97706';}
+  fetch('/jageum/api/data_refresh',{method:'POST'}).then(r=>r.json()).then(d=>{
+    if(d.status==='error'){_jgFinish('연결 실패 — 잠시 후 다시 시도해 주세요','#dc2626');return;}
+    _jgPoll(0);   // busy/started 둘 다 상태 폴링
+  }).catch(()=>_jgFinish('네트워크 오류 — 다시 시도해 주세요','#dc2626'));
+}
+function _jgPoll(n){
+  if(n>40){_jgFinish('시간이 오래 걸려요. 잠시 후 페이지를 새로고침해 주세요','#d97706');return;}
+  setTimeout(()=>{
+    fetch('/jageum/api/data_refresh/status').then(r=>r.json()).then(s=>{
+      const msg=document.getElementById('jg_refresh_msg');
+      if(s.running){if(msg)msg.textContent='이카운트에서 자금 데이터 가져오는 중… ('+((n+1)*10)+'초)';_jgPoll(n+1);}
+      else{_jgFinish('✅ '+(s.msg||'완료')+' — 화면 갱신 중…','#059669'); if(typeof load==='function')load();}
+    }).catch(()=>_jgPoll(n+1));
+  },10000);
+}
+function _jgFinish(text,color){
+  const btn=document.getElementById('jg_refresh'), msg=document.getElementById('jg_refresh_msg');
+  _jgRefreshing=false; if(btn){btn.disabled=false;btn.style.opacity='1';btn.style.cursor='pointer';}
   if(msg){msg.textContent=text;msg.style.color=color||'#059669';}
 }
 function slInit(){
