@@ -1260,6 +1260,18 @@ async def asset_snapshot_post(request: Request):
     _save_snaps(items)
     return JSONResponse({"ok": True, "count": len(items)})
 
+@app.post("/jageum/api/asset_snapshot/reset")
+async def asset_snapshot_reset(request: Request):
+    """스냅샷 전체를 주어진 목록으로 덮어씀(로컬+KV) — 잘못 들어간 값 청소용. 사장님 전용."""
+    if _jageum_role(request) != "boss":
+        return _AUTH401
+    body = await request.json()
+    items = body.get("snaps")
+    if not isinstance(items, list):
+        items = []
+    _save_snaps(items)
+    return JSONResponse({"ok": True, "count": len(items)})
+
 @app.post("/jageum/api/manual")
 async def jageum_manual(request: Request):
     if not _jageum_auth(request):
