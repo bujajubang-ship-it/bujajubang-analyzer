@@ -2092,16 +2092,30 @@ function crAnalyze(){
       crRender(d);
     }).catch(()=>{ btn.disabled=false; btn.textContent='분석하기 →'; box.innerHTML='<div class="cr-empty">네트워크 오류 — 다시 시도해주세요.</div>'; });
 }
+let _crMode='가성비'; let _crLast=null;
+function crSetMode(m){ _crMode=m; if(_crLast) crRender(_crLast); }
+function _crSortList(list){
+  const a=(list||[]).slice();
+  if(_crMode==='수수료') a.sort(function(x,y){ return (x.수수료율-y.수수료율)||(x.총부담-y.총부담); });
+  else a.sort(function(x,y){ return ((x.노출==='하'?1:0)-(y.노출==='하'?1:0))||(x.수수료율-y.수수료율)||(x.총부담-y.총부담); });
+  return a;
+}
 function crRender(d){
-  const rec=d.추천||[];
+  _crLast=d;
   const box=document.getElementById('cr-result');
+  const rec=_crSortList(d.추천).slice(0,3);
   if(!rec.length){ box.innerHTML='<div class="cr-empty">맞는 카테고리를 못 찾았어요. 상품명을 더 구체적으로 적어보세요.</div>'; return; }
   const won=n=>Number(n||0).toLocaleString();
   const best=rec[0];
-  let html='<div class="cr-hero"><div class="cr-check">✓</div>'
-    +'<div><div class="k">가성비 최고 추천</div><div class="cat">'+String(best.경로).replace(/›\s*([^›]+)$/,'› <b>$1</b>')+'</div></div>'
+  const heroLabel=(_crMode==='가성비'?'가성비 최고 추천':'수수료 최저 추천');
+  const sectLabel=(_crMode==='가성비'?'가성비 순 · 억지분류(노출 하)는 뒤로':'수수료 최저 순 (노출 무관)');
+  let html='<div class="cr-toggle">정렬: '
+    +'<button class="'+(_crMode==='가성비'?'on':'')+'" onclick="crSetMode(\'가성비\')">🎯 가성비 순</button>'
+    +'<button class="'+(_crMode==='수수료'?'on':'')+'" onclick="crSetMode(\'수수료\')">💰 수수료 최저 순</button></div>';
+  html+='<div class="cr-hero"><div class="cr-check">✓</div>'
+    +'<div><div class="k">'+heroLabel+'</div><div class="cat">'+String(best.경로).replace(/›\s*([^›]+)$/,'› <b>$1</b>')+'</div></div>'
     +'<div class="right"><div class="k">예상 건당 총부담 <span style="color:#dc2626">(부가세 포함)</span></div><div class="amt">'+won(best.총부담)+'<small>원</small></div></div></div>';
-  html+='<div class="cr-sect">후보 비교 (가성비 순 · 억지분류(노출 하)는 뒤로 · 부가세 포함)</div>';
+  html+='<div class="cr-sect">후보 비교 ('+sectLabel+' · 부가세 포함)</div>';
   html+='<table><thead><tr><th class="l">카테고리</th><th>판매수수료</th><th>건당 물류비</th><th>건당 총부담</th><th>검색 노출</th></tr></thead><tbody>';
   rec.forEach(function(c,i){
     const nm='<span class="catname'+(i===0?' best':'')+'">'+c.경로+'</span>';
