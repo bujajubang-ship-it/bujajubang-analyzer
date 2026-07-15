@@ -2035,8 +2035,9 @@ async def category_recommend_bulk(request: Request):
         return _AUTH401
     data = await request.json()
     b64 = data.get("file", "") or ""
-    if "," in b64[:64]:
+    if b64.startswith("data:") and "," in b64:  # data URL 접두사 제거(xlsx는 접두사가 길어 64자 초과)
         b64 = b64.split(",", 1)[1]
+    b64 = b64.strip()
     import base64 as _b64, io as _io
     try:
         raw = _b64.b64decode(b64)

@@ -237,11 +237,11 @@ body { font-family: -apple-system, 'Noto Sans KR', sans-serif; background: var(-
 .hidden { display: none !important; }
 
 /* ── Nav ── */
-.site-nav { display: flex; gap: 4px; }
+.site-nav { display: flex; gap: 4px; flex-wrap: wrap; }
 .nav-btn {
   padding: 6px 14px; border: 1.5px solid var(--border); border-radius: 8px;
   background: #fff; font-size: 13px; font-weight: 600; cursor: pointer;
-  color: var(--muted); transition: all .15s;
+  color: var(--muted); transition: all .15s; white-space: nowrap;
 }
 .nav-btn.active, .nav-btn:hover { background: var(--text); color: #fff; border-color: var(--text); }
 
