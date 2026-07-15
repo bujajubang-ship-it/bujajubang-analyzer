@@ -2033,7 +2033,8 @@ async def category_recommend(request: Request):
                      "수수료율": rate, "수수료율vat": round(rate * VAT, 2),
                      "수수료액": comm, "물류비": logi_v, "총부담": comm + logi_v,
                      "노출": c.get("노출", "중"), "이유": c.get("이유", "")})
-    rows.sort(key=lambda x: (x["수수료율"], x["총부담"]))
+    # 가성비 순: 억지분류(노출 '하')는 뒤로 → 팔릴 카테고리 중 수수료 최저 우선
+    rows.sort(key=lambda x: (1 if x.get("노출") == "하" else 0, x["수수료율"], x["총부담"]))
     rows = rows[:3]
     note = ("판매가 1.5만원 미만이라, 전용할인 되는 카테고리면 물류비가 더 낮을 수 있어요(WING에서 확인)."
             if price and price < 15000 else "")
@@ -2138,7 +2139,7 @@ async def category_recommend_bulk(request: Request):
             comm = round(prod["price"] * rate / 100 * VAT)
             cands.append({"경로": path, "수수료율": rate, "수수료액": comm,
                           "물류비": logi_v, "총부담": comm + logi_v, "노출": c.get("노출", "중")})
-        cands.sort(key=lambda x: (x["수수료율"], x["총부담"]))
+        cands.sort(key=lambda x: (1 if x.get("노출") == "하" else 0, x["수수료율"], x["총부담"]))
         results.append({"상품명": prod["name"], "판매가": prod["price"], "사이즈": size,
                         "추천": (cands[0] if cands else None), "대안": cands[1:3]})
     return JSONResponse({"count": len(results), "truncated": truncated, "results": results})

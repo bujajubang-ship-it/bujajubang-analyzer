@@ -2099,9 +2099,9 @@ function crRender(d){
   const won=n=>Number(n||0).toLocaleString();
   const best=rec[0];
   let html='<div class="cr-hero"><div class="cr-check">✓</div>'
-    +'<div><div class="k">수수료 최저 추천</div><div class="cat">'+String(best.경로).replace(/›\s*([^›]+)$/,'› <b>$1</b>')+'</div></div>'
+    +'<div><div class="k">가성비 최고 추천</div><div class="cat">'+String(best.경로).replace(/›\s*([^›]+)$/,'› <b>$1</b>')+'</div></div>'
     +'<div class="right"><div class="k">예상 건당 총부담 <span style="color:#dc2626">(부가세 포함)</span></div><div class="amt">'+won(best.총부담)+'<small>원</small></div></div></div>';
-  html+='<div class="cr-sect">후보 카테고리 비교 (수수료 낮은 순 · 부가세 포함 실차감액)</div>';
+  html+='<div class="cr-sect">후보 비교 (가성비 순 · 억지분류(노출 하)는 뒤로 · 부가세 포함)</div>';
   html+='<table><thead><tr><th class="l">카테고리</th><th>판매수수료</th><th>건당 물류비</th><th>건당 총부담</th><th>검색 노출</th></tr></thead><tbody>';
   rec.forEach(function(c,i){
     const nm='<span class="catname'+(i===0?' best':'')+'">'+c.경로+'</span>';
@@ -2142,7 +2142,7 @@ function crRenderBulk(d){
   const box=document.getElementById('cr-result');
   if(!res.length){ box.innerHTML='<div class="cr-empty">상품을 찾지 못했어요. 첫 열에 상품명이 있는지 확인해주세요.</div>'; return; }
   const won=n=>Number(n||0).toLocaleString();
-  let html='<div class="cr-sect">엑셀 일괄 추천 — '+res.length+'개 상품 (수수료 최저 카테고리 · 부가세 포함)</div>';
+  let html='<div class="cr-sect">엑셀 일괄 추천 (가성비 순 · 부가세 포함)</div>';
   html+='<button class="cr-dl" onclick="crDownloadBulk()">⬇ 결과 엑셀(CSV) 다운로드</button>';
   html+='<table style="margin-top:10px"><thead><tr><th class="l">상품명</th><th>판매가</th><th>추정사이즈</th><th class="l">추천 카테고리</th><th>수수료</th><th>총부담</th><th>노출</th></tr></thead><tbody>';
   res.forEach(function(x){
