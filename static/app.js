@@ -36,7 +36,8 @@ function switchPage(page) {
   if (navTracker) navTracker.classList.toggle('active', isTracker);
   document.getElementById('nav-search').classList.toggle('active', isSearch);
   document.getElementById('nav-sourcing').classList.toggle('active', isSourcing);
-  document.getElementById('nav-pagemaker').classList.toggle('active', isPagemaker);
+  const _npg = document.getElementById('nav-pagemaker');
+  if (_npg) _npg.classList.toggle('active', isPagemaker);
   const navCn = document.getElementById('nav-cnmaker');
   if (navCn) navCn.classList.toggle('active', isCnmaker);
   const navDg = document.getElementById('nav-danga');
