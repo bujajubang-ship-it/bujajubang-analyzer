@@ -286,9 +286,14 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    <div id="asset_audit" style="margin-top:14px"></div>
  </div>
  <div class="card" id="snap_card">
-   <h2 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">💧 현금·자산 흐름 <span class="muted big">— 매일 쌓이는 스냅샷으로 변화 추적</span></h2>
-   <div class="note">대시보드를 열 때마다 그날 자산이 자동 기록돼요. 며칠 쌓이면 어느 항목이 얼마 늘고 줄었는지 한눈에 보입니다.</div>
-   <div style="margin-top:10px"><canvas id="snapChart" height="90"></canvas></div>
+   <h2 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">💧 현금·자산 흐름 <span class="muted big">— 통장 잔고 추이 + 매일 자산 스냅샷</span></h2>
+   <div style="font-weight:700;font-size:13.5px;color:#1d4ed8;margin-top:6px">📅 월별 통장 잔고 <span class="muted" style="font-weight:400;font-size:12px">(이카운트 자금일보 · 2026 전체)</span></div>
+   <div style="margin-top:8px"><canvas id="bankMonthChart" height="78"></canvas></div>
+   <div id="bankMonthNote" class="muted" style="font-size:12px;margin-top:5px"></div>
+   <hr style="border:none;border-top:1px solid #eef0f4;margin:16px 0">
+   <div style="font-weight:700;font-size:13.5px;color:#5b21b6">💧 일별 실질총자산 흐름 <span class="muted" style="font-weight:400;font-size:12px">(스냅샷 · 매일 자동 기록)</span></div>
+   <div class="note" style="margin-top:4px">매일 정해진 시각에 자동으로, 그리고 대시보드 열 때도 그날 자산이 기록돼요. 어느 항목이 얼마 늘고 줄었는지 한눈에 보입니다.</div>
+   <div style="margin-top:8px"><canvas id="snapChart" height="90"></canvas></div>
    <div style="overflow-x:auto;margin-top:12px"><table id="snap_table" style="width:100%;font-size:12.5px;border-collapse:collapse"></table></div>
  </div>
  </div><!--/view-biz-->
@@ -1498,6 +1503,7 @@ function renderAssets(){
    rowsA.map(([nm,src,s,v])=>`<tr style="border-top:1px solid #f1f2f4"><td style="padding:5px 6px">${nm}</td><td class="muted">${src}</td><td>${BADGE[s]}</td><td class="num" style="${s==='fail'?'color:#dc2626':''}">${won(v)}</td></tr>`).join('')+'</tbody></table></div>';
  auditHtml+=`<div style="margin-top:12px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.7"><b style="color:#5b21b6">💡 선급금이 줄었는데 총자산도 줄었다면?</b><br>선급금이 줄면 그만큼 <b>물건이 나간 것</b>이고, 그 대금(매출채권)은 아래 중 하나에 있어야 해요:<br>· <b>쇼핑몰 판매</b> → 정산예정: 쿠팡 <b>${won(cuVal)}</b> · 네이버 <b>${won(nvVal)}</b> · 카페24 <b>${won(cf24)}</b><br>· <b>B2B 외상</b> → 미수금 <b>${won(misu)}</b><br>현재 선급금 <b>${won(seonyz)}</b>. <b>선급금은 줄었는데 위 정산예정·미수금이 안 늘었다면</b> → ① 위 정산/미수가 🔴조회 실패했거나 ② 아직 플랫폼에 묶여 정산 전이거나 ③ 경리가 선급금만 줄이고 매출전표를 아직 안 올린 경우예요.</div>`;
  document.getElementById('asset_audit').innerHTML=auditHtml;
+ renderBankMonth();   // 월별 통장잔고(2026) — 이카운트 이력에서 바로
  // ── 오늘 자산 스냅샷 저장 (하루 1회, 화면값 그대로) + 흐름 표시 ──
  if((MYROLE==='boss'||MYROLE==='staff') && !window._snapDone){
    window._snapDone=true;
@@ -1505,7 +1511,19 @@ function renderAssets(){
    fetch('/jageum/api/asset_snapshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({snap})}).then(()=>loadSnaps()).catch(()=>loadSnaps());
  }
 }
-let SNAPS=[], chSnap=null;
+let SNAPS=[], chSnap=null, chBank=null;
+function renderBankMonth(){
+  const cv=document.getElementById('bankMonthChart'); if(!cv||!D.months)return;
+  const ml=(D.months_list||Object.keys(D.months||{})).filter(k=>k.startsWith('2026')).sort();
+  if(!ml.length){return;}
+  const vals=ml.map(k=>((D.months[k]||{}).자금현황||[]).filter(b=>(b.계정명||'').includes('보통예금')).reduce((s,b)=>s+(b.금일잔액||0),0));
+  if(chBank)chBank.destroy();
+  chBank=new Chart(cv,{type:'bar',data:{labels:ml.map(k=>(+k.slice(5))+'월'),datasets:[{label:'월말 통장잔고',data:vals,backgroundColor:vals.map((v,i)=>i===vals.length-1?'#1d4ed8':'#93c5fd')}]},
+    options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>won(c.parsed.y)}}},scales:{y:{ticks:{callback:v=>(v/1e8).toFixed(1)+'억'}}}}});
+  const first=vals[0],last=vals[vals.length-1],dv=last-first;
+  const mx=Math.max(...vals),mn=Math.min(...vals);
+  document.getElementById('bankMonthNote').innerHTML=`1월 ${won(first)} → ${(+ml[ml.length-1].slice(5))}월 ${won(last)} · <b style="color:${dv<0?'#dc2626':'#059669'}">${dv>=0?'+':''}${won(dv)}</b> · 최고 ${won(mx)} / 최저 ${won(mn)}`;
+}
 function loadSnaps(){
   fetch('/jageum/api/asset_snapshots').then(r=>r.ok?r.json():{snaps:[]}).then(d=>{SNAPS=d.snaps||[];renderSnaps();}).catch(()=>{});
 }
