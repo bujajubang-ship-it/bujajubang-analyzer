@@ -22,6 +22,7 @@
         <button class="nav-btn" id="nav-cnmaker" onclick="switchPage('cnmaker')">🏭 CN메이커</button>
         <button class="nav-btn" id="nav-danga" onclick="switchPage('danga')">💰 단가/마진</button>
         <button class="nav-btn" id="nav-margin" onclick="switchPage('margin')">📉 마진분석</button>
+        <button class="nav-btn" id="nav-catrec" onclick="switchPage('catrec')">🏷️ 카테고리 추천</button>
       </nav>
       <div class="search-wrap" id="header-search" style="display:none">
         <input type="text" id="header-keyword" placeholder="키워드 검색..." onkeydown="if(event.key==='Enter')doSearch()" />
@@ -843,6 +844,61 @@
         </div>
       </div>
     </div>
+  </section>
+
+  <!-- ===== 🏷️ 카테고리 추천 ===== -->
+  <section id="catrec-page" class="hidden">
+    <style>
+      #catrec-page{ --cr-brand:#D70010; --cr-ink:#1a1d23; --cr-mut:#6b7280; --cr-line:#e6e8ec; }
+      #catrec-page{ max-width:1100px; margin:0 auto; padding:26px 20px 60px; font-variant-numeric:tabular-nums; color:var(--cr-ink); }
+      #catrec-page h1{ font-size:24px; font-weight:800; letter-spacing:-.5px; margin:0 0 4px; }
+      #catrec-page h1 span{ font-size:14px; font-weight:600; color:var(--cr-mut); margin-left:8px; }
+      #catrec-page .cr-lead{ color:var(--cr-mut); font-size:13.5px; margin-bottom:20px; }
+      #catrec-page .cr-input{ background:#fff; border:1px solid var(--cr-line); border-radius:14px; padding:16px; display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+      #catrec-page .cr-f{ display:flex; flex-direction:column; gap:6px; }
+      #catrec-page .cr-f.grow{ flex:1; min-width:220px; }
+      #catrec-page .cr-f label{ font-size:11.5px; color:var(--cr-mut); font-weight:700; }
+      #catrec-page .cr-ipt, #catrec-page select{ border:1.5px solid var(--cr-line); border-radius:9px; padding:11px 13px; font-size:15px; font-weight:600; background:#fbfbfc; color:var(--cr-ink); font-family:inherit; }
+      #catrec-page .cr-btn{ background:var(--cr-brand); color:#fff; border:none; border-radius:9px; padding:12px 24px; font-size:15px; font-weight:800; cursor:pointer; box-shadow:0 2px 8px rgba(215,0,16,.28); }
+      #catrec-page .cr-btn:disabled{ opacity:.55; cursor:wait; }
+      #catrec-page .cr-hero{ margin-top:18px; background:linear-gradient(180deg,#fff,#fffafa); border:1.5px solid #f3c9c9; border-radius:14px; padding:18px 20px; display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
+      #catrec-page .cr-check{ width:44px;height:44px;border-radius:50%;background:#16a34a;color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;flex:0 0 44px; }
+      #catrec-page .cr-hero .k{ font-size:12px;color:var(--cr-mut);font-weight:700; }
+      #catrec-page .cr-hero .cat{ font-size:21px;font-weight:900;letter-spacing:-.4px;margin-top:2px; }
+      #catrec-page .cr-hero .cat b{ color:var(--cr-brand); }
+      #catrec-page .cr-hero .right{ margin-left:auto;text-align:right; }
+      #catrec-page .cr-hero .amt{ font-size:25px;font-weight:900; }
+      #catrec-page .cr-hero .amt small{ font-size:13px;color:var(--cr-mut);font-weight:700; }
+      #catrec-page .cr-sect{ font-size:13px;font-weight:800;color:#374151;margin:22px 0 8px; }
+      #catrec-page table{ width:100%; border-collapse:separate; border-spacing:0; background:#fff; border:1px solid var(--cr-line); border-radius:12px; overflow:hidden; }
+      #catrec-page th,#catrec-page td{ padding:12px 14px; text-align:center; font-size:13.5px; border-bottom:1px solid var(--cr-line); }
+      #catrec-page th{ background:#f7f8fa; color:#6b7280; font-size:11.5px; font-weight:800; }
+      #catrec-page td.l,#catrec-page th.l{ text-align:left; }
+      #catrec-page tr:last-child td{ border-bottom:none; }
+      #catrec-page .rec td{ background:#fff6f6; box-shadow:inset 4px 0 0 var(--cr-brand); }
+      #catrec-page .catname{ font-weight:800; }
+      #catrec-page .best::before{ content:"1위·추천"; display:inline-block; background:var(--cr-brand); color:#fff; font-size:10px; font-weight:800; padding:2px 6px; border-radius:5px; margin-right:6px; }
+      #catrec-page .total{ font-weight:900; }
+      #catrec-page .badge{ display:inline-block; padding:3px 10px; border-radius:20px; font-size:11.5px; font-weight:800; }
+      #catrec-page .b-상{ background:#e7f7ec;color:#16a34a; } #catrec-page .b-중{ background:#fef3e2;color:#d97706; } #catrec-page .b-하{ background:#fdeaea;color:#dc2626; }
+      #catrec-page .cr-note{ margin-top:12px;font-size:12px;color:#92620b;background:#fff8e6;border:1px solid #fde9b8;border-radius:8px;padding:9px 12px; }
+      #catrec-page .cr-hint{ color:#9aa1ab;font-size:11.5px;margin-top:16px; }
+      #catrec-page .cr-empty{ color:var(--cr-mut);text-align:center;padding:40px 0;font-size:14px; }
+    </style>
+    <h1>🏷️ 카테고리 추천 <span>상품에 제일 유리한 쿠팡 카테고리 찾기</span></h1>
+    <div class="cr-lead">상품명·판매가·사이즈를 넣으면 <b>수수료 낮은 순으로 카테고리 3개</b>를 추천하고, 물류비·검색노출까지 함께 보여드려요.</div>
+    <div class="cr-input">
+      <div class="cr-f grow"><label>상품명</label><input class="cr-ipt" id="cr-name" placeholder="예: 아이스크림 몰드 8구" onkeydown="if(event.key==='Enter')crAnalyze()"></div>
+      <div class="cr-f"><label>판매가</label><input class="cr-ipt" id="cr-price" placeholder="25000" style="width:120px"></div>
+      <div class="cr-f"><label>사이즈</label>
+        <select id="cr-size" style="width:110px">
+          <option>극소형</option><option>소형</option><option>중형</option><option>대형1</option><option>대형2</option><option>특대형</option>
+        </select>
+      </div>
+      <button class="cr-btn" id="cr-btn" onclick="crAnalyze()">분석하기 →</button>
+    </div>
+    <div id="cr-result"><div class="cr-empty">상품 정보를 넣고 <b>분석하기</b>를 눌러보세요.</div></div>
+    <div class="cr-hint">※ 수수료는 쿠팡 공식 수수료표 기준(소분류→중분류→대분류 순 매칭) · 물류비는 로켓그로스 사이즈별 정가 · 노출은 AI 판단 · 세부는 WING 상품등록 시 최종 확인.</div>
   </section>
 
   <!-- ── AI 개선 상담 + 결재함 (플로팅 패널) ── -->

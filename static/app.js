@@ -30,6 +30,7 @@ function switchPage(page) {
   const isCnmaker   = page === 'cnmaker';
   const isDanga     = page === 'danga';
   const isMargin    = page === 'margin';
+  const isCatrec    = page === 'catrec';
 
   const navTracker = document.getElementById('nav-tracker');
   if (navTracker) navTracker.classList.toggle('active', isTracker);
@@ -42,6 +43,8 @@ function switchPage(page) {
   if (navDg) navDg.classList.toggle('active', isDanga);
   const navMz = document.getElementById('nav-margin');
   if (navMz) navMz.classList.toggle('active', isMargin);
+  const navCr = document.getElementById('nav-catrec');
+  if (navCr) navCr.classList.toggle('active', isCatrec);
 
   const _trk = document.getElementById('tracker-section');
   if (_trk) _trk.classList.toggle('hidden', !isTracker);
@@ -62,6 +65,8 @@ function switchPage(page) {
   if (_dg) _dg.classList.toggle('hidden', !isDanga);
   const _mz = document.getElementById('margin-page');
   if (_mz) _mz.classList.toggle('hidden', !isMargin);
+  const _cr = document.getElementById('catrec-page');
+  if (_cr) _cr.classList.toggle('hidden', !isCatrec);
   document.getElementById('header-search').style.display = isSearch && currentSection !== 'hero' ? 'flex' : 'none';
 
   if (isDanga) loadDanga();
@@ -2068,6 +2073,49 @@ function _updateApprovalAlarm(n){
 function siteLogout(){
   fetch('/jageum/api/logout',{method:'POST'}).then(()=>{location.href='/';}).catch(()=>{location.href='/';});
 }
+
+// ===== 🏷️ 카테고리 추천 =====
+function crAnalyze(){
+  const name=(document.getElementById('cr-name').value||'').trim();
+  const price=(document.getElementById('cr-price').value||'').trim();
+  const size=document.getElementById('cr-size').value;
+  const box=document.getElementById('cr-result');
+  const btn=document.getElementById('cr-btn');
+  if(!name){ box.innerHTML='<div class="cr-empty">상품명을 입력해주세요.</div>'; return; }
+  btn.disabled=true; btn.textContent='분석 중…';
+  box.innerHTML='<div class="cr-empty">🤖 AI가 카테고리를 분석하고 있어요… (10~20초)</div>';
+  fetch('/api/category_recommend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,price:price,size:size})})
+    .then(r=>r.json()).then(d=>{
+      btn.disabled=false; btn.textContent='분석하기 →';
+      if(d.error){ box.innerHTML='<div class="cr-empty">오류: '+d.error+'</div>'; return; }
+      crRender(d);
+    }).catch(()=>{ btn.disabled=false; btn.textContent='분석하기 →'; box.innerHTML='<div class="cr-empty">네트워크 오류 — 다시 시도해주세요.</div>'; });
+}
+function crRender(d){
+  const rec=d.추천||[];
+  const box=document.getElementById('cr-result');
+  if(!rec.length){ box.innerHTML='<div class="cr-empty">맞는 카테고리를 못 찾았어요. 상품명을 더 구체적으로 적어보세요.</div>'; return; }
+  const won=n=>Number(n||0).toLocaleString();
+  const best=rec[0];
+  let html='<div class="cr-hero"><div class="cr-check">✓</div>'
+    +'<div><div class="k">수수료 최저 추천</div><div class="cat">'+String(best.경로).replace(/›\s*([^›]+)$/,'› <b>$1</b>')+'</div></div>'
+    +'<div class="right"><div class="k">예상 건당 총부담</div><div class="amt">'+won(best.총부담)+'<small>원</small></div></div></div>';
+  html+='<div class="cr-sect">후보 카테고리 비교 (수수료 낮은 순)</div>';
+  html+='<table><thead><tr><th class="l">카테고리</th><th>판매수수료</th><th>건당 물류비</th><th>건당 총부담</th><th>검색 노출</th></tr></thead><tbody>';
+  rec.forEach(function(c,i){
+    const nm='<span class="catname'+(i===0?' best':'')+'">'+c.경로+'</span>';
+    html+='<tr'+(i===0?' class="rec"':'')+'>'
+      +'<td class="l">'+nm+(c.이유?'<div style="font-size:11px;color:#9aa1ab;margin-top:2px">'+c.이유+'</div>':'')+'</td>'
+      +'<td>'+c.수수료율+'%<br><span style="font-size:11.5px;color:#6b7280">'+won(c.수수료액)+'원</span></td>'
+      +'<td>'+won(c.물류비)+'원</td>'
+      +'<td class="total">'+won(c.총부담)+'원</td>'
+      +'<td><span class="badge b-'+(c.노출||'중')+'">'+(c.노출||'중')+'</span></td></tr>';
+  });
+  html+='</tbody></table>';
+  if(d.note) html+='<div class="cr-note">💡 '+d.note+'</div>';
+  box.innerHTML=html;
+}
+
 loadMe();
 
 // ═══════════ 💰 거래처 단가 / 마진 v3 (20컬럼·자동계산) ═══════════

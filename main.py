@@ -1938,6 +1938,91 @@ async def site_approval_act(aid: int, request: Request):
     _save_site_approvals(items)
     return JSONResponse({"ok": True})
 
+# ===== 🏷️ 카테고리 추천 (상품명 → 수수료 낮은 순 카테고리 3개) =====
+_COMM_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "coupang_commission.json")
+try:
+    _COMM = json.loads(open(_COMM_FILE, encoding="utf-8").read())
+except Exception:
+    _COMM = {"기본": {}, "예외": []}
+# 로켓그로스 사이즈별 물류비 정가(입출고+배송, 카테고리 무관)
+_SIZE_FEE = {"극소형": 3850, "소형": 4150, "중형": 5000, "대형1": 6400, "대형2": 7900, "특대형": 11900}
+
+def _comm_rate(dae: str, jung: str, so: str):
+    """소분류→중분류→대분류(기본) 순으로 매칭해 수수료율·경로 반환."""
+    exc = _COMM.get("예외", [])
+    if so:
+        for x in exc:
+            if x.get("대") == dae and x.get("소") == so:
+                return x["율"], f"{dae} › {jung} › {so}"
+    if jung:
+        for x in exc:
+            if x.get("대") == dae and x.get("중") == jung and not x.get("소"):
+                return x["율"], f"{dae} › {jung}"
+        for x in exc:  # 중분류명이 소분류칸에 있는 경우도 커버
+            if x.get("대") == dae and x.get("소") == jung:
+                return x["율"], f"{dae} › {jung}"
+    return _COMM.get("기본", {}).get(dae, 10.8), f"{dae} (기본)"
+
+@app.post("/api/category_recommend")
+async def category_recommend(request: Request):
+    if not _site_auth(request):
+        return _AUTH401
+    data = await request.json()
+    name = (data.get("name") or "").strip()
+    size = (data.get("size") or "극소형").strip()
+    try:
+        price = int(str(data.get("price", "0")).replace(",", "").replace("원", "").strip() or "0")
+    except Exception:
+        price = 0
+    if not name:
+        return JSONResponse({"error": "상품명을 입력하세요"}, status_code=400)
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return JSONResponse({"error": "ANTHROPIC_API_KEY 미설정"}, status_code=500)
+    cats = _COMM.get("기본", {})
+    catlist = ", ".join(f"{k}({v}%)" for k, v in cats.items())
+    system = f"""당신은 쿠팡 카테고리 매칭 전문가입니다. 상품명을 보고 이 상품이 '규정상 실제로 들어갈 수 있는' 쿠팡 카테고리 후보를 골라주세요.
+[대분류와 기본 수수료]
+{catlist}
+규칙:
+- 실제로 맞는 카테고리만. 수수료 낮추려고 억지 분류 금지(쿠팡이 강제이동·제재함).
+- 대분류가 서로 다른 후보를 3~5개 제시(수수료·노출 비교되게). 대분류명은 위 목록에서 정확히.
+- 중분류·소분류는 아는 만큼(모르면 비워도 됨). 노출은 그 카테고리에서 고객이 이 상품을 실제로 찾는 정도(상/중/하).
+- 오직 아래 JSON만 출력(설명 금지):
+{{"candidates":[{{"대분류":"주방용품","중분류":"제과제빵","소분류":"몰드/틀","노출":"상","이유":"고객이 주방에서 검색"}}]}}"""
+    body = {"model": "claude-opus-4-8", "max_tokens": 1200, "system": system,
+            "messages": [{"role": "user", "content": f"상품명: {name}\n판매가: {price}원\n사이즈: {size}"}]}
+    headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
+    async with httpx.AsyncClient(timeout=90) as client:
+        r = await client.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
+        if r.status_code != 200:
+            return JSONResponse({"error": f"AI 오류: {r.text[:200]}"}, status_code=500)
+        rd = r.json()
+    text = "".join(b.get("text", "") for b in rd.get("content", []) if b.get("type") == "text")
+    mt = re.search(r"\{.*\}", text, re.S)
+    try:
+        parsed = json.loads(mt.group(0)) if mt else {"candidates": []}
+    except Exception:
+        parsed = {"candidates": []}
+    logi = _SIZE_FEE.get(size, 3850)
+    seen = set(); rows = []
+    for c in parsed.get("candidates", []):
+        dae = (c.get("대분류") or "").strip()
+        if not dae:
+            continue
+        rate, path = _comm_rate(dae, (c.get("중분류") or "").strip(), (c.get("소분류") or "").strip())
+        if path in seen:
+            continue
+        seen.add(path)
+        comm = round(price * rate / 100)
+        rows.append({"경로": path, "대분류": dae, "수수료율": rate, "수수료액": comm,
+                     "물류비": logi, "총부담": comm + logi, "노출": c.get("노출", "중"), "이유": c.get("이유", "")})
+    rows.sort(key=lambda x: (x["수수료율"], x["총부담"]))
+    rows = rows[:3]
+    note = ("판매가 1.5만원 미만이라, 전용할인 되는 카테고리면 물류비가 더 낮을 수 있어요(WING에서 확인)."
+            if price and price < 15000 else "")
+    return JSONResponse({"상품명": name, "판매가": price, "사이즈": size, "물류비": logi, "추천": rows, "note": note})
+
 
 # ===== CN메이커 (CN인사이더 → 부자주방 상세페이지) — Lightsail 중개 =====
 CNMAKER_BASE = os.getenv("CNMAKER_BASE", "http://43.200.232.189")
