@@ -2099,14 +2099,14 @@ function crRender(d){
   const best=rec[0];
   let html='<div class="cr-hero"><div class="cr-check">✓</div>'
     +'<div><div class="k">수수료 최저 추천</div><div class="cat">'+String(best.경로).replace(/›\s*([^›]+)$/,'› <b>$1</b>')+'</div></div>'
-    +'<div class="right"><div class="k">예상 건당 총부담</div><div class="amt">'+won(best.총부담)+'<small>원</small></div></div></div>';
-  html+='<div class="cr-sect">후보 카테고리 비교 (수수료 낮은 순)</div>';
+    +'<div class="right"><div class="k">예상 건당 총부담 <span style="color:#dc2626">(부가세 포함)</span></div><div class="amt">'+won(best.총부담)+'<small>원</small></div></div></div>';
+  html+='<div class="cr-sect">후보 카테고리 비교 (수수료 낮은 순 · 부가세 포함 실차감액)</div>';
   html+='<table><thead><tr><th class="l">카테고리</th><th>판매수수료</th><th>건당 물류비</th><th>건당 총부담</th><th>검색 노출</th></tr></thead><tbody>';
   rec.forEach(function(c,i){
     const nm='<span class="catname'+(i===0?' best':'')+'">'+c.경로+'</span>';
     html+='<tr'+(i===0?' class="rec"':'')+'>'
       +'<td class="l">'+nm+(c.이유?'<div style="font-size:11px;color:#9aa1ab;margin-top:2px">'+c.이유+'</div>':'')+'</td>'
-      +'<td>'+c.수수료율+'%<br><span style="font-size:11.5px;color:#6b7280">'+won(c.수수료액)+'원</span></td>'
+      +'<td>'+c.수수료율+'%<br><span style="font-size:10.5px;color:#dc2626;font-weight:700">부가세포함 '+(c.수수료율vat||Math.round(c.수수료율*1.1*100)/100)+'%</span><br><span style="font-size:11.5px;color:#6b7280">'+won(c.수수료액)+'원</span></td>'
       +'<td>'+won(c.물류비)+'원</td>'
       +'<td class="total">'+won(c.총부담)+'원</td>'
       +'<td><span class="badge b-'+(c.노출||'중')+'">'+(c.노출||'중')+'</span></td></tr>';

@@ -2004,7 +2004,9 @@ async def category_recommend(request: Request):
         parsed = json.loads(mt.group(0)) if mt else {"candidates": []}
     except Exception:
         parsed = {"candidates": []}
+    VAT = 1.1  # 수수료·물류비 모두 부가세 별도 → 실제 차감액은 ×1.1
     logi = _SIZE_FEE.get(size, 3850)
+    logi_v = round(logi * VAT)
     seen = set(); rows = []
     for c in parsed.get("candidates", []):
         dae = (c.get("대분류") or "").strip()
@@ -2014,14 +2016,17 @@ async def category_recommend(request: Request):
         if path in seen:
             continue
         seen.add(path)
-        comm = round(price * rate / 100)
-        rows.append({"경로": path, "대분류": dae, "수수료율": rate, "수수료액": comm,
-                     "물류비": logi, "총부담": comm + logi, "노출": c.get("노출", "중"), "이유": c.get("이유", "")})
+        comm = round(price * rate / 100 * VAT)  # 부가세 포함 실차감
+        rows.append({"경로": path, "대분류": dae,
+                     "수수료율": rate, "수수료율vat": round(rate * VAT, 2),
+                     "수수료액": comm, "물류비": logi_v, "총부담": comm + logi_v,
+                     "노출": c.get("노출", "중"), "이유": c.get("이유", "")})
     rows.sort(key=lambda x: (x["수수료율"], x["총부담"]))
     rows = rows[:3]
     note = ("판매가 1.5만원 미만이라, 전용할인 되는 카테고리면 물류비가 더 낮을 수 있어요(WING에서 확인)."
             if price and price < 15000 else "")
-    return JSONResponse({"상품명": name, "판매가": price, "사이즈": size, "물류비": logi, "추천": rows, "note": note})
+    return JSONResponse({"상품명": name, "판매가": price, "사이즈": size, "물류비": logi_v,
+                         "부가세포함": True, "추천": rows, "note": note})
 
 
 # ===== CN메이커 (CN인사이더 → 부자주방 상세페이지) — Lightsail 중개 =====
