@@ -486,6 +486,20 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
  </div>
 
  <div id="view_life" style="display:none">
+   <div class="card" id="motto_card" style="border-top:3px solid #16a34a;background:linear-gradient(135deg,#f0fdf4,#ecfdf5)">
+     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+       <h2 style="margin:0">📌 나의 좌우명 <span class="muted big">— 인생의 원칙 (매일 보는 공지)</span></h2>
+       <button id="motto_editbtn" onclick="mottoEdit()" style="border:none;background:#16a34a;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:13px;font-weight:600">✏️ 수정</button>
+     </div>
+     <div id="motto_view" style="margin-top:10px"></div>
+     <div id="motto_edit" style="display:none;margin-top:10px">
+       <textarea id="motto_input" placeholder="예: 오늘 할 수 있는 일을 내일로 미루지 않는다 · 정직이 최고의 전략이다 · 남의 주방을 내 것처럼" style="width:100%;min-height:84px;padding:12px;border:2px solid #86efac;border-radius:10px;font-size:15px;font-family:inherit;resize:vertical;line-height:1.6"></textarea>
+       <div style="margin-top:8px;display:flex;gap:8px">
+         <button onclick="mottoSave()" style="background:#16a34a;color:#fff;border:none;border-radius:9px;padding:9px 20px;font-weight:700;cursor:pointer">저장</button>
+         <button onclick="mottoCancel()" style="background:#fff;color:#374151;border:1.5px solid #e5e7eb;border-radius:9px;padding:9px 16px;font-weight:600;cursor:pointer">취소</button>
+       </div>
+     </div>
+   </div>
    <div class="card" style="border-top:3px solid #16a34a">
      <h2>🌅 비전보드 <span class="muted big">— 내가 그리는 미래 (사진 최대 15장)</span></h2>
      <div class="note">이루고 싶은 모습·장면을 사진으로. 매일 보면서 방향을 잡아요.</div>
@@ -1135,7 +1149,7 @@ function loadLife(){
   if(MYROLE!=='boss')return;
   if(_lifeLoaded){renderLife();return;}
   fetch('/jageum/api/life').then(r=>r.ok?r.json():{}).then(d=>{
-    LIFE=Object.assign({비전보드:[],글:[],과거:[],상담:[]},d||{}); _pastCount=(LIFE.과거||[]).length; _lifeLoaded=true; renderLife(); bindVB();
+    LIFE=Object.assign({비전보드:[],글:[],과거:[],상담:[],좌우명:''},d||{}); _pastCount=(LIFE.과거||[]).length; _lifeLoaded=true; renderLife(); bindVB();
   }).catch(()=>{renderLife();});
 }
 let _pastCount=0;  // 로드 시점 과거 글 수 기억 (유실 가드)
@@ -1223,7 +1237,31 @@ function lifeCompare(){
   }).catch(()=>{box.innerHTML='<div class="err">비교 중 오류가 났어요.</div>';});
 }
 function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function renderMotto(){
+  const v=document.getElementById('motto_view'); if(!v)return;
+  const m=(LIFE.좌우명||'').trim();
+  v.innerHTML = m
+    ? '<div style="font-size:19px;font-weight:700;color:#14532d;line-height:1.65;white-space:pre-wrap;padding:6px 2px">“'+esc(m)+'”</div>'
+    : '<div class="muted" style="font-size:14px;padding:6px 2px">아직 좌우명이 없어요. <b>✏️ 수정</b>을 눌러 인생 원칙을 적어보세요.</div>';
+}
+function mottoEdit(){
+  document.getElementById('motto_input').value=LIFE.좌우명||'';
+  document.getElementById('motto_view').style.display='none';
+  document.getElementById('motto_edit').style.display='';
+  document.getElementById('motto_editbtn').style.display='none';
+  document.getElementById('motto_input').focus();
+}
+function mottoCancel(){
+  document.getElementById('motto_edit').style.display='none';
+  document.getElementById('motto_view').style.display='';
+  document.getElementById('motto_editbtn').style.display='';
+}
+function mottoSave(){
+  LIFE.좌우명=(document.getElementById('motto_input').value||'').trim();
+  saveLife(); renderMotto(); mottoCancel();
+}
 function renderLife(){
+  renderMotto();
   // 비전보드 — 첫 사진은 원본 비율 그대로 크게(가로/세로 사진 다 예쁘게), 나머지는 썸네일
   const g=document.getElementById('vb_grid');
   if(g){
