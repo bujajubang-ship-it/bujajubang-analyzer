@@ -1540,6 +1540,172 @@ async def jageum_life_chat(request: Request):
     except Exception as ex:
         return JSONResponse({"error": f"오류: {ex}"}, status_code=500)
 
+# ===== 💰 투자노트 (boss 전용: 누적 투자기록 + AI 복기 + 과거 블로그 투자글) =====
+JAGEUM_INVEST_FILE = data_path("jageum_invest.json")
+
+def _load_invest():
+    if JAGEUM_INVEST_FILE.exists():
+        try:
+            return json.loads(JAGEUM_INVEST_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    data = _kv_restore("jageum_invest")   # 재배포 초기화 → Lightsail 백업 복원
+    if isinstance(data, dict):
+        try:
+            JAGEUM_INVEST_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+        return data
+    return {}
+
+@app.get("/jageum/api/invest")
+def jageum_invest_get(request: Request):
+    if not _boss_only(request):
+        return _AUTH401
+    return JSONResponse(_load_invest())
+
+@app.post("/jageum/api/invest")
+async def jageum_invest_post(request: Request):
+    if not _boss_only(request):
+        return _AUTH401
+    body = await request.body()
+    txt = body.decode("utf-8")
+    JAGEUM_INVEST_FILE.write_text(txt, encoding="utf-8")
+    try:
+        _kv_backup("jageum_invest", json.loads(txt))   # 누적 기록 → 재배포에도 살아남게
+    except Exception:
+        pass
+    return JSONResponse({"ok": True})
+
+# 투자 관련 글 판별 키워드 (블로그 200편 사전 필터)
+_INVEST_KW = ["투자", "주식", "주가", "종목", "매수", "매도", "매매", "배당", "코인", "비트코인",
+              "이더리움", "암호화폐", "펀드", "ETF", "etf", "수익률", "포트폴리오", "재테크",
+              "부동산", "아파트", "청약", "분양", "전세", "월세", "매물", "임장", "경매",
+              "자산", "복리", "예금", "적금", "금리", "환율", "달러", "금값", "채권",
+              "손절", "익절", "물타기", "존버", "우량주", "성장주", "가치투자", "차트",
+              "코스피", "코스닥", "나스닥", "S&P", "테슬라", "엔비디아", "삼성전자", "연금",
+              "리스크", "레버리지", "현금흐름", "시드", "종잣돈", "복리효과", "분산투자"]
+
+@app.post("/jageum/api/invest/extract")
+async def jageum_invest_extract(request: Request):
+    """블로그 200편(인생노트 과거) 중 투자 관련 글만 AI로 골라내 반환 + 투자철학 요약."""
+    if not _boss_only(request):
+        return _AUTH401
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return JSONResponse({"error": "AI 키 미설정"}, status_code=500)
+    life = {}
+    if JAGEUM_LIFE_FILE.exists():
+        try:
+            life = json.loads(JAGEUM_LIFE_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    past = life.get("과거", []) or []
+    if not past:
+        return JSONResponse({"error": "과거 블로그 글이 없어요. 인생노트에 블로그가 먼저 올라와 있어야 해요."})
+    # 1) 키워드 사전 필터 (후보 좁히기)
+    cand = []
+    for i, p in enumerate(past):
+        blob = (p.get("title", "") or "") + " " + (p.get("body", "") or "")
+        if any(k in blob for k in _INVEST_KW):
+            cand.append((i, p))
+    if not cand:
+        return JSONResponse({"posts": [], "요약": None, "note": "투자 관련 글을 찾지 못했어요."})
+    cand = cand[:90]
+    listing = "\n".join(
+        f"[{i}] {p.get('date','')} | {p.get('title','')} :: {(p.get('body','') or '').strip()[:120]}"
+        for i, p in cand)
+    prompt = f"""아래는 어떤 사람이 과거에 블로그에 쓴 글 목록(번호 | 날짜 | 제목 :: 본문앞부분)이야. 이 중에서 '투자·재테크·돈 굴리기'에 관한 생각이 담긴 글만 골라줘.
+단순히 물건값·사업매출 얘기 말고, 주식·부동산·자산·투자철학·돈에 대한 태도/판단이 담긴 글을 골라.
+
+[글 목록]
+{listing}
+
+아래 JSON만 출력(코드블록 없이 순수 JSON):
+{{"투자글번호":[골라낸 글의 번호들, 관련 깊은 순],
+ "요약":{{"한줄요약":"이 사람의 투자 성향·철학 한 문장",
+  "핵심패턴":["투자에서 반복되는 생각·습관·태도 3-5개"],
+  "강점":["투자에서 잘하는 점 1-3개"],
+  "주의점":["반복되는 실수·조심할 점 1-3개"]}}}}
+투자글번호는 위 목록에 실제 있는 번호만."""
+    body = {"model": "claude-opus-4-8", "max_tokens": 1500,
+            "messages": [{"role": "user", "content": prompt}]}
+    headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
+    try:
+        async with httpx.AsyncClient(timeout=120) as c:
+            r = await c.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
+            r.raise_for_status()
+            d = r.json()
+            txt = "".join(b.get("text", "") for b in d.get("content", []) if b.get("type") == "text")
+        txt = re.sub(r"```[a-z]*", "", txt).strip("`\n ")
+        s, e = txt.find("{"), txt.rfind("}")
+        parsed = json.loads(txt[s:e+1])
+        idxs = parsed.get("투자글번호", []) or []
+        by_idx = {i: p for i, p in cand}
+        posts = [by_idx[i] for i in idxs if i in by_idx]
+        if not posts:   # AI가 못 고르면 키워드 후보라도 반환
+            posts = [p for _, p in cand[:30]]
+        return JSONResponse({"posts": posts, "요약": parsed.get("요약")})
+    except Exception as ex:
+        # AI 실패 시 키워드 필터 결과만이라도
+        return JSONResponse({"posts": [p for _, p in cand[:40]], "요약": None,
+                             "note": f"AI 요약은 실패했지만 키워드로 {len(cand)}편 추렸어요."})
+
+@app.post("/jageum/api/invest/chat")
+async def jageum_invest_chat(request: Request):
+    """투자 복기 AI — 과거 투자글 + 누적 투자노트를 기억하는 냉철한 투자 파트너."""
+    if not _boss_only(request):
+        return _AUTH401
+    data = await request.json()
+    messages = data.get("messages", [])
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return JSONResponse({"error": "AI 키 미설정"}, status_code=500)
+    inv = _load_invest()
+    summ = inv.get("과거요약", {}) or {}
+    past = inv.get("과거투자", []) or []
+    notes = inv.get("글", []) or []
+    principles = inv.get("원칙", []) or []
+    past_titles = "\n".join(f"{p.get('date','')} | {p.get('title','')}" for p in past[:120])
+    note_ctx = "\n".join(
+        f"- [{n.get('date','')}] {n.get('종목','') or '무제'} / 판단:{n.get('판단','')} / 결과:{n.get('결과','') or '-'} / 교훈:{(n.get('교훈','') or n.get('body','') or '')[:160]}"
+        for n in notes[:40])
+    prin_ctx = "\n".join(f"- {p}" for p in principles[:30])
+    system = f"""너는 이 사람의 냉철하고 솔직한 '투자 복기 파트너'야. 아부하지 않고, 데이터와 과거 기록으로 직언한다.
+이 사람은 '부자주방'(업소용 주방기기 셀러) 사업가이자 유튜버이고, 사업으로 번 돈을 투자로 불려 자산을 키우려 한다.
+
+[이 사람의 투자 성향 요약]
+{json.dumps(summ, ensure_ascii=False) if summ else "(아직 분석 전)"}
+
+[과거 블로그에 쓴 투자 관련 글 (날짜 | 제목) — 필요하면 인용]
+{past_titles or "(아직 없음)"}
+
+[누적 투자노트 — 실제 투자 판단·결과·교훈 기록]
+{note_ctx or "(아직 없음)"}
+
+[스스로 세운 투자 원칙]
+{prin_ctx or "(아직 없음)"}
+
+[대화 원칙]
+- 냉정하고 정직하게. 같은 실수가 반복되면 과거 기록을 근거로 "예전에 ○○에서도 이랬잖아"라고 직설적으로 짚어줘.
+- 감정적 매매(추격매수·공포매도·물타기)를 경계하게 돕고, 원칙과 근거를 다시 확인시켜.
+- 종목 찍어주기(특정 매수/매도 지시)는 하지 마. 대신 판단의 논리·리스크·시나리오를 같이 점검해.
+- 결과가 좋았어도 '운이었는지 실력이었는지' 냉정히 복기하게 도와.
+- 따뜻하되 무르지 않게. 친근한 반말~해요체. 이 사람이 장기적으로 부자가 되게 하는 게 목표야."""
+    body = {"model": "claude-opus-4-8", "max_tokens": 2000, "system": system,
+            "messages": [{"role": m["role"], "content": m["content"]} for m in messages[-20:]]}
+    headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
+    try:
+        async with httpx.AsyncClient(timeout=120) as c:
+            r = await c.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
+            if r.status_code != 200:
+                return JSONResponse({"error": f"AI 오류: {r.text[:200]}"}, status_code=500)
+            rd = r.json()
+        text = "".join(b.get("text", "") for b in rd.get("content", []) if b.get("type") == "text")
+        return JSONResponse({"reply": text})
+    except Exception as ex:
+        return JSONResponse({"error": f"오류: {ex}"}, status_code=500)
+
 @app.get("/jageum/api/personal/chart")
 async def jageum_personal_chart(request: Request, market: str = "KR", code: str = "", days: int = 120):
     if not _boss_only(request):

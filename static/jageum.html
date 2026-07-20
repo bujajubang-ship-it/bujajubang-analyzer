@@ -49,6 +49,7 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
  <div id="tabbar" style="display:none;justify-content:flex-end;gap:8px;margin-bottom:14px">
    <button class="tabbtn on" data-v="biz" onclick="showTab('biz',this)">🏢 사업</button>
    <button class="tabbtn" data-v="personal" onclick="showTab('personal',this)">👑 개인자산</button>
+   <button class="tabbtn" data-v="invest" onclick="showTab('invest',this)">💰 투자노트</button>
    <button class="tabbtn" data-v="total" onclick="showTab('total',this)">📊 전체 합산</button>
    <button class="tabbtn" data-v="life" onclick="showTab('life',this)">🌱 인생 노트</button>
    <button class="tabbtn" data-v="sales" onclick="showTab('sales',this)">📈 영업 결산</button>
@@ -517,6 +518,54 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    </div>
  </div>
 
+ <div id="view_invest" style="display:none">
+   <div class="card" style="border-top:3px solid #d97706">
+     <h2>💰 성공 투자노트 <span class="muted big">— 투자 판단을 기록하고, 실수와 성공을 누적해요</span></h2>
+     <div class="note">한 건 살 때·팔 때마다 '왜 그렇게 판단했는지'를 남겨요. 시간이 지나면 나만의 투자 데이터가 됩니다. 결과는 나중에 채워도 돼요.</div>
+     <div id="inv_stat" style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0"></div>
+     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px">
+       <input id="iv_jong" placeholder="종목·대상 (예: 삼성전자, 강남 아파트, 비트코인)" style="padding:10px;border:2px solid #e5e7eb;border-radius:9px;font-size:14px">
+       <select id="iv_act" style="padding:10px;border:2px solid #e5e7eb;border-radius:9px;font-size:14px;background:#fff">
+         <option value="매수">🟢 매수 (샀다)</option>
+         <option value="매도">🔴 매도 (팔았다)</option>
+         <option value="보유">🔵 보유 (계속 들고감)</option>
+         <option value="관망">⚪ 관망 (안 삼·지켜봄)</option>
+         <option value="추가매수">🟢 추가매수 (물타기/불타기)</option>
+       </select>
+     </div>
+     <textarea id="iv_body" placeholder="왜 이렇게 판단했나? (근거·기대·불안한 점을 솔직하게)" style="width:100%;min-height:80px;padding:11px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;resize:vertical;margin-top:8px"></textarea>
+     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+       <input id="iv_result" placeholder="결과 (나중에 채워도 됨: +12%, 손절 -8% 등)" style="padding:10px;border:2px solid #e5e7eb;border-radius:9px;font-size:14px">
+       <input id="iv_tags" placeholder="태그 (쉼표: 실수, 성공, 감정매매, 원칙지킴)" style="padding:10px;border:2px solid #e5e7eb;border-radius:9px;font-size:14px">
+     </div>
+     <textarea id="iv_lesson" placeholder="이번에 배운 것·교훈 (한 줄이라도)" style="width:100%;min-height:52px;padding:11px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;resize:vertical;margin-top:8px"></textarea>
+     <div style="margin-top:8px"><button onclick="investAdd()" style="background:#d97706;color:#fff;border:none;border-radius:9px;padding:10px 24px;font-weight:700;cursor:pointer">+ 투자기록 저장</button></div>
+     <div style="margin-top:10px"><input id="inv_search" class="search" placeholder="🔎 기록 검색 (종목·태그·교훈)" oninput="renderInvest()"></div>
+     <div id="inv_entries" style="margin-top:12px"></div>
+   </div>
+   <div class="card" style="border-top:3px solid #d97706">
+     <h2>📌 나의 투자 원칙 <span class="muted big">— 지킬 규칙을 못박아 둬요</span></h2>
+     <div style="display:flex;gap:8px"><input id="iv_prin" placeholder="예: 한 종목에 자산 20% 넘기지 않는다 / 손절선 -10%는 무조건 지킨다" style="flex:1;padding:10px;border:2px solid #e5e7eb;border-radius:9px;font-size:14px" onkeydown="if(event.key==='Enter')investPrinAdd()"><button onclick="investPrinAdd()" style="background:#b45309;color:#fff;border:none;border-radius:9px;padding:0 18px;font-weight:700;cursor:pointer">+ 추가</button></div>
+     <div id="inv_prins" style="margin-top:10px"></div>
+   </div>
+   <div class="card" style="border-top:3px solid #d97706">
+     <h2>🤖 투자 복기 파트너 <span class="muted big">— 내 기록을 다 아는 냉철한 AI (Opus 4.8)</span></h2>
+     <div class="note">과거 투자글·누적 기록·원칙을 다 기억해요. 감정적 매매를 막고, 같은 실수를 짚어줍니다. 대화는 자동 저장돼요.</div>
+     <div id="ic_log" style="max-height:420px;overflow:auto;border:1px solid #e9eaee;border-radius:10px;padding:12px;background:#fffdf6;margin:10px 0"></div>
+     <div style="display:flex;gap:8px">
+       <textarea id="ic_in" placeholder="지금 고민되는 투자 판단, 복기하고 싶은 거래를 편하게…" style="flex:1;min-height:54px;padding:11px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;resize:vertical" onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey))icSend()"></textarea>
+       <button onclick="icSend()" id="ic_btn" style="background:#d97706;color:#fff;border:none;border-radius:10px;padding:0 20px;font-weight:700;cursor:pointer;white-space:nowrap">보내기</button>
+     </div>
+     <div class="muted" style="font-size:11px;margin-top:5px">⌘/Ctrl + Enter로 전송 · <a onclick="icClear()" style="cursor:pointer;color:#dc2626">대화 비우기</a></div>
+   </div>
+   <div class="card" style="border-top:3px solid #d97706">
+     <h2>📜 지난 투자 글 <span class="muted big">— 과거 블로그에서 투자 이야기만 모아요</span></h2>
+     <div class="note">인생노트에 올린 블로그 200편 중 '투자·재테크·돈' 얘기만 AI가 골라내요. 과거의 나는 어떤 생각을 했었는지 돌아봐요.</div>
+     <div style="margin:8px 0"><button onclick="investExtract()" id="iv_ext_btn" style="background:#fff;color:#b45309;border:1.5px solid #d97706;border-radius:9px;padding:9px 18px;font-weight:700;cursor:pointer">🔍 과거 블로그에서 투자글 불러오기</button></div>
+     <div id="inv_past"></div>
+   </div>
+ </div>
+
  <div class="muted" style="font-size:12px;text-align:center;padding:10px">이카운트 자금일보 자동 수집 · 매일 아침 8시 갱신 · 내부이체(대체)는 영업수치에서 제외</div>
 </div>
 <script>
@@ -834,9 +883,11 @@ function showTab(v,btn){
   const vp=document.getElementById('view_personal'); if(vp)vp.style.display=(v==='personal')?'':'none';
   const vt=document.getElementById('view_total'); if(vt)vt.style.display=(v==='total')?'':'none';
   const vl=document.getElementById('view_life'); if(vl)vl.style.display=(v==='life')?'':'none';
+  const vv=document.getElementById('view_invest'); if(vv)vv.style.display=(v==='invest')?'':'none';
   const vs=document.getElementById('view_sales'); if(vs)vs.style.display=(v==='sales')?'':'none';
   const pb=document.getElementById('period_bar'); if(pb)pb.style.display=(v==='biz')?'':'none';
   if(v==='total')renderTotal();
+  if(v==='invest')loadInvest();
   if(v==='life')loadLife();
   if(v==='sales')loadSales();
   window.scrollTo(0,0);
@@ -1225,6 +1276,136 @@ function renderPast(){
   h+=rows.slice(0,120).map(p=>`<details style="border:1px solid #e5e7eb;border-radius:8px;padding:9px 12px;margin-bottom:7px"><summary style="cursor:pointer;font-weight:600;font-size:13.5px">${esc(p.title)} <span class="muted" style="font-weight:400;font-size:12px">${p.date||''}</span></summary><div style="white-space:pre-wrap;margin-top:8px;font-size:13.5px;line-height:1.65;color:#374151">${esc(p.body)}</div></details>`).join('')||'<div class="muted" style="padding:6px">검색 결과 없음</div>';
   if(rows.length>120)h+=`<div class="muted" style="font-size:12px">…상위 120편 표시 (검색으로 좁혀보세요)</div>`;
   if(box)box.innerHTML=h;
+}
+// ── 💰 투자노트 (boss 전용: 누적기록 + 원칙 + AI 복기 + 과거 투자글) ──
+let INV={글:[],상담:[],과거투자:[],원칙:[]}, _invLoaded=false, _invPastCount=0;
+function loadInvest(){
+  if(MYROLE!=='boss')return;
+  if(_invLoaded){renderInvest();return;}
+  fetch('/jageum/api/invest').then(r=>r.ok?r.json():{}).then(d=>{
+    INV=Object.assign({글:[],상담:[],과거투자:[],원칙:[]},d||{}); _invPastCount=(INV.과거투자||[]).length; _invLoaded=true; renderInvest();
+  }).catch(()=>{renderInvest();});
+}
+function saveInvest(){
+  if(!_invLoaded)return;  // 서버 로드 전엔 저장 금지(빈 데이터 덮어쓰기 방지)
+  if(_invPastCount>0 && (!INV.과거투자 || INV.과거투자.length===0)){console.warn('투자 과거글 유실 방지: 저장 취소');return;}
+  fetch('/jageum/api/invest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(INV)}).then(()=>{});
+}
+function investAdd(){
+  const jong=document.getElementById('iv_jong').value.trim();
+  const act=document.getElementById('iv_act').value;
+  const body=document.getElementById('iv_body').value.trim();
+  const result=document.getElementById('iv_result').value.trim();
+  const lesson=document.getElementById('iv_lesson').value.trim();
+  const tags=document.getElementById('iv_tags').value.split(',').map(s=>s.trim()).filter(Boolean);
+  if(!jong && !body){alert('종목이나 판단 근거를 적어주세요.');return;}
+  INV.글=INV.글||[];
+  INV.글.unshift({id:Date.now(),date:_ymd(),종목:jong,판단:act,body:body,결과:result,교훈:lesson,tags:tags});
+  ['iv_jong','iv_body','iv_result','iv_lesson','iv_tags'].forEach(id=>document.getElementById(id).value='');
+  saveInvest(); renderInvest();
+}
+function investDel(id){if(!confirm('이 기록 삭제할까요?'))return;INV.글=(INV.글||[]).filter(e=>e.id!==id);saveInvest();renderInvest();}
+function investResult(id){
+  const en=(INV.글||[]).find(e=>e.id===id); if(!en)return;
+  const v=prompt('결과를 입력하세요 (예: +12%, 손절 -8%, 아직 보유중)', en.결과||'');
+  if(v===null)return; en.결과=v.trim(); saveInvest(); renderInvest();
+}
+function investPrinAdd(){
+  const el=document.getElementById('iv_prin'), v=el.value.trim(); if(!v)return;
+  INV.원칙=INV.원칙||[]; INV.원칙.push(v); el.value=''; saveInvest(); renderInvest();
+}
+function investPrinDel(i){INV.원칙.splice(i,1);saveInvest();renderInvest();}
+const _ACTBADGE={'매수':'🟢 매수','매도':'🔴 매도','보유':'🔵 보유','관망':'⚪ 관망','추가매수':'🟢 추가매수'};
+function renderInvest(){
+  // 통계
+  const gl=INV.글||[];
+  const st=document.getElementById('inv_stat');
+  if(st){
+    const cnt=gl.length;
+    const win=gl.filter(g=>(g.tags||[]).includes('성공')||/^\s*\+/.test(g.결과||'')).length;
+    const miss=gl.filter(g=>(g.tags||[]).includes('실수')||/손절|-\d/.test(g.결과||'')).length;
+    st.innerHTML=`<div class="kpi" style="min-width:110px"><div class="l">총 기록</div><div class="v" style="font-size:20px;color:#b45309">${cnt}건</div></div>
+      <div class="kpi" style="min-width:110px"><div class="l">잘한 판단</div><div class="v" style="font-size:20px;color:#16a34a">${win}</div></div>
+      <div class="kpi" style="min-width:110px"><div class="l">실수·손실</div><div class="v" style="font-size:20px;color:#dc2626">${miss}</div></div>`;
+  }
+  // 원칙
+  const pb=document.getElementById('inv_prins');
+  if(pb)pb.innerHTML=(INV.원칙||[]).length?(INV.원칙||[]).map((p,i)=>`<div style="display:flex;align-items:center;gap:8px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;margin-bottom:6px"><span style="font-size:14px;flex:1">📌 ${esc(p)}</span><span onclick="investPrinDel(${i})" style="cursor:pointer;color:#dc2626;font-size:12px">삭제</span></div>`).join(''):'<div class="muted" style="padding:6px">아직 원칙이 없어요. 나를 지켜줄 규칙을 적어두세요.</div>';
+  // 기록 목록
+  const q=(document.getElementById('inv_search')?.value||'').trim();
+  const rows=q?gl.filter(g=>((g.종목||'')+(g.body||'')+(g.교훈||'')+(g.tags||[]).join(' ')).includes(q)):gl;
+  const e=document.getElementById('inv_entries');
+  if(e)e.innerHTML=rows.length?rows.map(g=>{
+    const badge=_ACTBADGE[g.판단]||g.판단||'';
+    const res=g.결과?`<span style="font-weight:700;color:${/^\s*\+/.test(g.결과)?'#16a34a':(/손절|-\d/.test(g.결과)?'#dc2626':'#b45309')}">${esc(g.결과)}</span>`:`<a onclick="investResult(${g.id})" style="cursor:pointer;color:#d97706;font-size:12px">+ 결과 입력</a>`;
+    return `<div style="border-left:3px solid #d97706;background:#fffdf6;border-radius:8px;padding:12px 14px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+        <b style="font-size:15px">${esc(g.종목||'무제')} <span style="font-size:12px;font-weight:600;background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 7px">${badge}</span></b>
+        <span class="muted" style="font-size:12px;white-space:nowrap">${g.date} <a onclick="investDel(${g.id})" style="cursor:pointer;color:#dc2626">삭제</a></span>
+      </div>
+      ${g.body?`<div style="white-space:pre-wrap;margin-top:6px;font-size:14px;line-height:1.6">${esc(g.body)}</div>`:''}
+      <div style="margin-top:8px;font-size:13px;display:flex;gap:14px;flex-wrap:wrap"><span>📊 결과: ${res}</span></div>
+      ${g.교훈?`<div style="margin-top:7px;background:#fffbeb;border-radius:7px;padding:7px 10px;font-size:13.5px;line-height:1.6">💡 <b>교훈:</b> ${esc(g.교훈)}</div>`:''}
+      ${(g.tags&&g.tags.length)?`<div style="margin-top:7px">${g.tags.map(t=>`<span style="display:inline-block;font-size:11.5px;background:#fef3c7;color:#92400e;border-radius:20px;padding:2px 9px;margin-right:5px">#${esc(t)}</span>`).join('')}</div>`:''}</div>`;
+  }).join(''):`<div class="muted" style="padding:8px">${q?'검색 결과 없음':'아직 기록이 없어요. 첫 투자 판단을 남겨보세요.'}</div>`;
+  icRender(); renderInvPast();
+}
+function icRender(){
+  const log=document.getElementById('ic_log'); if(!log)return;
+  const msgs=INV.상담||[];
+  if(!msgs.length){log.innerHTML='<div class="muted" style="padding:14px;text-align:center;font-size:13.5px">투자 복기 파트너예요 💰 최근 산 것·판 것, 고민되는 판단을 꺼내봐요. 감정에 휘둘리지 않게, 과거 기록으로 냉정하게 같이 짚어줄게요.</div>';return;}
+  log.innerHTML=msgs.map(m=>{const me=m.role==='user';
+    return `<div style="display:flex;justify-content:${me?'flex-end':'flex-start'};margin:7px 0"><div style="max-width:82%;padding:10px 13px;border-radius:13px;font-size:14px;line-height:1.65;white-space:pre-wrap;${me?'background:#d97706;color:#fff':'background:#fff;border:1px solid #fde68a'}">${esc(m.content)}</div></div>`;
+  }).join('');
+  log.scrollTop=log.scrollHeight;
+}
+function icSend(){
+  const el=document.getElementById('ic_in'), t=(el.value||'').trim(); if(!t)return;
+  el.value=''; INV.상담=INV.상담||[]; INV.상담.push({role:'user',content:t});
+  saveInvest(); icRender();
+  const btn=document.getElementById('ic_btn'); btn.disabled=true; btn.textContent='…';
+  const log=document.getElementById('ic_log'); log.insertAdjacentHTML('beforeend','<div id="ic_think" style="text-align:left;margin:7px 0"><span class="spin"></span> <span class="muted">복기 중…</span></div>'); log.scrollTop=log.scrollHeight;
+  fetch('/jageum/api/invest/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:INV.상담})}).then(r=>r.json()).then(d=>{
+    btn.disabled=false; btn.textContent='보내기';
+    if(d.error){INV.상담.push({role:'assistant',content:'⚠️ '+d.error});}
+    else INV.상담.push({role:'assistant',content:d.reply||'(응답 없음)'});
+    saveInvest(); icRender();
+  }).catch(()=>{btn.disabled=false;btn.textContent='보내기';const tk=document.getElementById('ic_think');if(tk)tk.remove();alert('연결 실패');});
+}
+function icClear(){if(!confirm('복기 대화를 모두 비울까요?'))return;INV.상담=[];saveInvest();icRender();}
+function investExtract(){
+  const btn=document.getElementById('iv_ext_btn'); const box=document.getElementById('inv_past');
+  if((INV.과거투자||[]).length && !confirm('과거 투자글을 다시 불러오면 기존 목록을 새로 덮어써요. 진행할까요?'))return;
+  btn.disabled=true; btn.textContent='🔍 블로그 200편 분석 중… (Opus, 15~30초)';
+  fetch('/jageum/api/invest/extract',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json()).then(d=>{
+    btn.disabled=false; btn.textContent='🔍 과거 블로그에서 투자글 다시 불러오기';
+    if(d.error){box.innerHTML='<div class="err">'+esc(d.error)+'</div>';return;}
+    INV.과거투자=d.posts||[]; _invPastCount=INV.과거투자.length;
+    if(d.요약)INV.과거요약=d.요약;
+    saveInvest(); renderInvPast();
+    if(d.note)box.insertAdjacentHTML('afterbegin','<div class="muted" style="font-size:12px;margin-bottom:8px">ℹ️ '+esc(d.note)+'</div>');
+  }).catch(()=>{btn.disabled=false;btn.textContent='🔍 과거 블로그에서 투자글 불러오기';box.innerHTML='<div class="err">분석 중 오류가 났어요.</div>';});
+}
+function renderInvPast(){
+  const box=document.getElementById('inv_past'); if(!box)return;
+  const past=INV.과거투자||[], sum=INV.과거요약;
+  let h='';
+  if(sum){
+    h+=`<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:14px;margin-bottom:14px">
+      <div style="font-weight:700;margin-bottom:6px">🧭 나의 투자 성향 <span class="muted" style="font-weight:400;font-size:11px">(AI가 과거 글 분석)</span></div>
+      <div style="font-size:14px;line-height:1.6;margin-bottom:8px">${esc(sum.한줄요약||'')}</div>`;
+    if((sum.핵심패턴||[]).length)h+=`<div style="font-size:13px;line-height:1.7;margin-bottom:5px"><b>반복되는 패턴:</b> ${(sum.핵심패턴||[]).map(v=>esc(v)).join(' · ')}</div>`;
+    if((sum.강점||[]).length)h+=`<div style="font-size:13px;line-height:1.7;margin-bottom:5px;color:#16a34a"><b>강점:</b> ${(sum.강점||[]).map(v=>esc(v)).join(' · ')}</div>`;
+    if((sum.주의점||[]).length)h+=`<div style="font-size:13px;line-height:1.7;color:#dc2626"><b>주의점:</b> ${(sum.주의점||[]).map(v=>esc(v)).join(' · ')}</div>`;
+    h+=`</div>`;
+  }
+  if(past.length){
+    h+=`<div class="muted" style="font-size:12px;margin:4px 0 8px">📝 과거 투자글 ${past.length}편 <span style="font-size:11px">(클릭하면 펼쳐져요)</span></div>`;
+    h+=past.slice(0,120).map(p=>`<details style="border:1px solid #fde68a;border-radius:8px;padding:9px 12px;margin-bottom:7px"><summary style="cursor:pointer;font-weight:600;font-size:13.5px">${esc(p.title)} <span class="muted" style="font-weight:400;font-size:12px">${p.date||''}</span></summary><div style="white-space:pre-wrap;margin-top:8px;font-size:13.5px;line-height:1.65;color:#374151">${esc(p.body)}</div></details>`).join('');
+  } else if(!sum){
+    h+='<div class="muted" style="padding:6px">위 버튼을 눌러 과거 블로그에서 투자 이야기를 모아보세요.</div>';
+  }
+  box.innerHTML=h;
 }
 // ── 법인카드 사용 (경리 관리, 카드별 분리) ──
 let chCard=null, _cardF='전체';
