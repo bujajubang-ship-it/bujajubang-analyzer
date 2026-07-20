@@ -39,8 +39,16 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
 #period_bar button{border:1px solid #d1d5db;background:#fff;padding:5px 11px;border-radius:7px;cursor:pointer;font-size:13px}
 #period_bar button.on{background:#5b21b6;color:#fff;border-color:#5b21b6}
 #period_bar select{padding:5px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:13px}
-.tabbtn{border:1px solid #d1d5db;background:#fff;padding:8px 16px;border-radius:9px;cursor:pointer;font-size:14px;font-weight:600;color:#374151}
+.tabbtn{border:1px solid #d1d5db;background:#fff;padding:8px 16px;border-radius:9px;cursor:pointer;font-size:14px;font-weight:600;color:#374151;white-space:nowrap;flex-shrink:0}
 .tabbtn.on{background:#5b21b6;color:#fff;border-color:#5b21b6}
+@media(max-width:640px){
+  #tabbar{justify-content:flex-start!important;flex-wrap:nowrap!important;overflow-x:auto;-webkit-overflow-scrolling:touch;gap:6px!important;padding-bottom:5px;margin-left:-2px;scrollbar-width:none}
+  #tabbar::-webkit-scrollbar{display:none}
+  .tabbtn{padding:8px 13px;font-size:13px}
+  .wrap{padding:14px 12px}
+  .top h1{font-size:17px}
+  .card{padding:14px 13px}
+}
 .rangebtn{border:1px solid #d1d5db;background:#fff;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;color:#374151}
 .rangebtn.on{background:#7c3aed;color:#fff;border-color:#7c3aed}
 </style></head><body>
@@ -483,7 +491,7 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
      <div class="note">이루고 싶은 모습·장면을 사진으로. 매일 보면서 방향을 잡아요.</div>
      <div id="vb_drop" style="border:2px dashed #86efac;border-radius:12px;padding:18px;text-align:center;color:#16a34a;cursor:pointer;margin:10px 0;background:#f0fdf4">📷 사진 추가 (클릭 또는 드래그 · 최대 15장)</div>
      <input type="file" id="vb_file" accept="image/*" multiple style="display:none">
-     <div id="vb_grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px"></div>
+     <div id="vb_grid"></div>
    </div>
    <div class="card" style="border-top:3px solid #16a34a">
      <h2>✍️ 인생 노트 <span class="muted big">— 메모하듯 막 적어요 (구글 킵처럼)</span></h2>
@@ -1216,10 +1224,18 @@ function lifeCompare(){
 }
 function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function renderLife(){
-  // 비전보드
+  // 비전보드 — 첫 사진은 원본 비율 그대로 크게(가로/세로 사진 다 예쁘게), 나머지는 썸네일
   const g=document.getElementById('vb_grid');
-  if(g)g.innerHTML=(LIFE.비전보드||[]).map((src,i)=>`<div style="position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;border:1px solid #d1fae5"><img src="${src}" style="width:100%;height:100%;object-fit:cover"><span onclick="vbRemove(${i})" style="position:absolute;top:3px;right:3px;background:rgba(0,0,0,.55);color:#fff;border-radius:50%;width:20px;height:20px;text-align:center;line-height:20px;cursor:pointer;font-size:13px">×</span></div>`).join('')
-    +((LIFE.비전보드||[]).length?'':'<div class="muted" style="grid-column:1/-1;padding:10px">아직 사진이 없어요. 위에서 추가하세요.</div>');
+  if(g){
+    const vb=LIFE.비전보드||[];
+    if(!vb.length){ g.innerHTML='<div class="muted" style="padding:10px">아직 사진이 없어요. 위에서 추가하세요.</div>'; }
+    else {
+      const del=(i)=>`<span onclick="vbRemove(${i})" style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,.55);color:#fff;border-radius:50%;width:24px;height:24px;text-align:center;line-height:24px;cursor:pointer;font-size:14px">×</span>`;
+      const feat=`<div style="position:relative;border-radius:12px;overflow:hidden;border:1px solid #d1fae5;background:#f0fdf4;text-align:center"><img src="${vb[0]}" style="display:block;width:100%;height:auto;max-height:72vh;object-fit:contain;margin:0 auto">${del(0)}</div>`;
+      const rest=vb.slice(1).map((src,i)=>`<div style="position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;border:1px solid #d1fae5"><img src="${src}" style="width:100%;height:100%;object-fit:cover">${del(i+1)}</div>`).join('');
+      g.innerHTML=feat+(rest?`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px;margin-top:10px">${rest}</div>`:'');
+    }
+  }
   // 글
   const e=document.getElementById('life_entries');
   if(e)e.innerHTML=(LIFE.글||[]).length?(LIFE.글||[]).map(en=>{
