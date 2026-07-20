@@ -634,8 +634,8 @@ function load(){fetch('/jageum/api/data').then(r=>{if(r.status===401){location.h
   slInit();
   if(MYROLE==='boss'){document.getElementById('approval_card').style.display='';loadApprovals();loadPersonal();
     document.getElementById('tabbar').style.display='flex';showTab('biz');}
-  else if(MYROLE==='staff'){  // 경리: 개인/전체/인생 탭 제거, 사업+영업결산만
-    ['personal','total','life'].forEach(v=>{const b=document.querySelector('#tabbar .tabbtn[data-v="'+v+'"]');if(b)b.remove();});
+  else if(MYROLE==='staff'){  // 경리: 개인/투자/전체/인생 탭 제거, 사업+영업결산만
+    ['personal','invest','total','life'].forEach(v=>{const b=document.querySelector('#tabbar .tabbtn[data-v="'+v+'"]');if(b)b.remove();});
     document.getElementById('tabbar').style.display='flex';showTab('biz');}
   else if(MYROLE==='sales'){  // 영업사원: 회사 대시보드 전부 숨김, 영업결산만
     document.querySelectorAll('.card').forEach(c=>{if(!c.closest('#view_sales'))c.style.display='none';});
