@@ -389,7 +389,8 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
 
  <div class="card" id="settle_card" style="border-top:3px solid #059669">
    <h2>📅 월말 결산 — 팀별 매출·비용·순익</h2>
-   <div class="note">매월 팀별 현금흐름 결산 · 담당자=본인매출−직접비용(기여이익) · 매입·본사운영비·인건비는 본사·공통 · ☀️전력매출(태양광)은 별도 행</div>
+   <div class="note" id="close_note"></div>
+   <div class="tabs" id="closebasis"><button class="on" data-cb="발생">📗 발생주의 (이카운트 손익)</button><button data-cb="현금">💵 현금주의 (통장 흐름)</button></div>
    <div class="tabs" id="closedim"><button class="on" data-cd="순익">순익 보기</button><button data-cd="매출">매출 보기</button><button data-cd="비용">비용 보기</button></div>
    <div class="scroll" style="overflow-x:auto"><table id="t_close"></table></div>
  </div>
@@ -653,6 +654,7 @@ function load(){fetch('/jageum/api/data').then(r=>{if(r.status===401){location.h
   document.getElementById('whoami').textContent = MYROLE==='boss'?'👑 대표님':(MYROLE==='staff'?'🧑‍💼 경리':'');
   {const _wl=document.getElementById('chat_who_label'); if(_wl)_wl.textContent=MYROLE==='boss'?'👑 사장님':(MYROLE==='staff'?'🧑‍💼 경리':'게스트');}
   window._who=d._who||'';
+  fetch('/jageum/api/pl_proj').then(r=>r.ok?r.json():null).then(p=>{if(p&&p.months){D.plProj=p;if(typeof renderClose==='function')renderClose();}}).catch(()=>{});
   slInit();
   if(MYROLE==='boss'){document.getElementById('approval_card').style.display='';loadApprovals();loadPersonal();
     document.getElementById('tabbar').style.display='flex';showTab('biz');}
@@ -1582,8 +1584,17 @@ function svExpand(i){const k=(window._exk||[])[i];if(!k)return;window._svExp=win
 function svAddWatch(){const el=document.getElementById('sv_watch_in');if(!el)return;const v=el.value.trim();if(!v)return;M.체크목록=M.체크목록||[];if(!M.체크목록.includes(v))M.체크목록.push(v);saveManual();renderSales();}
 function svRemoveWatch(i){if(M.체크목록){M.체크목록.splice(i,1);saveManual();renderSales();}}
 function svToggleDone(i){const key=(window._ck||[])[i];if(!key)return;M.체크완료=M.체크완료||{};M.체크완료[key]=!M.체크완료[key];saveManual();renderSales();}
-let closeDim='순익';
+let closeDim='순익', closeBasis='발생';
 function renderClose(){
+ // 토글(기준·항목) 바인딩 — 어느 기준이든 항상 동작
+ document.querySelectorAll('#closebasis button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#closebasis button').forEach(x=>x.classList.remove('on'));b.classList.add('on');closeBasis=b.dataset.cb;renderClose();});
+ document.querySelectorAll('#closedim button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#closedim button').forEach(x=>x.classList.remove('on'));b.classList.add('on');closeDim=b.dataset.cd;renderClose();});
+ const note=document.getElementById('close_note');
+ if(closeBasis==='발생'){
+   if(note)note.innerHTML='<b style="color:#059669">발생주의</b> — 이카운트 프로젝트별 손익계산서 기준(실제 번/쓴 것). 순익=매출−매출원가−판관비(그 팀에 직접 태그된 것만, 본사 간접비 배분 안 함) · 프로젝트명으로 팀 자동분류 · <b>무인 자동수집</b>';
+   return renderCloseAccrual();
+ }
+ if(note)note.innerHTML='매월 팀별 <b>현금흐름</b> 결산 · 담당자=본인매출−직접비용(기여이익) · 매입·본사운영비·인건비는 본사·공통 · ☀️전력매출(태양광)은 별도 행';
  const ml=D.months_list||[]; if(!ml.length||!D.months) return;
  const teams=['쇼핑몰','영업·성기민','영업·김성주','영업·대표','본사·공통','태양광'];
  const tlabel={'쇼핑몰':'🛒 쇼핑몰','영업·성기민':'🧑‍💼 성기민','영업·김성주':'🧑‍💼 김성주','영업·대표':'👑 대표','본사·공통':'🏢 본사·공통','태양광':'☀️ 전력매출'};
@@ -1610,7 +1621,24 @@ function renderClose(){
  const gtot=totByM.reduce((s,v)=>s+v,0);
  let totrow='<tr style="font-weight:700;background:#ecfdf5"><td style="'+stick+'background:#ecfdf5">전체 합계</td>'+totByM.map(v=>'<td class="num" style="color:'+(closeDim==='순익'&&v<0?'#dc2626':'#065f46')+'">'+(v?Math.round(v/10000).toLocaleString()+'만':'-')+'</td>').join('')+'<td class="num">'+Math.round(gtot/10000).toLocaleString()+'만</td></tr>';
  document.getElementById('t_close').innerHTML='<thead>'+head+'</thead><tbody>'+totrow+rows+'</tbody>';
- document.querySelectorAll('#closedim button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#closedim button').forEach(x=>x.classList.remove('on'));b.classList.add('on');closeDim=b.dataset.cd;renderClose();});
+}
+function renderCloseAccrual(){
+ const pp=D.plProj, box=document.getElementById('t_close');
+ if(!pp||!pp.months||!pp.months.length){box.innerHTML='<tbody><tr><td class="muted" style="padding:14px">이카운트 프로젝트별 손익 수집 중… (곧 표시됩니다)</td></tr></tbody>';return;}
+ const ml=pp.months;
+ const teams=[['쇼핑몰','🛒 쇼핑몰'],['성기민','🧑‍💼 성기민'],['김성주','🧑‍💼 김성주'],['대표','👑 대표'],['본사공통','🏢 본사·공통'],['미분류','📁 기타/미분류']];
+ const field=closeDim==='매출'?['매출']:closeDim==='비용'?['매출원가','판관비']:['영업손익'];
+ const val=(t,k)=>{const c=(pp.data[k]||{})[t]||{}; return field.reduce((s,f)=>s+(c[f]||0),0);};
+ const stick='position:sticky;left:0;z-index:1;';
+ let head='<tr><th style="'+stick+'background:#fafafe">팀/담당</th>'+ml.map(k=>'<th class="num">'+k.slice(2)+'</th>').join('')+'<th class="num">합계</th></tr>';
+ let rows=teams.map(([t,lb])=>{
+   const cells=ml.map(k=>val(t,k)); const sum=cells.reduce((s,v)=>s+v,0);
+   return '<tr><td style="'+stick+'background:#fff;white-space:nowrap">'+lb+'</td>'+cells.map(v=>'<td class="num" style="color:'+(closeDim==='순익'&&v<0?'#dc2626':'#1f2937')+'">'+(v?Math.round(v/10000).toLocaleString()+'만':'-')+'</td>').join('')+'<td class="num" style="font-weight:700">'+(sum?Math.round(sum/10000).toLocaleString()+'만':'-')+'</td></tr>';
+ }).join('');
+ const totByM=ml.map(k=>teams.reduce((s,[t])=>s+val(t,k),0));
+ const gtot=totByM.reduce((s,v)=>s+v,0);
+ let totrow='<tr style="font-weight:700;background:#ecfdf5"><td style="'+stick+'background:#ecfdf5">전체 합계</td>'+totByM.map(v=>'<td class="num" style="color:'+(closeDim==='순익'&&v<0?'#dc2626':'#065f46')+'">'+(v?Math.round(v/10000).toLocaleString()+'만':'-')+'</td>').join('')+'<td class="num">'+Math.round(gtot/10000).toLocaleString()+'만</td></tr>';
+ box.innerHTML='<thead>'+head+'</thead><tbody>'+totrow+rows+'</tbody>';
 }
 function renderBalTrend(){
  const ml=D.months_list||[]; if(!ml.length||!D.months) return;

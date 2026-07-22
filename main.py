@@ -1194,6 +1194,35 @@ async def data_refresh_status(request: Request):
     except Exception:
         return JSONResponse({"running": False, "msg": "상태 확인 실패"})
 
+@app.get("/jageum/api/pl_proj")
+def jageum_pl_proj(request: Request):
+    """이카운트 프로젝트별 손익(횡) → 팀별 발생주의 손익. 영업결산 탭에서 사장·경리·영업 모두 조회."""
+    if _jageum_role(request) not in ("boss", "staff", "sales"):
+        return _AUTH401
+    data = _kv_restore("pl_proj", timeout=15)
+    return JSONResponse(data or {"months": [], "data": {}, "chk": {}})
+
+@app.post("/jageum/api/pl_proj_refresh")
+async def pl_proj_refresh(request: Request):
+    """프로젝트별 손익을 이카운트에서 즉시 재수집(온디맨드, 사장·경리). 5~7분 소요."""
+    if not _jageum_auth(request):
+        return _AUTH401
+    try:
+        r = httpx.post(f"{_KV_BASE}/scrape_pl_proj", headers={"x-secret": _KV_SECRET}, timeout=15)
+        return JSONResponse(r.json())
+    except Exception as e:
+        return JSONResponse({"status": "error", "msg": str(e)[:150]}, status_code=502)
+
+@app.get("/jageum/api/pl_proj_refresh/status")
+async def pl_proj_refresh_status(request: Request):
+    if not _jageum_auth(request):
+        return _AUTH401
+    try:
+        r = httpx.get(f"{_KV_BASE}/scrape_pl_proj_status", headers={"x-secret": _KV_SECRET}, timeout=10)
+        return JSONResponse(r.json())
+    except Exception:
+        return JSONResponse({"running": False, "msg": "상태 확인 실패"})
+
 @app.post("/jageum/api/ingest")
 async def jageum_ingest(request: Request):
     if request.headers.get("x-ingest-secret", "") != JAGEUM_INGEST_SECRET:
