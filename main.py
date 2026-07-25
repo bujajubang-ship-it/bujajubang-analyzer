@@ -960,21 +960,46 @@ def _kv_restore(key, timeout=6):
         pass
     return None
 
+# 마지막 유효 자금데이터(메모리 캐시) — 로컬·KV 둘 다 순간 실패해도 0/빈화면으로 안 떨어지게 보존
+_JAGEUM_CACHE = {"data": None}
+
+def _jageum_has_content(d) -> bool:
+    """실제 자금 데이터가 들어있는지 판정(빈 껍데기·0 방지). 통장거래내역=자금의증가/감소."""
+    if not isinstance(d, dict) or not d:
+        return False
+    for k in ("자금현황", "자금의증가", "자금의감소"):
+        v = d.get(k)
+        if isinstance(v, list) and len(v) > 0:
+            return True
+    return False
+
 def _load_jageum():
-    """대시보드 데이터 로드. 로컬 파일이 없으면(재배포로 초기화) Lightsail KV에서 복원 →
-    재배포·재시작 직후에도 대시보드가 빈 화면으로 뜨지 않게 한다(자금일보·손익·입금 등 메인 데이터)."""
+    """대시보드 데이터 로드. '내용이 있는' 로컬 파일을 우선, 비었거나 없으면(수집 실패·재배포)
+    항상 켜진 Lightsail KV에서 복원, 그것도 실패하면 마지막 유효본(메모리)을 써서
+    자금일보·손익·통장내역(입금/출금)이 0/빈 화면으로 뜨는 것을 막는다."""
+    # 1) 로컬 파일은 '내용이 있을 때만' 신뢰 (빈 파일이 덮여 있어도 KV로 넘어감)
     if JAGEUM_FILE.exists():
         try:
-            return json.loads(JAGEUM_FILE.read_text(encoding="utf-8"))
+            d = json.loads(JAGEUM_FILE.read_text(encoding="utf-8"))
+            if _jageum_has_content(d):
+                _JAGEUM_CACHE["data"] = d
+                return d
         except Exception:
             pass
+    # 2) 로컬이 비었거나 없음 → Lightsail KV 복원 (콜드스타트 타임아웃 대비 1회 재시도)
     data = _kv_restore("jageum_data", timeout=25)   # 2.6MB라 여유 타임아웃
-    if isinstance(data, dict) and data:
+    if not _jageum_has_content(data):
+        data = _kv_restore("jageum_data", timeout=25)
+    if _jageum_has_content(data):
         try:
             JAGEUM_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
         except Exception:
             pass
+        _JAGEUM_CACHE["data"] = data
         return data
+    # 3) 로컬·KV 모두 실패 → 마지막 유효본으로 버팀
+    if _jageum_has_content(_JAGEUM_CACHE["data"]):
+        return _JAGEUM_CACHE["data"]
     return {}
 def _load_manual():
     if JAGEUM_MANUAL_FILE.exists():
@@ -1229,10 +1254,19 @@ async def jageum_ingest(request: Request):
         return JSONResponse({"ok": False, "error": "forbidden"}, status_code=403)
     body = await request.body()
     text = body.decode("utf-8")
+    # 빈/불완전 수집이 정상 데이터를 덮어쓰지 못하게 방어 (수집 실패 시 0으로 떨어지는 주원인)
+    try:
+        incoming = json.loads(text)
+    except Exception:
+        return JSONResponse({"ok": False, "error": "bad json"}, status_code=400)
+    if not _jageum_has_content(incoming):
+        # 들어온 데이터가 비었으면 기존 유효본 유지(로컬·KV 둘 다 보존)
+        return JSONResponse({"ok": False, "error": "empty payload rejected", "kept": True})
     JAGEUM_FILE.write_text(text, encoding="utf-8")
+    _JAGEUM_CACHE["data"] = incoming
     # 재배포에도 살아남게 Lightsail KV에 백업 (다음 재배포 후 첫 로드에서 자동 복원)
     try:
-        _kv_backup("jageum_data", json.loads(text), timeout=25)
+        _kv_backup("jageum_data", incoming, timeout=25)
     except Exception:
         pass
     return JSONResponse({"ok": True})
