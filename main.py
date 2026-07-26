@@ -2094,6 +2094,21 @@ async def jageum_invest_chat(request: Request):
 [이 사람이 직접 모아둔 구루 문장·메모]
 {guru_ctx or "(아직 없음 — 개인자산 탭의 '투자 그루 노트'에 좋아하는 구절을 넣으면 여기 반영된다)"}
 
+[종목 이야기가 나오면 — 반드시 이 순서로 조사한다]
+사장님이 특정 종목(예: 포스코DX, NAVER, 엔비디아)을 언급하면 기억으로 답하지 말고 아래 순서로 검색해라.
+
+1) **외신 먼저, 영어로 검색한다.** 한국 증시 뉴스는 항상 늦다. Bloomberg·Reuters·WSJ·FT·CNBC·Barron's·Seeking Alpha·investing.com 같은 곳을 영어 쿼리로 찾아라
+   (예: "POSCO DX stock news", "Samsung Electronics HBM outlook", "NAVER earnings guidance").
+   한국 종목이라도 외신이 먼저 다루는 경우가 많고, 그게 국내 기사보다 앞선 정보다.
+2) **그 종목이 속한 섹터의 최신 데이터를 가져온다.** 종목 하나만 보지 말고 업황을 봐라.
+   반도체면 HBM·DRAM 현물가·감산·CAPEX, 2차전지면 리튬·니켈 가격과 EV 수요·보조금 정책,
+   조선·방산·바이오·플랫폼도 각각의 핵심 지표를 찾아라. 섹터가 꺾이는데 종목만 좋은 경우는 드물다.
+3) **국내 뉴스는 마지막에 확인한다.** 네이버 증시·한경·매경 등은 위 두 개를 본 뒤 '국내 시각은 어떤가'를 덧붙이는 용도로만 써라.
+   국내 기사가 외신과 다르면, 어느 쪽이 더 최신인지 날짜로 따지고 그 차이를 사장님께 알려줘라.
+
+답할 때는 **어디서 언제 나온 정보인지(매체·날짜)를 밝히고**, 외신과 국내 시각이 갈리면 갈린다고 말해라.
+확인 못 한 수치는 말하지 마라. 검색해도 안 나오면 "못 찾았다"고 해라.
+
 [최신 정보가 필요할 때]
 증시·환율·금리·특정 종목의 현재 상황, 최근 발언처럼 **오늘 시점의 사실**이 답에 영향을 주면 web_search로 찾아서 근거와 함께 말해라. 기억에 의존해 최신 수치를 말하지 마라. 반대로 검색이 필요 없는 원칙 질문에 굳이 검색하지는 마라.
 사장님이 기사 **URL을 붙여넣으면 web_fetch로 본문을 직접 읽고** 분석해라. 유료 구독 기사는 본문 대신 안내문만 열릴 수 있는데, 그때는 못 읽었다고 솔직히 말하고 "본문을 붙여넣어 주세요"라고 요청해라 — 읽은 척 지어내지 마라.
@@ -2138,15 +2153,15 @@ async def jageum_invest_chat(request: Request):
                 {"type": "text", "text": system_tail},
             ],
             # 증시·환율·최근 발언 등 '오늘 시점' 사실은 웹검색으로 (서버측 실행, 출처 포함)
-            "tools": [{"type": "web_search_20260209", "name": "web_search", "max_uses": 6},
+            "tools": [{"type": "web_search_20260209", "name": "web_search", "max_uses": 14},
                       # 사용자가 붙여넣은 기사 URL의 본문까지 직접 읽기
                       {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": 6}],
             "messages": convo}
     headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
     try:
         searched = 0
-        async with httpx.AsyncClient(timeout=300) as c:
-            for _ in range(4):    # 웹검색이 길어지면 pause_turn → 이어서 재요청
+        async with httpx.AsyncClient(timeout=420) as c:
+            for _ in range(7):    # 웹검색이 길어지면 pause_turn → 이어서 재요청
                 r = await c.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
                 if r.status_code != 200:
                     return JSONResponse({"error": f"AI 오류: {r.text[:200]}"}, status_code=500)
