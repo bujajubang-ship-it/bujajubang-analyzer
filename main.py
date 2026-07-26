@@ -1881,6 +1881,54 @@ def _invest_raw_posts(per_post=6000, total_cap=400000, max_posts=300):
             chunks.append(tail); used += len(tail)
     return chunks, used
 
+GURUS = ["워런 버핏", "찰리 멍거", "김승호(돈의 속성)", "로버트 기요사키", "MJ 드마코(부의 추월차선)"]
+
+@app.post("/jageum/api/invest/gurudata")
+async def jageum_invest_gurudata(request: Request):
+    """구루들의 투자 철학을 웹(해설 블로그·뉴스·인터뷰)에서 조사해 출처와 함께 정리한다.
+    책 본문을 복제하지 않고, 공개된 2차 자료를 근거로 요약 + 출처 URL을 남긴다."""
+    if not _boss_only(request):
+        return _AUTH401
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return JSONResponse({"error": "AI 키 미설정"}, status_code=500)
+    data = await request.json()
+    who = [w.strip() for w in (data.get("who") or GURUS) if str(w).strip()][:8]
+    prompt = f"""다음 인물들의 **투자·부에 대한 철학**을 웹에서 조사해줘: {', '.join(who)}
+
+조사 방법:
+- web_search로 각 인물의 인터뷰·강연·주주서한 해설, 뉴스 기사, 그 사람의 책을 정리한 블로그 글을 찾아라.
+- 책 본문을 그대로 옮기지 말고, 공개된 기사·해설을 근거로 **네가 정리**해라.
+- 실제로 그 사람이 한 발언만 인용하고, 인용에는 반드시 출처 URL을 붙여라. 확인 못 한 건 인용하지 마라.
+
+각 인물마다 조사할 것: 핵심 원칙 / 실제 판단 기준 / 확인된 발언 인용(출처 포함) / 흔한 오해.
+
+마지막에 아래 JSON만 출력(코드블록 없이 순수 JSON):
+{{"인물":[{{"이름":"","핵심원칙":["3-6개"],"판단기준":["실제로 뭘 보고 사고파는지 2-5개"],
+ "확인된인용":[{{"말":"","출처":"URL"}}],"흔한오해":["1-3개"],"출처":["URL들"]}}]}}"""
+    body = {"model": "claude-opus-5", "max_tokens": 20000,
+            "output_config": {"effort": "high"},
+            "tools": [{"type": "web_search_20260209", "name": "web_search", "max_uses": 24}],
+            "messages": [{"role": "user", "content": prompt}]}
+    headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
+    try:
+        async with httpx.AsyncClient(timeout=600) as c:
+            for _ in range(6):                      # 검색이 길어지면 pause_turn → 이어받기
+                r = await c.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
+                if r.status_code != 200:
+                    return JSONResponse({"error": f"AI 오류: {r.text[:200]}"}, status_code=500)
+                rd = r.json()
+                if rd.get("stop_reason") != "pause_turn":
+                    break
+                body["messages"] = body["messages"] + [{"role": "assistant", "content": rd.get("content", [])}]
+        txt = "".join(b.get("text", "") for b in rd.get("content", []) if b.get("type") == "text")
+        s, e = txt.find("{"), txt.rfind("}")
+        parsed = json.loads(re.sub(r"```[a-z]*", "", txt[s:e+1]))
+        people = parsed.get("인물", []) or []
+        return JSONResponse({"인물": people, "count": len(people)})
+    except Exception as ex:
+        return JSONResponse({"error": f"정리 실패: {ex}"}, status_code=500)
+
 def _invest_memo_ctx(per_memo=4000, cap=150000):
     """인생노트에 계속 적어나가는 메모 원문. 블로그와 달리 자주 늘어나므로
     캐시 밖(변동 파트)에 넣는다. 최신 것부터 담되 시간순으로 보여준다."""
@@ -2016,6 +2064,17 @@ async def jageum_invest_chat(request: Request):
     prin_ctx = "\n".join(f"- {p}" for p in principles[:30])
     guru_notes = inv.get("구루노트", []) or []
     guru_ctx = "\n".join(f"- {g}" for g in guru_notes[:200])
+    gdata = inv.get("구루자료", []) or []          # 웹에서 조사해 둔 구루 철학(출처 포함)
+    gdata_ctx = ""
+    for g in gdata[:8]:
+        quotes = "\n".join(f"    · \"{q.get('말','')}\" — {q.get('출처','')}"
+                            for q in (g.get("확인된인용") or [])[:6])
+        gdata_ctx += (f"\n▣ {g.get('이름','')}\n"
+                      f"  핵심원칙: {' / '.join((g.get('핵심원칙') or [])[:6])}\n"
+                      f"  판단기준: {' / '.join((g.get('판단기준') or [])[:5])}\n"
+                      f"  흔한오해: {' / '.join((g.get('흔한오해') or [])[:3])}\n"
+                      + (f"  확인된 인용:\n{quotes}\n" if quotes else "")
+                      + f"  출처: {', '.join((g.get('출처') or [])[:6])}\n")
     # ── 안정 파트(구루 사고틀 + 블로그 원문) — 매 턴 똑같으므로 prompt caching으로 재사용 ──
     stable = f"""너는 이 사람의 과거를 다 아는 '투자 그루'다. 냉철하고 솔직하며, 아부하지 않고 데이터와 과거 기록으로 직언한다.
 이 사람은 '부자주방'(업소용 주방기기 셀러) 사업가이자 유튜버이고, 사업으로 번 돈을 투자로 불려 자산을 키우려 한다.
@@ -2029,11 +2088,16 @@ async def jageum_invest_chat(request: Request):
 
 이 관점들을 상황에 맞게 겹쳐서 보되, **그 사람이 하지 않은 말을 지어내 따옴표로 인용하지 마라.** 실제 발언·수치가 필요하면 web_search로 확인하고 출처를 밝혀라. 사고틀은 도구이지 권위가 아니다 — 이 사람 상황에 안 맞으면 안 맞는다고 말해라.
 
+[웹에서 조사해 둔 구루 철학 — 인터뷰·뉴스·해설 글 기반, 출처 있음]
+{gdata_ctx or "(아직 조사 전 — '투자 그루 노트' 카드의 🌐 버튼으로 수집 가능)"}
+
 [이 사람이 직접 모아둔 구루 문장·메모]
 {guru_ctx or "(아직 없음 — 개인자산 탭의 '투자 그루 노트'에 좋아하는 구절을 넣으면 여기 반영된다)"}
 
 [최신 정보가 필요할 때]
 증시·환율·금리·특정 종목의 현재 상황, 최근 발언처럼 **오늘 시점의 사실**이 답에 영향을 주면 web_search로 찾아서 근거와 함께 말해라. 기억에 의존해 최신 수치를 말하지 마라. 반대로 검색이 필요 없는 원칙 질문에 굳이 검색하지는 마라.
+사장님이 기사 **URL을 붙여넣으면 web_fetch로 본문을 직접 읽고** 분석해라. 유료 구독 기사는 본문 대신 안내문만 열릴 수 있는데, 그때는 못 읽었다고 솔직히 말하고 "본문을 붙여넣어 주세요"라고 요청해라 — 읽은 척 지어내지 마라.
+사장님이 기사 **본문을 통째로 붙여넣으면** 그걸 근거로 분석해라. 그게 가장 정확하다.
 
 [로우데이터 — 과거 블로그에서 투자·부동산·아파트·주식 얘기가 들어간 글 {len(raw_chunks)}편의 본문 원문]
 아래는 요약이 아니라 이 사람이 실제로 쓴 글 그대로다. 답할 때 여기서 직접 근거를 찾아 인용해라.
@@ -2074,7 +2138,9 @@ async def jageum_invest_chat(request: Request):
                 {"type": "text", "text": system_tail},
             ],
             # 증시·환율·최근 발언 등 '오늘 시점' 사실은 웹검색으로 (서버측 실행, 출처 포함)
-            "tools": [{"type": "web_search_20260209", "name": "web_search", "max_uses": 6}],
+            "tools": [{"type": "web_search_20260209", "name": "web_search", "max_uses": 6},
+                      # 사용자가 붙여넣은 기사 URL의 본문까지 직접 읽기
+                      {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": 6}],
             "messages": convo}
     headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
     try:

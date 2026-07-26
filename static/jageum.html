@@ -378,6 +378,11 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
      <h2>📚 투자 그루 노트 <span class="muted big">— 책·영상에서 마음에 박힌 문장을 모아둬요</span></h2>
      <div class="note">여기 적어둔 문장은 위 <b>투자 그루</b> 대화에 그대로 들어갑니다. 책 전체를 긁어오는 건 저작권 문제라 안 되지만, 내가 밑줄 친 구절을 모으는 건 내 자산이에요.</div>
      <div style="display:flex;gap:8px;margin-top:8px"><input id="iv_guru" placeholder="예: 버핏 — 능력범위 밖은 아무리 좋아 보여도 사지 않는다 / 김승호 — 일정하게 들어오는 돈이 목돈보다 세다" style="flex:1;padding:10px;border:2px solid #e5e7eb;border-radius:9px;font-size:14px" onkeydown="if(event.key==='Enter')investGuruAdd()"><button onclick="investGuruAdd()" style="background:#b45309;color:#fff;border:none;border-radius:9px;padding:0 18px;font-weight:700;cursor:pointer">+ 추가</button></div>
+     <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+       <button onclick="guruFetch()" id="guru_btn" style="background:#fff;color:#b45309;border:1.5px solid #d97706;border-radius:9px;padding:9px 16px;font-weight:700;cursor:pointer">🌐 구루 철학 웹에서 조사하기</button>
+       <span id="guru_stat" class="muted" style="font-size:11.5px"></span>
+     </div>
+     <div id="inv_gurudata" style="margin-top:10px"></div>
      <div id="inv_gurus" style="margin-top:10px"></div>
    </div>
    <div class="card" style="border-top:3px solid #d97706">
@@ -1421,12 +1426,12 @@ function renderPast(){
   if(box)box.innerHTML=h;
 }
 // ── 💰 투자노트 (boss 전용: 누적기록 + 원칙 + AI 복기 + 과거 투자글) ──
-let INV={글:[],상담:[],과거투자:[],원칙:[],구루노트:[]}, _invLoaded=false, _invPastCount=0;
+let INV={글:[],상담:[],과거투자:[],원칙:[],구루노트:[],구루자료:[]}, _invLoaded=false, _invPastCount=0;
 function loadInvest(){
   if(MYROLE!=='boss')return;
   if(_invLoaded){renderInvest();return;}
   fetch('/jageum/api/invest').then(r=>r.ok?r.json():{}).then(d=>{
-    INV=Object.assign({글:[],상담:[],과거투자:[],원칙:[],구루노트:[]},d||{}); _invPastCount=(INV.과거투자||[]).length; _invLoaded=true; renderInvest();
+    INV=Object.assign({글:[],상담:[],과거투자:[],원칙:[],구루노트:[],구루자료:[]},d||{}); _invPastCount=(INV.과거투자||[]).length; _invLoaded=true; renderInvest();
     invRawStat();
   }).catch(()=>{renderInvest();});
 }
@@ -1477,6 +1482,18 @@ function investGuruAdd(){
   INV.구루노트=INV.구루노트||[]; INV.구루노트.push(v); el.value=''; saveInvest(); renderInvest();
 }
 function investGuruDel(i){INV.구루노트.splice(i,1);saveInvest();renderInvest();}
+function guruFetch(){
+  const b=document.getElementById('guru_btn'), st=document.getElementById('guru_stat');
+  if(!confirm('버핏·멍거·김승호·기요사키·드마코의 투자 철학을 웹(인터뷰·뉴스·해설글)에서 조사할까요?\n검색을 여러 번 하므로 2~5분 걸립니다.'))return;
+  b.disabled=true; b.textContent='조사 중…'; st.textContent='웹 검색 중 (2~5분)';
+  fetch('/jageum/api/invest/gurudata',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})})
+    .then(r=>r.json()).then(d=>{
+      b.disabled=false; b.textContent='🌐 구루 철학 웹에서 조사하기';
+      if(d.error){st.textContent='⚠️ '+d.error;return;}
+      INV.구루자료=d.인물||[]; saveInvest(); renderInvest();
+      st.textContent=`✅ ${d.count}명 정리 완료 — 이제 그루가 이 자료를 근거로 답합니다`;
+    }).catch(()=>{b.disabled=false;b.textContent='🌐 구루 철학 웹에서 조사하기';st.textContent='연결 실패';});
+}
 const _ACTBADGE={'매수':'🟢 매수','매도':'🔴 매도','보유':'🔵 보유','관망':'⚪ 관망','추가매수':'🟢 추가매수'};
 function renderInvest(){
   // 통계
@@ -1493,6 +1510,16 @@ function renderInvest(){
   // 원칙
   const pb=document.getElementById('inv_prins');
   if(pb)pb.innerHTML=(INV.원칙||[]).length?(INV.원칙||[]).map((p,i)=>`<div style="display:flex;align-items:center;gap:8px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;margin-bottom:6px"><span style="font-size:14px;flex:1">📌 ${esc(p)}</span><span onclick="investPrinDel(${i})" style="cursor:pointer;color:#dc2626;font-size:12px">삭제</span></div>`).join(''):'<div class="muted" style="padding:6px">아직 원칙이 없어요. 나를 지켜줄 규칙을 적어두세요.</div>';
+  // 웹 조사 자료
+  const gd=document.getElementById('inv_gurudata');
+  if(gd)gd.innerHTML=(INV.구루자료||[]).length?(INV.구루자료||[]).map(g=>`<details style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:9px 12px;margin-bottom:6px">
+      <summary style="cursor:pointer;font-weight:700;font-size:13.5px">▣ ${esc(g.이름||'')} <span class="muted" style="font-weight:400;font-size:11px">원칙 ${(g.핵심원칙||[]).length} · 인용 ${(g.확인된인용||[]).length}</span></summary>
+      <div style="font-size:13px;line-height:1.7;margin-top:6px">
+        <b>핵심원칙</b> ${(g.핵심원칙||[]).map(x=>esc(x)).join(' · ')}<br>
+        <b>판단기준</b> ${(g.판단기준||[]).map(x=>esc(x)).join(' · ')}<br>
+        ${(g.흔한오해||[]).length?`<b>흔한오해</b> ${(g.흔한오해||[]).map(x=>esc(x)).join(' · ')}<br>`:''}
+        ${(g.확인된인용||[]).map(q=>`<div style="margin-top:5px">“${esc(q.말||'')}” <a href="${esc(q.출처||'#')}" target="_blank" style="font-size:11px;color:#b45309">출처</a></div>`).join('')}
+      </div></details>`).join(''):'';
   // 구루 노트
   const gb=document.getElementById('inv_gurus');
   if(gb)gb.innerHTML=(INV.구루노트||[]).length?(INV.구루노트||[]).map((g,i)=>`<div style="display:flex;align-items:center;gap:8px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:8px 12px;margin-bottom:6px"><span style="font-size:14px;flex:1">📚 ${esc(g)}</span><span onclick="investGuruDel(${i})" style="cursor:pointer;color:#dc2626;font-size:12px">삭제</span></div>`).join(''):'<div class="muted" style="padding:6px">책·영상에서 마음에 박힌 문장을 적어두세요. 그루가 대화에 써먹습니다.</div>';
