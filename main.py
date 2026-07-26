@@ -1348,6 +1348,144 @@ async def jageum_manual(request: Request):
     return JSONResponse({"ok": True})
 
 
+# ===== 경리 체크리스트 미확인 → 문자 알림 =====
+# 경리와 "주 1회 업데이트" 약속 → 마지막 확인일이 ACCT_REMIND_DAYS(기본 6)일 이상 지나면 문자 1통.
+# 항상 켜져 있는 Lightsail의 cron이 이 엔드포인트를 매일 한 번 때려서 판정한다.
+ACCT_REMIND_FILE = data_path("jageum_remind.json")
+ACCT_ITEMS = [                       # jageum.html renderAcct()의 항목과 동일하게 유지할 것
+    ("미수금", "미수금 (B2B 받을 돈)"),
+    ("선급금", "선급금 (거래처 선지급)"),
+    ("카페24", "카페24 묶인돈"),
+    ("대출", "대출 (부채)"),
+    ("체크목록", "선금·수량 체크 품목/거래처"),
+    ("태양광수동", "태양광 수익 입력 (한전 입금)"),
+    ("법인카드", "법인카드 미분류 분류"),
+    ("출금프로젝트", "출금 전표 프로젝트명 = 현장(거래처)명"),
+    ("입금프로젝트", "입금 전표 프로젝트명 = 현장명-담당자"),
+]
+
+def _kst_today():
+    import datetime as _dt
+    return (_dt.datetime.utcnow() + _dt.timedelta(hours=9)).date()
+
+def _aligo_send(receiver: str, msg: str, title: str = "") -> dict:
+    """알리고 문자 발송(동기). 90바이트 넘으면 자동으로 LMS로 보낸다."""
+    key = os.getenv("ALIGO_API_KEY", "")
+    if not key:
+        return {"result_code": "-99", "message": "ALIGO_API_KEY 미설정"}
+    fields = {
+        "key": key,
+        "user_id": os.getenv("ALIGO_USER_ID", ""),
+        "sender": os.getenv("ALIGO_SENDER", ""),
+        "receiver": receiver,
+        "msg": msg,
+    }
+    if len(msg.encode("euc-kr", errors="ignore")) > 90:
+        fields["msg_type"] = "LMS"
+        fields["title"] = (title or "부자주방 알림")[:30]
+    try:
+        r = httpx.post(
+            "https://apis.aligo.in/send/",
+            content=urllib.parse.urlencode(fields),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=15,
+        )
+        return r.json()
+    except Exception as e:
+        return {"result_code": "-98", "message": f"발송 실패: {e}"}
+
+def _acct_status() -> dict:
+    """체크리스트 확인 현황. days = 마지막 확인일로부터 지난 날짜(한 번도 없으면 999)."""
+    import datetime as _dt
+    conf = (_load_manual() or {}).get("경리확인") or {}
+    today = _kst_today()
+    ym = today.strftime("%Y-%m")
+    dates = []
+    for v in conf.values():
+        try:
+            dates.append(_dt.datetime.strptime(str(v)[:10], "%Y-%m-%d").date())
+        except Exception:
+            pass
+    last = max(dates) if dates else None
+    pending = [name for k, name in ACCT_ITEMS if str(conf.get(k, ""))[:7] != ym]
+    return {
+        "last": last.isoformat() if last else None,
+        "days": (today - last).days if last else 999,
+        "pending": pending,
+        "done": len(ACCT_ITEMS) - len(pending),
+        "total": len(ACCT_ITEMS),
+    }
+
+def _acct_msg(st: dict) -> str:
+    url = os.getenv("JAGEUM_URL", "https://bujajubang-analyzer.onrender.com/jageum")
+    lines = ["[부자주방 자금 대시보드]"]
+    if st["last"]:
+        lines.append(f"경리 체크리스트가 {st['days']}일째 업데이트되지 않았습니다.")
+        lines.append(f"마지막 확인 {st['last']} · 이번 달 {st['done']}/{st['total']}")
+    else:
+        lines.append("경리 체크리스트가 아직 업데이트되지 않았습니다.")
+    if st["pending"]:
+        lines.append("")
+        lines.append(f"미확인 {len(st['pending'])}건")
+        lines += ["· " + p for p in st["pending"][:6]]
+        if len(st["pending"]) > 6:
+            lines.append(f"· 외 {len(st['pending']) - 6}건")
+    lines.append("")
+    lines.append("확인 부탁드립니다.")
+    lines.append(url)
+    return "\n".join(lines)
+
+def _acct_remind_log() -> dict:
+    if ACCT_REMIND_FILE.exists():
+        try:
+            return json.loads(ACCT_REMIND_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return _kv_restore("jageum_remind") or {}     # 재배포로 로컬 파일이 날아간 경우
+
+@app.post("/jageum/api/acct-remind")
+def jageum_acct_remind(request: Request, dry: int = 0, force: int = 0):
+    """미확인이 오래됐으면 경리에게 문자. dry=1이면 문자 내용만 미리보기(발송 안 함)."""
+    import datetime as _dt
+    if request.headers.get("x-secret") != _KV_SECRET and not _boss_only(request):
+        return _AUTH401
+    threshold = int(os.getenv("ACCT_REMIND_DAYS", "6"))
+    gap = int(os.getenv("ACCT_REMIND_GAP", "1"))     # 수정할 때까지 매일 (확인하면 days가 리셋돼 자동 중단)
+    st = _acct_status()
+    out = {"ok": True, "sent": False, "threshold": threshold, "msg": _acct_msg(st), **st}
+    if dry:
+        return JSONResponse(out)
+    if st["days"] < threshold and not force:
+        out["skipped"] = f"마지막 확인 {st['days']}일 전 — 아직 {threshold}일 안 지남"
+        return JSONResponse(out)
+    last_sent = _acct_remind_log().get("last_sent")
+    if last_sent and not force:
+        try:
+            since = (_kst_today() - _dt.datetime.strptime(last_sent, "%Y-%m-%d").date()).days
+            if since < gap:
+                out["skipped"] = f"{last_sent}에 이미 발송 — {gap}일 간격 대기 중"
+                return JSONResponse(out)
+        except Exception:
+            pass
+    phones = [p.strip() for p in os.getenv("ACCT_PHONE", "").split(",") if p.strip()]
+    if not phones:
+        out["ok"] = False
+        out["error"] = "ACCT_PHONE 미설정 (쉼표로 여러 명 가능)"
+        return JSONResponse(out, status_code=400)
+    results = [{"phone": p, "res": _aligo_send(p, out["msg"], "경리 체크리스트")} for p in phones]
+    sent = any(str(r["res"].get("result_code")) == "1" for r in results)
+    if sent:
+        log = {"last_sent": _kst_today().isoformat(), "days": st["days"], "pending": st["pending"]}
+        try:
+            ACCT_REMIND_FILE.write_text(json.dumps(log, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+        _kv_backup("jageum_remind", log)
+    out["sent"] = sent
+    out["results"] = results
+    return JSONResponse(out)
+
+
 # ===== 사장님 개인 자산 (boss 전용) =====
 JAGEUM_PERSONAL_FILE = data_path("jageum_personal.json")
 _NV_H = {"User-Agent": "Mozilla/5.0", "Referer": "https://finance.naver.com/"}
