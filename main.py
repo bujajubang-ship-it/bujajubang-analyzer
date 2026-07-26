@@ -1852,6 +1852,34 @@ _INVEST_KW = ["투자", "주식", "주가", "종목", "매수", "매도", "매�
               "코스피", "코스닥", "나스닥", "S&P", "테슬라", "엔비디아", "삼성전자", "연금",
               "리스크", "레버리지", "현금흐름", "시드", "종잣돈", "복리효과", "분산투자"]
 
+def _invest_raw_posts(per_post=3000, total_cap=240000, max_posts=150):
+    """인생노트 블로그 200편 중 투자 키워드(투자·주식·부동산·아파트 등)가 들어간 글을
+    제목만이 아니라 **본문 원문 그대로** 긁어서 AI 대화의 로우데이터로 넘긴다."""
+    past = (_load_life().get("과거", []) or [])
+    chunks, used = [], 0
+    for p in past:
+        title = (p.get("title", "") or "").strip()
+        body = (p.get("body", "") or "").strip()
+        blob = title + " " + body
+        if not body or not any(k in blob for k in _INVEST_KW):
+            continue
+        hit = [k for k in _INVEST_KW if k in blob][:6]
+        chunk = f"[{p.get('date','')}] {title} (키워드: {', '.join(hit)})\n{body[:per_post]}"
+        if used + len(chunk) > total_cap:
+            break
+        chunks.append(chunk); used += len(chunk)
+        if len(chunks) >= max_posts:
+            break
+    return chunks, used
+
+@app.get("/jageum/api/invest/rawstat")
+def jageum_invest_rawstat(request: Request):
+    """대화에 실제로 들어가는 블로그 원문이 몇 편·몇 자인지(화면 표시용)."""
+    if not _boss_only(request):
+        return _AUTH401
+    chunks, used = _invest_raw_posts()
+    return JSONResponse({"posts": len(chunks), "chars": used})
+
 @app.post("/jageum/api/invest/extract")
 async def jageum_invest_extract(request: Request):
     """블로그 200편(인생노트 과거) 중 투자 관련 글만 AI로 골라내 반환 + 투자철학 요약."""
@@ -1927,18 +1955,26 @@ async def jageum_invest_chat(request: Request):
     past = inv.get("과거투자", []) or []
     notes = inv.get("글", []) or []
     principles = inv.get("원칙", []) or []
+    raw_chunks, raw_chars = _invest_raw_posts()   # 블로그 투자글 '본문 원문'
     past_titles = "\n".join(f"{p.get('date','')} | {p.get('title','')}" for p in past[:120])
     note_ctx = "\n".join(
         f"- [{n.get('date','')}] {n.get('종목','') or '무제'} / 판단:{n.get('판단','')} / 결과:{n.get('결과','') or '-'} / 교훈:{(n.get('교훈','') or n.get('body','') or '')[:160]}"
         for n in notes[:40])
     prin_ctx = "\n".join(f"- {p}" for p in principles[:30])
-    system = f"""너는 이 사람의 냉철하고 솔직한 '투자 복기 파트너'야. 아부하지 않고, 데이터와 과거 기록으로 직언한다.
+    # ── 안정 파트(블로그 원문) — 매 턴 똑같으므로 prompt caching으로 재사용 ──
+    stable = f"""너는 이 사람의 냉철하고 솔직한 '투자 복기 파트너'야. 아부하지 않고, 데이터와 과거 기록으로 직언한다.
 이 사람은 '부자주방'(업소용 주방기기 셀러) 사업가이자 유튜버이고, 사업으로 번 돈을 투자로 불려 자산을 키우려 한다.
 
-[이 사람의 투자 성향 요약]
+[로우데이터 — 과거 블로그에서 투자·부동산·아파트·주식 얘기가 들어간 글 {len(raw_chunks)}편의 본문 원문]
+아래는 요약이 아니라 이 사람이 실제로 쓴 글 그대로다. 답할 때 여기서 직접 근거를 찾아 인용해라.
+
+{chr(10).join(f"────────{chr(10)}{c}" for c in raw_chunks) if raw_chunks else "(아직 없음 — 인생노트에 블로그가 올라와야 함)"}
+"""
+    # ── 변동 파트(투자기록·원칙) — 기록이 늘 때마다 바뀌므로 캐시 밖에 둔다 ──
+    system_tail = f"""[이 사람의 투자 성향 요약]
 {json.dumps(summ, ensure_ascii=False) if summ else "(아직 분석 전)"}
 
-[과거 블로그에 쓴 투자 관련 글 (날짜 | 제목) — 필요하면 인용]
+[과거 블로그 투자글 목록 (날짜 | 제목)]
 {past_titles or "(아직 없음)"}
 
 [누적 투자노트 — 실제 투자 판단·결과·교훈 기록]
@@ -1952,18 +1988,27 @@ async def jageum_invest_chat(request: Request):
 - 감정적 매매(추격매수·공포매도·물타기)를 경계하게 돕고, 원칙과 근거를 다시 확인시켜.
 - 종목 찍어주기(특정 매수/매도 지시)는 하지 마. 대신 판단의 논리·리스크·시나리오를 같이 점검해.
 - 결과가 좋았어도 '운이었는지 실력이었는지' 냉정히 복기하게 도와.
-- 따뜻하되 무르지 않게. 친근한 반말~해요체. 이 사람이 장기적으로 부자가 되게 하는 게 목표야."""
-    body = {"model": "claude-opus-4-8", "max_tokens": 2000, "system": system,
-            "messages": [{"role": m["role"], "content": m["content"]} for m in messages[-20:]]}
+- 따뜻하되 무르지 않게. 친근한 반말~해요체. 이 사람이 장기적으로 부자가 되게 하는 게 목표야.
+- 위 블로그 원문에 근거가 있으면 날짜와 함께 구체적으로 인용해. 원문에 없는 건 지어내지 말고 모른다고 해.
+- 서론 없이 핵심부터. 짧게 쓰되 문장은 끝까지."""
+    effort = os.getenv("INVEST_EFFORT", "high")   # low|medium|high|xhigh|max
+    body = {"model": "claude-opus-5", "max_tokens": 12000,
+            "output_config": {"effort": effort},   # Opus 5는 thinking 기본 ON
+            "system": [
+                # 블로그 원문은 매 턴 동일 → 캐시해서 2번째 질문부터 값·시간 아낌
+                {"type": "text", "text": stable, "cache_control": {"type": "ephemeral"}},
+                {"type": "text", "text": system_tail},
+            ],
+            "messages": [{"role": m["role"], "content": m["content"]} for m in messages[-30:]]}
     headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
     try:
-        async with httpx.AsyncClient(timeout=120) as c:
+        async with httpx.AsyncClient(timeout=240) as c:
             r = await c.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
             if r.status_code != 200:
                 return JSONResponse({"error": f"AI 오류: {r.text[:200]}"}, status_code=500)
             rd = r.json()
         text = "".join(b.get("text", "") for b in rd.get("content", []) if b.get("type") == "text")
-        return JSONResponse({"reply": text})
+        return JSONResponse({"reply": text, "raw_posts": len(raw_chunks), "raw_chars": raw_chars})
     except Exception as ex:
         return JSONResponse({"error": f"오류: {ex}"}, status_code=500)
 

@@ -307,6 +307,16 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
  </div><!--/view-biz-->
 
  <div id="view_personal" style="display:none">
+   <div class="card" style="border-top:3px solid #d97706">
+     <h2>🤖 투자 복기 파트너 <span class="muted big">— 블로그 원문을 다 읽은 냉철한 AI (Opus 5)</span></h2>
+     <div class="note">인생노트 블로그 중 <b>투자·부동산·아파트·주식</b> 얘기가 든 글을 <b>본문 그대로</b> 읽고 답해요. 누적 투자기록·원칙도 같이 봅니다.<div id="inv_rawstat" class="muted" style="font-size:11.5px;margin-top:4px"></div></div>
+     <div id="ic_log" style="max-height:420px;overflow:auto;border:1px solid #e9eaee;border-radius:10px;padding:12px;background:#fffdf6;margin:10px 0"></div>
+     <div style="display:flex;gap:8px">
+       <textarea id="ic_in" placeholder="지금 고민되는 투자 판단, 복기하고 싶은 거래를 편하게…" style="flex:1;min-height:54px;padding:11px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;resize:vertical" onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey))icSend()"></textarea>
+       <button onclick="icSend()" id="ic_btn" style="background:#d97706;color:#fff;border:none;border-radius:10px;padding:0 20px;font-weight:700;cursor:pointer;white-space:nowrap">보내기</button>
+     </div>
+     <div class="muted" style="font-size:11px;margin-top:5px">⌘/Ctrl + Enter로 전송 · <a onclick="icClear()" style="cursor:pointer;color:#dc2626">대화 비우기</a></div>
+   </div>
  <div class="card" id="personal_top" style="display:none;border-top:3px solid #7c3aed;text-align:center;padding:16px 18px">
    <div class="muted" style="font-size:13px">👑 사장님 개인 순자산 <span style="font-size:11px">(사장님 계정에서만 보임)</span></div>
    <div id="personal_net" style="font-size:32px;font-weight:800;color:#7c3aed;line-height:1.2">-</div>
@@ -368,16 +378,6 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
      <h2>📌 나의 투자 원칙 <span class="muted big">— 지킬 규칙을 못박아 둬요</span></h2>
      <div style="display:flex;gap:8px"><input id="iv_prin" placeholder="예: 한 종목에 자산 20% 넘기지 않는다 / 손절선 -10%는 무조건 지킨다" style="flex:1;padding:10px;border:2px solid #e5e7eb;border-radius:9px;font-size:14px" onkeydown="if(event.key==='Enter')investPrinAdd()"><button onclick="investPrinAdd()" style="background:#b45309;color:#fff;border:none;border-radius:9px;padding:0 18px;font-weight:700;cursor:pointer">+ 추가</button></div>
      <div id="inv_prins" style="margin-top:10px"></div>
-   </div>
-   <div class="card" style="border-top:3px solid #d97706">
-     <h2>🤖 투자 복기 파트너 <span class="muted big">— 내 기록을 다 아는 냉철한 AI (Opus 4.8)</span></h2>
-     <div class="note">과거 투자글·누적 기록·원칙을 다 기억해요. 감정적 매매를 막고, 같은 실수를 짚어줍니다. 대화는 자동 저장돼요.</div>
-     <div id="ic_log" style="max-height:420px;overflow:auto;border:1px solid #e9eaee;border-radius:10px;padding:12px;background:#fffdf6;margin:10px 0"></div>
-     <div style="display:flex;gap:8px">
-       <textarea id="ic_in" placeholder="지금 고민되는 투자 판단, 복기하고 싶은 거래를 편하게…" style="flex:1;min-height:54px;padding:11px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;resize:vertical" onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey))icSend()"></textarea>
-       <button onclick="icSend()" id="ic_btn" style="background:#d97706;color:#fff;border:none;border-radius:10px;padding:0 20px;font-weight:700;cursor:pointer;white-space:nowrap">보내기</button>
-     </div>
-     <div class="muted" style="font-size:11px;margin-top:5px">⌘/Ctrl + Enter로 전송 · <a onclick="icClear()" style="cursor:pointer;color:#dc2626">대화 비우기</a></div>
    </div>
    <div class="card" style="border-top:3px solid #d97706">
      <h2>📜 지난 투자 글 <span class="muted big">— 과거 블로그에서 투자 이야기만 모아요</span></h2>
@@ -1421,7 +1421,16 @@ function loadInvest(){
   if(_invLoaded){renderInvest();return;}
   fetch('/jageum/api/invest').then(r=>r.ok?r.json():{}).then(d=>{
     INV=Object.assign({글:[],상담:[],과거투자:[],원칙:[]},d||{}); _invPastCount=(INV.과거투자||[]).length; _invLoaded=true; renderInvest();
+    invRawStat();
   }).catch(()=>{renderInvest();});
+}
+function invRawStat(){
+  const el=document.getElementById('inv_rawstat'); if(!el)return;
+  fetch('/jageum/api/invest/rawstat').then(r=>r.ok?r.json():null).then(d=>{
+    if(!d)return;
+    el.textContent = d.posts ? `📎 지금 대화에 들어가는 로우데이터: 블로그 ${d.posts}편 원문 (${d.chars.toLocaleString()}자)`
+                             : '📎 아직 투자 관련 블로그 글을 못 찾았어요 (인생노트에 블로그가 먼저 올라와야 해요)';
+  }).catch(()=>{});
 }
 function saveInvest(){
   if(!_invLoaded)return;  // 서버 로드 전엔 저장 금지(빈 데이터 덮어쓰기 방지)
