@@ -2106,6 +2106,7 @@ async def jageum_invest_chat(request: Request):
 3) **국내 뉴스는 마지막에 확인한다.** 네이버 증시·한경·매경 등은 위 두 개를 본 뒤 '국내 시각은 어떤가'를 덧붙이는 용도로만 써라.
    국내 기사가 외신과 다르면, 어느 쪽이 더 최신인지 날짜로 따지고 그 차이를 사장님께 알려줘라.
 
+검색은 **꼭 필요한 만큼만** 해라. 종목 하나면 보통 외신 1~2회 + 섹터 1회 + 국내 1회면 충분하다. 같은 내용을 다른 말로 반복 검색하지 마라 — 사장님이 기다린다.
 답할 때는 **어디서 언제 나온 정보인지(매체·날짜)를 밝히고**, 외신과 국내 시각이 갈리면 갈린다고 말해라.
 확인 못 한 수치는 말하지 마라. 검색해도 안 나오면 "못 찾았다"고 해라.
 
@@ -2143,7 +2144,7 @@ async def jageum_invest_chat(request: Request):
 - 따뜻하되 무르지 않게. 친근한 반말~해요체. 이 사람이 장기적으로 부자가 되게 하는 게 목표야.
 - 위 블로그 원문에 근거가 있으면 날짜와 함께 구체적으로 인용해. 원문에 없는 건 지어내지 말고 모른다고 해.
 - 서론 없이 핵심부터. 짧게 쓰되 문장은 끝까지."""
-    effort = os.getenv("INVEST_EFFORT", "high")   # low|medium|high|xhigh|max
+    effort = os.getenv("INVEST_EFFORT", "medium")  # 검색+생각 겹치면 느려 medium 기본. 깊이 필요하면 high
     convo = [{"role": m["role"], "content": m["content"]} for m in messages[-30:]]
     body = {"model": "claude-opus-5", "max_tokens": 12000,
             "output_config": {"effort": effort},   # Opus 5는 thinking 기본 ON
@@ -2153,7 +2154,7 @@ async def jageum_invest_chat(request: Request):
                 {"type": "text", "text": system_tail},
             ],
             # 증시·환율·최근 발언 등 '오늘 시점' 사실은 웹검색으로 (서버측 실행, 출처 포함)
-            "tools": [{"type": "web_search_20260209", "name": "web_search", "max_uses": 14},
+            "tools": [{"type": "web_search_20260209", "name": "web_search", "max_uses": 9},
                       # 사용자가 붙여넣은 기사 URL의 본문까지 직접 읽기
                       {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": 6}],
             "messages": convo}

@@ -1556,13 +1556,39 @@ function icSend(){
   el.value=''; INV.상담=INV.상담||[]; INV.상담.push({role:'user',content:t});
   saveInvest(); icRender();
   const btn=document.getElementById('ic_btn'); btn.disabled=true; btn.textContent='…';
-  const log=document.getElementById('ic_log'); log.insertAdjacentHTML('beforeend','<div id="ic_think" style="text-align:left;margin:7px 0"><span class="spin"></span> <span class="muted">복기 중…</span></div>'); log.scrollTop=log.scrollHeight;
-  fetch('/jageum/api/invest/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:INV.상담})}).then(r=>r.json()).then(d=>{
-    btn.disabled=false; btn.textContent='보내기';
+  const log=document.getElementById('ic_log');
+  log.insertAdjacentHTML('beforeend','<div id="ic_think" style="text-align:left;margin:7px 0"><span class="spin"></span> <span class="muted" id="ic_tick">외신부터 찾아보는 중… 0초</span></div>');
+  log.scrollTop=log.scrollHeight;
+  // 살아있는지 보이게 경과 초를 계속 갱신 (멈춰 보이는 게 제일 답답하니까)
+  const t0=Date.now();
+  const tk=setInterval(()=>{
+    const el2=document.getElementById('ic_tick'); if(!el2){clearInterval(tk);return;}
+    const sec=Math.round((Date.now()-t0)/1000);
+    const msg = sec<25?'외신부터 찾아보는 중…' : sec<70?'섹터 업황 보는 중…' : sec<130?'국내 뉴스까지 훑는 중…' : '정리하는 중…';
+    el2.textContent = `${msg} ${sec}초` + (sec>150?' (오래 걸리면 검색을 많이 하는 중이에요)':'');
+  },1000);
+  const done=()=>{clearInterval(tk); btn.disabled=false; btn.textContent='보내기';};
+  const ctl=new AbortController();
+  const killer=setTimeout(()=>ctl.abort(), 480000);   // 8분이면 확실히 이상 → 끊고 알려줌
+  fetch('/jageum/api/invest/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({messages:INV.상담}),signal:ctl.signal}).then(r=>r.json()).then(d=>{
+    clearTimeout(killer); done();
     if(d.error){INV.상담.push({role:'assistant',content:'⚠️ '+d.error});}
-    else INV.상담.push({role:'assistant',content:d.reply||'(응답 없음)'});
+    else{
+      const meta=[]; if(d.searched)meta.push(`웹검색 ${d.searched}회`);
+      if(d.raw_posts)meta.push(`블로그 ${d.raw_posts}편`); if(d.memos)meta.push(`메모 ${d.memos}개`);
+      const sec=Math.round((Date.now()-t0)/1000);
+      INV.상담.push({role:'assistant',content:(d.reply||'(응답 없음)')+(meta.length?`\n\n— ${meta.join(' · ')} · ${sec}초 걸림`:'')});
+    }
     saveInvest(); icRender();
-  }).catch(()=>{btn.disabled=false;btn.textContent='보내기';const tk=document.getElementById('ic_think');if(tk)tk.remove();alert('연결 실패');});
+  }).catch(err=>{
+    clearTimeout(killer); done();
+    const el3=document.getElementById('ic_think'); if(el3)el3.remove();
+    INV.상담.push({role:'assistant',content: err&&err.name==='AbortError'
+      ? '⚠️ 8분이 지나도 답이 안 와서 끊었어요. 질문을 조금 좁혀서(종목 하나만) 다시 물어봐 주세요.'
+      : '⚠️ 연결이 끊겼어요. 다시 보내주세요.'});
+    saveInvest(); icRender();
+  });
 }
 function icClear(){if(!confirm('복기 대화를 모두 비울까요?'))return;INV.상담=[];saveInvest();icRender();}
 function investExtract(){
