@@ -1636,21 +1636,14 @@ async def jageum_personal_search(request: Request, q: str = ""):
 JAGEUM_LIFE_FILE = data_path("jageum_life.json")
 
 def _load_life() -> dict:
-    """인생노트(블로그 200편·메모·상담 대화). 재배포로 로컬이 비면 Lightsail KV에서 복원."""
+    """인생노트(블로그 200편·메모·상담 대화). DATA_DIR이 Render 영구디스크라 재배포에도 유지됨."""
     if JAGEUM_LIFE_FILE.exists():
         try:
             d = json.loads(JAGEUM_LIFE_FILE.read_text(encoding="utf-8"))
-            if isinstance(d, dict) and d:
+            if isinstance(d, dict):
                 return d
         except Exception:
             pass
-    data = _kv_restore("jageum_life", timeout=25)
-    if isinstance(data, dict) and data:
-        try:
-            JAGEUM_LIFE_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-        except Exception:
-            pass
-        return data
     return {}
 
 @app.get("/jageum/api/life")
@@ -1665,10 +1658,6 @@ async def jageum_life_post(request: Request):
         return _AUTH401
     body = await request.body()
     JAGEUM_LIFE_FILE.write_text(body.decode("utf-8"), encoding="utf-8")
-    try:
-        _kv_backup("jageum_life", json.loads(body.decode("utf-8")), timeout=25)
-    except Exception:
-        pass
     return JSONResponse({"ok": True})
 
 @app.post("/jageum/api/life/compare")
