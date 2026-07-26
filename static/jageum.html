@@ -524,14 +524,23 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
      <div id="life_entries" style="margin-top:16px"></div>
    </div>
    <div class="card" style="border-top:3px solid #16a34a">
-     <h2>🫂 고민 상담 친구 <span class="muted big">— 내 고민을 다 아는 AI 친구 (Opus 4.8)</span></h2>
-     <div class="note">비전보드·인생노트·과거 블로그 200편을 다 기억해요. 대화는 자동 저장돼서 이어집니다.</div>
-     <div id="lc_log" style="max-height:420px;overflow:auto;border:1px solid #e9eaee;border-radius:10px;padding:12px;background:#f8fdfa;margin:10px 0"></div>
-     <div style="display:flex;gap:8px">
-       <textarea id="lc_in" placeholder="요즘 드는 고민, 막막한 결정, 마음 속 이야기를 편하게…" style="flex:1;min-height:54px;padding:11px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;resize:vertical" onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey))lcSend()"></textarea>
-       <button onclick="lcSend()" id="lc_btn" style="background:#16a34a;color:#fff;border:none;border-radius:10px;padding:0 20px;font-weight:700;cursor:pointer;white-space:nowrap">보내기</button>
+     <h2>🫂 고민 상담 친구 <span class="muted big">— 내 마음의 방향을 같이 찾는 AI (Opus 5)</span></h2>
+     <div class="note">비전보드·인생노트·과거 블로그 200편을 다 기억해요. 주제별로 대화가 나뉘어 저장됩니다.</div>
+     <div style="display:flex;gap:12px;margin-top:10px;align-items:flex-start;flex-wrap:wrap">
+       <div style="flex:0 0 208px;min-width:170px">
+         <button onclick="lcNew()" style="width:100%;background:#16a34a;color:#fff;border:none;border-radius:9px;padding:9px 0;font-weight:700;cursor:pointer;font-size:13.5px">＋ 새 대화</button>
+         <div id="lc_rooms" style="max-height:392px;overflow:auto;margin-top:8px"></div>
+       </div>
+       <div style="flex:1 1 340px;min-width:270px">
+         <div id="lc_title" style="font-weight:700;font-size:14px;color:#166534;margin-bottom:6px"></div>
+         <div id="lc_log" style="max-height:392px;overflow:auto;border:1px solid #e9eaee;border-radius:10px;padding:12px;background:#f8fdfa;margin-bottom:10px"></div>
+         <div style="display:flex;gap:8px">
+           <textarea id="lc_in" placeholder="요즘 드는 고민, 막막한 결정, 마음 속 이야기를 편하게…" style="flex:1;min-height:54px;padding:11px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;resize:vertical" onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey))lcSend()"></textarea>
+           <button onclick="lcSend()" id="lc_btn" style="background:#16a34a;color:#fff;border:none;border-radius:10px;padding:0 20px;font-weight:700;cursor:pointer;white-space:nowrap">보내기</button>
+         </div>
+         <div class="muted" style="font-size:11px;margin-top:5px">⌘/Ctrl + Enter로 전송 · <a onclick="lcClear()" style="cursor:pointer;color:#dc2626">이 대화 비우기</a></div>
+       </div>
      </div>
-     <div class="muted" style="font-size:11px;margin-top:5px">⌘/Ctrl + Enter로 전송 · <a onclick="lcClear()" style="cursor:pointer;color:#dc2626">대화 비우기</a></div>
    </div>
    <div class="card" id="life_past_card" style="border-top:3px solid #16a34a;display:none">
      <h2>📚 지난 블로그 기록 <span class="muted big">— 과거에 했던 고민·생각</span></h2>
@@ -1146,12 +1155,12 @@ function renderAcct(){
  box.innerHTML=h;
 }
 // ── 🌱 인생 노트 (boss 전용: 비전보드 + 글쓰기 + 과거 블로그) ──
-let LIFE={비전보드:[],글:[],과거:[],상담:[]}, _lifeLoaded=false;
+let LIFE={비전보드:[],글:[],과거:[],상담:[],상담방:[],상담현재:null}, _lifeLoaded=false;
 function loadLife(){
   if(MYROLE!=='boss')return;
   if(_lifeLoaded){renderLife();return;}
   fetch('/jageum/api/life').then(r=>r.ok?r.json():{}).then(d=>{
-    LIFE=Object.assign({비전보드:[],글:[],과거:[],상담:[],좌우명:''},d||{}); _pastCount=(LIFE.과거||[]).length; _lifeLoaded=true; renderLife(); bindVB();
+    LIFE=Object.assign({비전보드:[],글:[],과거:[],상담:[],상담방:[],상담현재:null,좌우명:''},d||{}); _pastCount=(LIFE.과거||[]).length; _lifeLoaded=true; renderLife(); bindVB();
   }).catch(()=>{renderLife();});
 }
 let _pastCount=0;  // 로드 시점 과거 글 수 기억 (유실 가드)
@@ -1286,31 +1295,105 @@ function renderLife(){
       ${(en.imgs&&en.imgs.length)?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${en.imgs.map((src,i)=>`<img src="${src}" onclick="lifeImgView(${en.id},${i})" style="width:88px;height:88px;object-fit:cover;border-radius:8px;border:1px solid #d1fae5;cursor:zoom-in">`).join('')}</div>`:''}</div>`;
     }).join(''):'<div class="muted" style="padding:8px">메모하듯 막 적어보세요. 매일 쌓이면 생각의 흐름이 보여요.</div>';
   renderPast();
-  lcRender();
+  lcRenderAll();
+}
+// ── 상담 대화방 (클로드 채팅처럼 왼쪽에 주제별로 저장) ──
+function lcRooms(){
+  if(!Array.isArray(LIFE.상담방)) LIFE.상담방=[];
+  // 예전 단일 대화(LIFE.상담)가 남아 있으면 첫 대화방으로 한 번만 옮긴다
+  if((LIFE.상담||[]).length && !LIFE.상담방.length){
+    LIFE.상담방.push({id:Date.now(),title:'이전 대화',msgs:LIFE.상담.slice(),t:_ymd()});
+    LIFE.상담=[];
+  }
+  return LIFE.상담방;
+}
+function lcCur(){
+  const rs=lcRooms(); if(!rs.length) return null;
+  let r=rs.find(x=>x.id===LIFE.상담현재);
+  if(!r){r=rs[0]; LIFE.상담현재=r.id;}
+  return r;
+}
+function lcNew(){
+  const rs=lcRooms();
+  rs.unshift({id:Date.now(),title:'',msgs:[],t:_ymd()});
+  LIFE.상담현재=rs[0].id; saveLife(); lcRenderAll();
+  const el=document.getElementById('lc_in'); if(el) el.focus();
+}
+function lcOpen(id){LIFE.상담현재=id; saveLife(); lcRenderAll();}
+function lcRename(id,ev){
+  if(ev) ev.stopPropagation();
+  const r=lcRooms().find(x=>x.id===id); if(!r)return;
+  const v=prompt('대화 제목', r.title||''); if(v===null)return;
+  r.title=v.trim().slice(0,24); saveLife(); lcRenderAll();
+}
+function lcDel(id,ev){
+  if(ev) ev.stopPropagation();
+  const rs=lcRooms(), i=rs.findIndex(x=>x.id===id); if(i<0)return;
+  if(!confirm(`"${rs[i].title||'제목 없는 대화'}" 대화를 지울까요? (되돌릴 수 없어요)`))return;
+  rs.splice(i,1);
+  if(LIFE.상담현재===id) LIFE.상담현재=rs.length?rs[0].id:null;
+  saveLife(); lcRenderAll();
+}
+function lcRenderRooms(){
+  const box=document.getElementById('lc_rooms'); if(!box)return;
+  const rs=lcRooms(), cur=lcCur();
+  if(!rs.length){box.innerHTML='<div class="muted" style="padding:10px 4px;font-size:12px;line-height:1.6">아직 대화가 없어요.<br>＋ 새 대화로 시작해요.</div>';return;}
+  box.innerHTML=rs.map(r=>{
+    const on=cur&&r.id===cur.id;
+    const last=(r.msgs||[]).length?((r.msgs[r.msgs.length-1].content||'').slice(0,28)):'새 대화';
+    return `<div onclick="lcOpen(${r.id})" style="cursor:pointer;padding:8px 9px;margin-bottom:5px;border-radius:8px;border:1px solid ${on?'#16a34a':'#e9eaee'};background:${on?'#f0fdf4':'#fff'}">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:5px">
+        <div style="font-weight:${on?'700':'600'};font-size:12.5px;color:#166534;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.title||'제목 없는 대화')}</div>
+        <div style="white-space:nowrap;font-size:11px">
+          <span onclick="lcRename(${r.id},event)" title="이름 바꾸기" style="cursor:pointer;opacity:.55">✏️</span>
+          <span onclick="lcDel(${r.id},event)" title="삭제" style="cursor:pointer;opacity:.55">🗑</span>
+        </div>
+      </div>
+      <div class="muted" style="font-size:11px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(last)}</div>
+      <div class="muted" style="font-size:10.5px;margin-top:1px">${esc(r.t||'')} · ${(r.msgs||[]).length}개</div>
+    </div>`;
+  }).join('');
 }
 function lcRender(){
-  const log=document.getElementById('lc_log'); if(!log)return;
-  const msgs=LIFE.상담||[];
-  if(!msgs.length){log.innerHTML='<div class="muted" style="padding:14px;text-align:center;font-size:13.5px">안녕, 친구야 🫂 요즘 무슨 생각해? 사업이든 인생이든, 마음에 걸리는 거 편하게 꺼내봐. 네 과거 고민도 다 기억하고 있으니까 같이 풀어보자.</div>';return;}
-  log.innerHTML=msgs.map(m=>{const me=m.role==='user';
+  const log=document.getElementById('lc_log'), ttl=document.getElementById('lc_title'); if(!log)return;
+  const r=lcCur();
+  if(ttl) ttl.textContent=r?(r.title||'제목 없는 대화'):'';
+  if(!r||!(r.msgs||[]).length){
+    log.innerHTML='<div class="muted" style="padding:14px;text-align:center;font-size:13.5px">안녕, 친구야 🫂 요즘 무슨 생각해? 사업이든 인생이든, 마음에 걸리는 거 편하게 꺼내봐. 네 과거 고민도 다 기억하고 있으니까 같이 풀어보자.</div>';
+    return;
+  }
+  log.innerHTML=r.msgs.map(m=>{const me=m.role==='user';
     return `<div style="display:flex;justify-content:${me?'flex-end':'flex-start'};margin:7px 0"><div style="max-width:82%;padding:10px 13px;border-radius:13px;font-size:14px;line-height:1.65;white-space:pre-wrap;${me?'background:#16a34a;color:#fff':'background:#fff;border:1px solid #d1fae5'}">${esc(m.content)}</div></div>`;
   }).join('');
   log.scrollTop=log.scrollHeight;
 }
+function lcRenderAll(){lcRenderRooms();lcRender();}
 function lcSend(){
   const el=document.getElementById('lc_in'), t=(el.value||'').trim(); if(!t)return;
-  el.value=''; LIFE.상담=LIFE.상담||[]; LIFE.상담.push({role:'user',content:t});
-  saveLife(); lcRender();
+  let r=lcCur();
+  if(!r){lcNew(); r=lcCur();}                      // 대화방이 없으면 자동 생성
+  el.value=''; r.msgs=r.msgs||[]; r.msgs.push({role:'user',content:t}); r.t=_ymd();
+  saveLife(); lcRenderAll();
   const btn=document.getElementById('lc_btn'); btn.disabled=true; btn.textContent='…';
-  const log=document.getElementById('lc_log'); log.insertAdjacentHTML('beforeend','<div id="lc_think" style="text-align:left;margin:7px 0"><span class="spin"></span> <span class="muted">생각 중…</span></div>'); log.scrollTop=log.scrollHeight;
-  fetch('/jageum/api/life/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:LIFE.상담})}).then(r=>r.json()).then(d=>{
+  const log=document.getElementById('lc_log');
+  log.insertAdjacentHTML('beforeend','<div id="lc_think" style="text-align:left;margin:7px 0"><span class="spin"></span> <span class="muted">깊게 생각 중… (길면 1~2분)</span></div>');
+  log.scrollTop=log.scrollHeight;
+  fetch('/jageum/api/life/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:r.msgs})}).then(r2=>r2.json()).then(d=>{
     btn.disabled=false; btn.textContent='보내기';
-    if(d.error){LIFE.상담.push({role:'assistant',content:'⚠️ '+d.error});}
-    else LIFE.상담.push({role:'assistant',content:d.reply||'(응답 없음)'});
-    saveLife(); lcRender();
+    r.msgs.push({role:'assistant',content:d.error?('⚠️ '+d.error):(d.reply||'(응답 없음)')});
+    saveLife(); lcRenderAll();
+    if(!r.title && !d.error) lcAutoTitle(r);        // 첫 답변 뒤 주제 제목 자동 생성
   }).catch(()=>{btn.disabled=false;btn.textContent='보내기';const tk=document.getElementById('lc_think');if(tk)tk.remove();alert('연결 실패');});
 }
-function lcClear(){if(!confirm('상담 대화를 모두 비울까요? (되돌릴 수 없어요)'))return;LIFE.상담=[];saveLife();lcRender();}
+function lcAutoTitle(r){
+  fetch('/jageum/api/life/title',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:r.msgs.slice(0,4)})})
+    .then(x=>x.json()).then(d=>{if(d.title && !r.title){r.title=d.title;saveLife();lcRenderAll();}}).catch(()=>{});
+}
+function lcClear(){
+  const r=lcCur(); if(!r)return;
+  if(!confirm('이 대화의 내용을 비울까요? (되돌릴 수 없어요)'))return;
+  r.msgs=[]; saveLife(); lcRenderAll();
+}
 function renderPast(){
   const card=document.getElementById('life_past_card'), box=document.getElementById('life_past');
   const past=LIFE.과거||[], sum=LIFE.과거요약;

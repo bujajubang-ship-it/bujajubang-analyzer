@@ -1635,17 +1635,29 @@ async def jageum_personal_search(request: Request, q: str = ""):
 
 JAGEUM_LIFE_FILE = data_path("jageum_life.json")
 
+def _load_life() -> dict:
+    """인생노트(블로그 200편·메모·상담 대화). 재배포로 로컬이 비면 Lightsail KV에서 복원."""
+    if JAGEUM_LIFE_FILE.exists():
+        try:
+            d = json.loads(JAGEUM_LIFE_FILE.read_text(encoding="utf-8"))
+            if isinstance(d, dict) and d:
+                return d
+        except Exception:
+            pass
+    data = _kv_restore("jageum_life", timeout=25)
+    if isinstance(data, dict) and data:
+        try:
+            JAGEUM_LIFE_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+        return data
+    return {}
+
 @app.get("/jageum/api/life")
 def jageum_life_get(request: Request):
     if not _boss_only(request):
         return _AUTH401
-    d = {}
-    if JAGEUM_LIFE_FILE.exists():
-        try:
-            d = json.loads(JAGEUM_LIFE_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            d = {}
-    return JSONResponse(d)
+    return JSONResponse(_load_life())
 
 @app.post("/jageum/api/life")
 async def jageum_life_post(request: Request):
@@ -1653,6 +1665,10 @@ async def jageum_life_post(request: Request):
         return _AUTH401
     body = await request.body()
     JAGEUM_LIFE_FILE.write_text(body.decode("utf-8"), encoding="utf-8")
+    try:
+        _kv_backup("jageum_life", json.loads(body.decode("utf-8")), timeout=25)
+    except Exception:
+        pass
     return JSONResponse({"ok": True})
 
 @app.post("/jageum/api/life/compare")
@@ -1667,12 +1683,7 @@ async def jageum_life_compare(request: Request):
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key:
         return JSONResponse({"error": "AI 키 미설정"}, status_code=500)
-    life = {}
-    if JAGEUM_LIFE_FILE.exists():
-        try:
-            life = json.loads(JAGEUM_LIFE_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            pass
+    life = _load_life()
     past = life.get("과거", []) or []
     summ = life.get("과거요약", {}) or {}
     notes = life.get("글", []) or []
@@ -1728,12 +1739,7 @@ async def jageum_life_chat(request: Request):
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key:
         return JSONResponse({"error": "AI 키 미설정"}, status_code=500)
-    life = {}
-    if JAGEUM_LIFE_FILE.exists():
-        try:
-            life = json.loads(JAGEUM_LIFE_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            pass
+    life = _load_life()
     summ = life.get("과거요약", {}) or {}
     past = life.get("과거", []) or []
     notes = life.get("글", []) or []
@@ -1757,12 +1763,22 @@ async def jageum_life_chat(request: Request):
 - 과거에 비슷한 고민을 했으면 "예전에 ○○ 글에서 이런 얘기 했었잖아" 식으로 자연스럽게 짚어줘.
 - 결론을 강요하지 말고, 좋은 질문으로 스스로 답을 찾게 도와. 필요할 땐 직설적인 조언도.
 - 따뜻하지만 통찰 있게. 존댓말 대신 친근한 반말~해요체 섞어서 친구처럼.
-- 사업 자금 얘기가 아니라 인생·방향·내면 고민에 집중해."""
-    body = {"model": "claude-opus-4-8", "max_tokens": 2000, "system": system,
-            "messages": [{"role": m["role"], "content": m["content"]} for m in messages[-20:]]}
+- 사업 자금 얘기가 아니라 인생·방향·내면 고민에 집중해.
+
+[통찰의 기준 — 이게 이 대화의 핵심이다]
+- **표면 질문 뒤의 진짜 질문을 찾아라.** "A랑 B 중에 뭐가 나아?"라고 물으면 A/B를 비교하기 전에, 왜 지금 이 선택이 걸리는지부터 짚어. 진짜 막힌 지점은 대개 선택지가 아니라 그 사람이 두려워하는 것에 있다.
+- **과거 기록으로 패턴을 짚어라.** 위 데이터에서 같은 고민이 반복됐으면 구체적으로 인용하고, 그때와 지금이 뭐가 같고 뭐가 달라졌는지 말해. 근거 없는 일반론은 하지 마라.
+- **듣기 좋은 말을 하지 마라.** 이 사람이 스스로를 속이고 있다고 판단되면 그대로 말해. 동의하지 않으면 동의하지 않는다고 해. 응원은 그다음이다.
+- **모르면 모른다고 해.** 데이터에 없는 걸 지어내지 마라. 사실 확인이 필요하면 되물어라.
+- **핵심부터 말해라.** 서론·요약·목차 없이 바로 본론. 짧게 쓰되 문장은 끝까지 쓰고, 필요한 만큼만 길게. 정리 안 된 나열보다 한 문단의 정확한 통찰이 낫다."""
+    effort = os.getenv("LIFE_EFFORT", "high")     # low|medium|high|xhigh|max
+    body = {"model": "claude-opus-5", "max_tokens": 12000,
+            "output_config": {"effort": effort},   # Opus 5는 thinking이 기본 ON
+            "system": system,
+            "messages": [{"role": m["role"], "content": m["content"]} for m in messages[-30:]]}
     headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
     try:
-        async with httpx.AsyncClient(timeout=120) as c:
+        async with httpx.AsyncClient(timeout=240) as c:
             r = await c.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
             if r.status_code != 200:
                 return JSONResponse({"error": f"AI 오류: {r.text[:200]}"}, status_code=500)
@@ -1771,6 +1787,35 @@ async def jageum_life_chat(request: Request):
         return JSONResponse({"reply": text})
     except Exception as ex:
         return JSONResponse({"error": f"오류: {ex}"}, status_code=500)
+
+@app.post("/jageum/api/life/title")
+async def jageum_life_title(request: Request):
+    """대화 목록 왼쪽에 띄울 짧은 주제 제목을 만든다."""
+    if not _boss_only(request):
+        return _AUTH401
+    data = await request.json()
+    msgs = data.get("messages", [])[:4]
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key or not msgs:
+        return JSONResponse({"title": ""})
+    convo = "\n".join(f"{'나' if m.get('role') == 'user' else '친구'}: {(m.get('content') or '')[:600]}" for m in msgs)
+    body = {
+        "model": "claude-opus-5", "max_tokens": 300,
+        "output_config": {"effort": "low"},
+        "system": "아래 상담 대화의 주제를 한국어 12자 이내 명사구 하나로만 답해. 따옴표·마침표·설명 없이 제목만.",
+        "messages": [{"role": "user", "content": convo}],
+    }
+    headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
+    try:
+        async with httpx.AsyncClient(timeout=90) as c:
+            r = await c.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
+            if r.status_code != 200:
+                return JSONResponse({"title": ""})
+            rd = r.json()
+        t = "".join(b.get("text", "") for b in rd.get("content", []) if b.get("type") == "text")
+        return JSONResponse({"title": t.strip().strip('"\'.。').replace("\n", " ")[:24]})
+    except Exception:
+        return JSONResponse({"title": ""})
 
 # ===== 💰 투자노트 (boss 전용: 누적 투자기록 + AI 복기 + 과거 블로그 투자글) =====
 JAGEUM_INVEST_FILE = data_path("jageum_invest.json")
@@ -1826,12 +1871,7 @@ async def jageum_invest_extract(request: Request):
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key:
         return JSONResponse({"error": "AI 키 미설정"}, status_code=500)
-    life = {}
-    if JAGEUM_LIFE_FILE.exists():
-        try:
-            life = json.loads(JAGEUM_LIFE_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            pass
+    life = _load_life()
     past = life.get("과거", []) or []
     if not past:
         return JSONResponse({"error": "과거 블로그 글이 없어요. 인생노트에 블로그가 먼저 올라와 있어야 해요."})
