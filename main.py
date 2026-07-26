@@ -1852,16 +1852,20 @@ _INVEST_KW = ["투자", "주식", "주가", "종목", "매수", "매도", "매�
               "코스피", "코스닥", "나스닥", "S&P", "테슬라", "엔비디아", "삼성전자", "연금",
               "리스크", "레버리지", "현금흐름", "시드", "종잣돈", "복리효과", "분산투자"]
 
-def _invest_raw_posts(per_post=3000, total_cap=240000, max_posts=150):
-    """인생노트 블로그 200편 중 투자 키워드(투자·주식·부동산·아파트 등)가 들어간 글을
-    제목만이 아니라 **본문 원문 그대로** 긁어서 AI 대화의 로우데이터로 넘긴다."""
+def _invest_raw_posts(per_post=6000, total_cap=400000, max_posts=300):
+    """인생노트 블로그 중 투자 키워드(투자·주식·부동산·아파트 등)가 든 글을
+    제목만이 아니라 **본문 원문 그대로** 긁어 AI 대화의 로우데이터로 넘긴다.
+    본문이 없는 글(제목만 저장된 글)도 버리지 않고 제목 줄로 뒤에 붙인다."""
     past = (_load_life().get("과거", []) or [])
-    chunks, used = [], 0
+    chunks, used, title_only = [], 0, []
     for p in past:
         title = (p.get("title", "") or "").strip()
         body = (p.get("body", "") or "").strip()
         blob = title + " " + body
-        if not body or not any(k in blob for k in _INVEST_KW):
+        if not any(k in blob for k in _INVEST_KW):
+            continue
+        if not body:                       # 본문 미저장 → 제목만이라도 남긴다
+            title_only.append(f"[{p.get('date','')}] {title}")
             continue
         hit = [k for k in _INVEST_KW if k in blob][:6]
         chunk = f"[{p.get('date','')}] {title} (키워드: {', '.join(hit)})\n{body[:per_post]}"
@@ -1870,15 +1874,43 @@ def _invest_raw_posts(per_post=3000, total_cap=240000, max_posts=150):
         chunks.append(chunk); used += len(chunk)
         if len(chunks) >= max_posts:
             break
+    if title_only:
+        tail = ("(아래는 본문이 저장돼 있지 않아 제목만 아는 투자 관련 글 "
+                f"{len(title_only)}편 — 내용은 모르니 지어내지 말 것)\n" + "\n".join(title_only[:300]))
+        if used + len(tail) <= total_cap:
+            chunks.append(tail); used += len(tail)
     return chunks, used
 
 @app.get("/jageum/api/invest/rawstat")
 def jageum_invest_rawstat(request: Request):
-    """대화에 실제로 들어가는 블로그 원문이 몇 편·몇 자인지(화면 표시용)."""
+    """대화에 실제로 들어가는 블로그 원문 통계 + 왜 그 편수인지 진단."""
     if not _boss_only(request):
         return _AUTH401
+    past = _load_life().get("과거", []) or []
+    body_lens = [len((p.get("body") or "").strip()) for p in past]
+    with_body = [n for n in body_lens if n > 0]
+    kw_all, kw_body = 0, 0
+    for p in past:
+        title = (p.get("title") or ""); body = (p.get("body") or "").strip()
+        if any(k in (title + " " + body) for k in _INVEST_KW):
+            kw_all += 1
+            if body:
+                kw_body += 1
     chunks, used = _invest_raw_posts()
-    return JSONResponse({"posts": len(chunks), "chars": used})
+    return JSONResponse({
+        "posts": len(chunks), "chars": used,
+        "진단": {
+            "전체_블로그글": len(past),
+            "본문있는_글": len(with_body),
+            "본문없는_글(제목만)": len(past) - len(with_body),
+            "투자키워드_매칭(제목+본문)": kw_all,
+            "투자키워드_매칭_중_본문있음": kw_body,
+            "본문_평균길이": round(sum(with_body) / len(with_body)) if with_body else 0,
+            "본문_최대길이": max(with_body) if with_body else 0,
+            "상한": {"글당": 6000, "전체": 400000, "편수": 300},
+            "상한에_걸렸나": used >= 400000 - 6000 or len(chunks) >= 300,
+        },
+    })
 
 @app.post("/jageum/api/invest/extract")
 async def jageum_invest_extract(request: Request):
