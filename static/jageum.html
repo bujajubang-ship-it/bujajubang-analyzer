@@ -57,7 +57,6 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
  <div id="tabbar" style="display:none;justify-content:flex-end;gap:8px;margin-bottom:14px">
    <button class="tabbtn on" data-v="biz" onclick="showTab('biz',this)">🏢 사업</button>
    <button class="tabbtn" data-v="personal" onclick="showTab('personal',this)">👑 개인자산</button>
-   <button class="tabbtn" data-v="invest" onclick="showTab('invest',this)">💰 투자노트</button>
    <button class="tabbtn" data-v="total" onclick="showTab('total',this)">📊 전체 합산</button>
    <button class="tabbtn" data-v="life" onclick="showTab('life',this)">🌱 인생 노트</button>
    <button class="tabbtn" data-v="sales" onclick="showTab('sales',this)">📈 영업 결산</button>
@@ -339,6 +338,53 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    <div id="goal_stats" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px"></div>
    <canvas id="goalChart" height="90"></canvas>
  </div>
+
+ <!-- ▼ 투자노트 통합 (2026-07-26): 부동산·주식 얘기가 겹쳐 개인자산 탭으로 합침 -->
+   <div class="card" style="border-top:3px solid #d97706">
+     <h2>💰 성공 투자노트 <span class="muted big">— 투자 판단을 기록하고, 실수와 성공을 누적해요</span></h2>
+     <div class="note">한 건 살 때·팔 때마다 '왜 그렇게 판단했는지'를 남겨요. 시간이 지나면 나만의 투자 데이터가 됩니다. 결과는 나중에 채워도 돼요.</div>
+     <div id="inv_stat" style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0"></div>
+     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px">
+       <input id="iv_jong" placeholder="종목·대상 (예: 삼성전자, 강남 아파트, 비트코인)" style="padding:10px;border:2px solid #e5e7eb;border-radius:9px;font-size:14px">
+       <select id="iv_act" style="padding:10px;border:2px solid #e5e7eb;border-radius:9px;font-size:14px;background:#fff">
+         <option value="매수">🟢 매수 (샀다)</option>
+         <option value="매도">🔴 매도 (팔았다)</option>
+         <option value="보유">🔵 보유 (계속 들고감)</option>
+         <option value="관망">⚪ 관망 (안 삼·지켜봄)</option>
+         <option value="추가매수">🟢 추가매수 (물타기/불타기)</option>
+       </select>
+     </div>
+     <textarea id="iv_body" placeholder="왜 이렇게 판단했나? (근거·기대·불안한 점을 솔직하게)" style="width:100%;min-height:80px;padding:11px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;resize:vertical;margin-top:8px"></textarea>
+     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+       <input id="iv_result" placeholder="결과 (나중에 채워도 됨: +12%, 손절 -8% 등)" style="padding:10px;border:2px solid #e5e7eb;border-radius:9px;font-size:14px">
+       <input id="iv_tags" placeholder="태그 (쉼표: 실수, 성공, 감정매매, 원칙지킴)" style="padding:10px;border:2px solid #e5e7eb;border-radius:9px;font-size:14px">
+     </div>
+     <textarea id="iv_lesson" placeholder="이번에 배운 것·교훈 (한 줄이라도)" style="width:100%;min-height:52px;padding:11px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;resize:vertical;margin-top:8px"></textarea>
+     <div style="margin-top:8px"><button onclick="investAdd()" style="background:#d97706;color:#fff;border:none;border-radius:9px;padding:10px 24px;font-weight:700;cursor:pointer">+ 투자기록 저장</button></div>
+     <div style="margin-top:10px"><input id="inv_search" class="search" placeholder="🔎 기록 검색 (종목·태그·교훈)" oninput="renderInvest()"></div>
+     <div id="inv_entries" style="margin-top:12px"></div>
+   </div>
+   <div class="card" style="border-top:3px solid #d97706">
+     <h2>📌 나의 투자 원칙 <span class="muted big">— 지킬 규칙을 못박아 둬요</span></h2>
+     <div style="display:flex;gap:8px"><input id="iv_prin" placeholder="예: 한 종목에 자산 20% 넘기지 않는다 / 손절선 -10%는 무조건 지킨다" style="flex:1;padding:10px;border:2px solid #e5e7eb;border-radius:9px;font-size:14px" onkeydown="if(event.key==='Enter')investPrinAdd()"><button onclick="investPrinAdd()" style="background:#b45309;color:#fff;border:none;border-radius:9px;padding:0 18px;font-weight:700;cursor:pointer">+ 추가</button></div>
+     <div id="inv_prins" style="margin-top:10px"></div>
+   </div>
+   <div class="card" style="border-top:3px solid #d97706">
+     <h2>🤖 투자 복기 파트너 <span class="muted big">— 내 기록을 다 아는 냉철한 AI (Opus 4.8)</span></h2>
+     <div class="note">과거 투자글·누적 기록·원칙을 다 기억해요. 감정적 매매를 막고, 같은 실수를 짚어줍니다. 대화는 자동 저장돼요.</div>
+     <div id="ic_log" style="max-height:420px;overflow:auto;border:1px solid #e9eaee;border-radius:10px;padding:12px;background:#fffdf6;margin:10px 0"></div>
+     <div style="display:flex;gap:8px">
+       <textarea id="ic_in" placeholder="지금 고민되는 투자 판단, 복기하고 싶은 거래를 편하게…" style="flex:1;min-height:54px;padding:11px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;resize:vertical" onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey))icSend()"></textarea>
+       <button onclick="icSend()" id="ic_btn" style="background:#d97706;color:#fff;border:none;border-radius:10px;padding:0 20px;font-weight:700;cursor:pointer;white-space:nowrap">보내기</button>
+     </div>
+     <div class="muted" style="font-size:11px;margin-top:5px">⌘/Ctrl + Enter로 전송 · <a onclick="icClear()" style="cursor:pointer;color:#dc2626">대화 비우기</a></div>
+   </div>
+   <div class="card" style="border-top:3px solid #d97706">
+     <h2>📜 지난 투자 글 <span class="muted big">— 과거 블로그에서 투자 이야기만 모아요</span></h2>
+     <div class="note">인생노트에 올린 블로그 200편 중 '투자·재테크·돈' 얘기만 AI가 골라내요. 과거의 나는 어떤 생각을 했었는지 돌아봐요.</div>
+     <div style="margin:8px 0"><button onclick="investExtract()" id="iv_ext_btn" style="background:#fff;color:#b45309;border:1.5px solid #d97706;border-radius:9px;padding:9px 18px;font-weight:700;cursor:pointer">🔍 과거 블로그에서 투자글 불러오기</button></div>
+     <div id="inv_past"></div>
+   </div>
  </div><!--/view_personal-->
 
  <div class="view-biz">
@@ -550,53 +596,6 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    </div>
  </div>
 
- <div id="view_invest" style="display:none">
-   <div class="card" style="border-top:3px solid #d97706">
-     <h2>💰 성공 투자노트 <span class="muted big">— 투자 판단을 기록하고, 실수와 성공을 누적해요</span></h2>
-     <div class="note">한 건 살 때·팔 때마다 '왜 그렇게 판단했는지'를 남겨요. 시간이 지나면 나만의 투자 데이터가 됩니다. 결과는 나중에 채워도 돼요.</div>
-     <div id="inv_stat" style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0"></div>
-     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px">
-       <input id="iv_jong" placeholder="종목·대상 (예: 삼성전자, 강남 아파트, 비트코인)" style="padding:10px;border:2px solid #e5e7eb;border-radius:9px;font-size:14px">
-       <select id="iv_act" style="padding:10px;border:2px solid #e5e7eb;border-radius:9px;font-size:14px;background:#fff">
-         <option value="매수">🟢 매수 (샀다)</option>
-         <option value="매도">🔴 매도 (팔았다)</option>
-         <option value="보유">🔵 보유 (계속 들고감)</option>
-         <option value="관망">⚪ 관망 (안 삼·지켜봄)</option>
-         <option value="추가매수">🟢 추가매수 (물타기/불타기)</option>
-       </select>
-     </div>
-     <textarea id="iv_body" placeholder="왜 이렇게 판단했나? (근거·기대·불안한 점을 솔직하게)" style="width:100%;min-height:80px;padding:11px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;resize:vertical;margin-top:8px"></textarea>
-     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
-       <input id="iv_result" placeholder="결과 (나중에 채워도 됨: +12%, 손절 -8% 등)" style="padding:10px;border:2px solid #e5e7eb;border-radius:9px;font-size:14px">
-       <input id="iv_tags" placeholder="태그 (쉼표: 실수, 성공, 감정매매, 원칙지킴)" style="padding:10px;border:2px solid #e5e7eb;border-radius:9px;font-size:14px">
-     </div>
-     <textarea id="iv_lesson" placeholder="이번에 배운 것·교훈 (한 줄이라도)" style="width:100%;min-height:52px;padding:11px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;resize:vertical;margin-top:8px"></textarea>
-     <div style="margin-top:8px"><button onclick="investAdd()" style="background:#d97706;color:#fff;border:none;border-radius:9px;padding:10px 24px;font-weight:700;cursor:pointer">+ 투자기록 저장</button></div>
-     <div style="margin-top:10px"><input id="inv_search" class="search" placeholder="🔎 기록 검색 (종목·태그·교훈)" oninput="renderInvest()"></div>
-     <div id="inv_entries" style="margin-top:12px"></div>
-   </div>
-   <div class="card" style="border-top:3px solid #d97706">
-     <h2>📌 나의 투자 원칙 <span class="muted big">— 지킬 규칙을 못박아 둬요</span></h2>
-     <div style="display:flex;gap:8px"><input id="iv_prin" placeholder="예: 한 종목에 자산 20% 넘기지 않는다 / 손절선 -10%는 무조건 지킨다" style="flex:1;padding:10px;border:2px solid #e5e7eb;border-radius:9px;font-size:14px" onkeydown="if(event.key==='Enter')investPrinAdd()"><button onclick="investPrinAdd()" style="background:#b45309;color:#fff;border:none;border-radius:9px;padding:0 18px;font-weight:700;cursor:pointer">+ 추가</button></div>
-     <div id="inv_prins" style="margin-top:10px"></div>
-   </div>
-   <div class="card" style="border-top:3px solid #d97706">
-     <h2>🤖 투자 복기 파트너 <span class="muted big">— 내 기록을 다 아는 냉철한 AI (Opus 4.8)</span></h2>
-     <div class="note">과거 투자글·누적 기록·원칙을 다 기억해요. 감정적 매매를 막고, 같은 실수를 짚어줍니다. 대화는 자동 저장돼요.</div>
-     <div id="ic_log" style="max-height:420px;overflow:auto;border:1px solid #e9eaee;border-radius:10px;padding:12px;background:#fffdf6;margin:10px 0"></div>
-     <div style="display:flex;gap:8px">
-       <textarea id="ic_in" placeholder="지금 고민되는 투자 판단, 복기하고 싶은 거래를 편하게…" style="flex:1;min-height:54px;padding:11px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;resize:vertical" onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey))icSend()"></textarea>
-       <button onclick="icSend()" id="ic_btn" style="background:#d97706;color:#fff;border:none;border-radius:10px;padding:0 20px;font-weight:700;cursor:pointer;white-space:nowrap">보내기</button>
-     </div>
-     <div class="muted" style="font-size:11px;margin-top:5px">⌘/Ctrl + Enter로 전송 · <a onclick="icClear()" style="cursor:pointer;color:#dc2626">대화 비우기</a></div>
-   </div>
-   <div class="card" style="border-top:3px solid #d97706">
-     <h2>📜 지난 투자 글 <span class="muted big">— 과거 블로그에서 투자 이야기만 모아요</span></h2>
-     <div class="note">인생노트에 올린 블로그 200편 중 '투자·재테크·돈' 얘기만 AI가 골라내요. 과거의 나는 어떤 생각을 했었는지 돌아봐요.</div>
-     <div style="margin:8px 0"><button onclick="investExtract()" id="iv_ext_btn" style="background:#fff;color:#b45309;border:1.5px solid #d97706;border-radius:9px;padding:9px 18px;font-weight:700;cursor:pointer">🔍 과거 블로그에서 투자글 불러오기</button></div>
-     <div id="inv_past"></div>
-   </div>
- </div>
 
  <div class="muted" style="font-size:12px;text-align:center;padding:10px">이카운트 자금일보 자동 수집 · 매일 아침 8시 갱신 · 내부이체(대체)는 영업수치에서 제외</div>
 </div>
@@ -668,7 +667,7 @@ function load(){fetch('/jageum/api/data').then(r=>{if(r.status===401){location.h
   if(MYROLE==='boss'){document.getElementById('approval_card').style.display='';loadApprovals();loadPersonal();
     document.getElementById('tabbar').style.display='flex';showTab('biz');}
   else if(MYROLE==='staff'){  // 경리: 개인/투자/전체/인생 탭 제거, 사업+영업결산만
-    ['personal','invest','total','life'].forEach(v=>{const b=document.querySelector('#tabbar .tabbtn[data-v="'+v+'"]');if(b)b.remove();});
+    ['personal','total','life'].forEach(v=>{const b=document.querySelector('#tabbar .tabbtn[data-v="'+v+'"]');if(b)b.remove();});
     document.getElementById('tabbar').style.display='flex';showTab('biz');}
   else if(MYROLE==='sales'){  // 영업사원: 회사 대시보드 전부 숨김, 영업결산만
     document.querySelectorAll('.card').forEach(c=>{if(!c.closest('#view_sales'))c.style.display='none';});
@@ -916,11 +915,10 @@ function showTab(v,btn){
   const vp=document.getElementById('view_personal'); if(vp)vp.style.display=(v==='personal')?'':'none';
   const vt=document.getElementById('view_total'); if(vt)vt.style.display=(v==='total')?'':'none';
   const vl=document.getElementById('view_life'); if(vl)vl.style.display=(v==='life')?'':'none';
-  const vv=document.getElementById('view_invest'); if(vv)vv.style.display=(v==='invest')?'':'none';
   const vs=document.getElementById('view_sales'); if(vs)vs.style.display=(v==='sales')?'':'none';
   const pb=document.getElementById('period_bar'); if(pb)pb.style.display=(v==='biz')?'':'none';
   if(v==='total')renderTotal();
-  if(v==='invest')loadInvest();
+  if(v==='personal')loadInvest();   // 투자노트가 이 탭에 통합됨
   if(v==='life')loadLife();
   if(v==='sales')loadSales();
   window.scrollTo(0,0);
