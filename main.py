@@ -1881,6 +1881,22 @@ def _invest_raw_posts(per_post=6000, total_cap=400000, max_posts=300):
             chunks.append(tail); used += len(tail)
     return chunks, used
 
+def _invest_memo_ctx(per_memo=4000, cap=150000):
+    """인생노트에 계속 적어나가는 메모 원문. 블로그와 달리 자주 늘어나므로
+    캐시 밖(변동 파트)에 넣는다. 최신 것부터 담되 시간순으로 보여준다."""
+    notes = (_load_life().get("글", []) or [])
+    picked, used = [], 0
+    for n in reversed(notes):                      # 최신 메모 우선 확보
+        body = (n.get("body") or "").strip()
+        if not body:
+            continue
+        chunk = f"[{n.get('date','')}] {(n.get('title') or '무제')}\n{body[:per_memo]}"
+        if used + len(chunk) > cap:
+            break
+        picked.append(chunk); used += len(chunk)
+    picked.reverse()                               # 생각의 흐름이 보이게 시간순
+    return picked, used
+
 @app.get("/jageum/api/invest/rawstat")
 def jageum_invest_rawstat(request: Request):
     """대화에 실제로 들어가는 블로그 원문 통계 + 왜 그 편수인지 진단."""
@@ -1897,8 +1913,10 @@ def jageum_invest_rawstat(request: Request):
             if body:
                 kw_body += 1
     chunks, used = _invest_raw_posts()
+    memos, memo_chars = _invest_memo_ctx()
     return JSONResponse({
         "posts": len(chunks), "chars": used,
+        "memos": len(memos), "memo_chars": memo_chars,
         "진단": {
             "전체_블로그글": len(past),
             "본문있는_글": len(with_body),
@@ -1989,9 +2007,12 @@ async def jageum_invest_chat(request: Request):
     principles = inv.get("원칙", []) or []
     raw_chunks, raw_chars = _invest_raw_posts()   # 블로그 투자글 '본문 원문'
     past_titles = "\n".join(f"{p.get('date','')} | {p.get('title','')}" for p in past[:120])
+    memo_chunks, memo_chars = _invest_memo_ctx()   # 인생노트 메모 원문(계속 늘어남)
     note_ctx = "\n".join(
-        f"- [{n.get('date','')}] {n.get('종목','') or '무제'} / 판단:{n.get('판단','')} / 결과:{n.get('결과','') or '-'} / 교훈:{(n.get('교훈','') or n.get('body','') or '')[:160]}"
-        for n in notes[:40])
+        f"- [{n.get('date','')}] {n.get('종목','') or '무제'} / 판단:{n.get('판단','')} / 결과:{n.get('결과','') or '-'}"
+        f"\n  교훈: {(n.get('교훈','') or '').strip() or '-'}"
+        f"\n  당시 판단근거: {(n.get('body','') or '').strip()[:1500] or '-'}"
+        for n in notes[:80])
     prin_ctx = "\n".join(f"- {p}" for p in principles[:30])
     guru_notes = inv.get("구루노트", []) or []
     guru_ctx = "\n".join(f"- {g}" for g in guru_notes[:200])
@@ -2025,6 +2046,9 @@ async def jageum_invest_chat(request: Request):
 
 [과거 블로그 투자글 목록 (날짜 | 제목)]
 {past_titles or "(아직 없음)"}
+
+[인생노트 메모 원문 {len(memo_chunks)}개 — 사장님이 계속 적어 나가는 최신 생각. 블로그보다 지금에 가깝다]
+{chr(10).join(f"────────{chr(10)}{m}" for m in memo_chunks) if memo_chunks else "(아직 없음)"}
 
 [누적 투자노트 — 실제 투자 판단·결과·교훈 기록]
 {note_ctx or "(아직 없음)"}
@@ -2068,8 +2092,8 @@ async def jageum_invest_chat(request: Request):
                 convo = convo + [{"role": "assistant", "content": rd.get("content", [])}]
                 body["messages"] = convo
         text = "".join(b.get("text", "") for b in rd.get("content", []) if b.get("type") == "text")
-        return JSONResponse({"reply": text, "raw_posts": len(raw_chunks),
-                             "raw_chars": raw_chars, "searched": searched})
+        return JSONResponse({"reply": text, "raw_posts": len(raw_chunks), "raw_chars": raw_chars,
+                             "memos": len(memo_chunks), "searched": searched})
     except Exception as ex:
         return JSONResponse({"error": f"오류: {ex}"}, status_code=500)
 
