@@ -309,7 +309,7 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
  <div id="view_personal" style="display:none">
    <div class="card" style="border-top:3px solid #d97706">
      <h2>🧠 투자 그루 <span class="muted big">— 내 과거를 다 아는 투자 멘토 (Opus 5 · 웹검색)</span></h2>
-     <div class="note">내 블로그 원문 + 투자기록·원칙을 다 읽고, <b>버핏·멍거·김승호·기요사키·드마코</b>의 사고틀로 같이 봐요. 종목을 말하면 <b>외신(Bloomberg·Reuters·investing.com 등)을 먼저</b> 뒤지고 <b>섹터 업황</b>까지 본 뒤, 국내 뉴스는 마지막에 덧붙여요.<div id="inv_rawstat" class="muted" style="font-size:11.5px;margin-top:4px"></div></div>
+     <div class="note">내 블로그 원문 + 투자기록·원칙을 다 읽고, <b>버핏·멍거·김승호·기요사키·드마코</b>의 사고틀로 같이 봐요. 종목을 말하면 <b>외신(Bloomberg·Reuters·investing.com 등)을 먼저</b> 뒤지고 <b>섹터 업황</b>과 <b>재무제표</b>(국내=네이버금융, 미국=investing.com)까지 본 뒤, 국내 뉴스는 마지막에 덧붙여요.<div id="inv_rawstat" class="muted" style="font-size:11.5px;margin-top:4px"></div></div>
      <div id="ic_log" style="max-height:420px;overflow:auto;border:1px solid #e9eaee;border-radius:10px;padding:12px;background:#fffdf6;margin:10px 0"></div>
      <div style="display:flex;gap:8px">
        <textarea id="ic_in" placeholder="종목명을 말하면 외신·섹터부터 찾아봐요. 기사 URL이나 본문을 붙여넣어도 돼요…" style="flex:1;min-height:54px;padding:11px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;resize:vertical" onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey))icSend()"></textarea>
@@ -1564,7 +1564,7 @@ function icSend(){
   const tk=setInterval(()=>{
     const el2=document.getElementById('ic_tick'); if(!el2){clearInterval(tk);return;}
     const sec=Math.round((Date.now()-t0)/1000);
-    const msg = sec<25?'외신부터 찾아보는 중…' : sec<70?'섹터 업황 보는 중…' : sec<130?'국내 뉴스까지 훑는 중…' : '정리하는 중…';
+    const msg = sec<25?'외신부터 찾아보는 중…' : sec<70?'섹터 업황·재무제표 보는 중…' : sec<130?'국내 뉴스까지 훑는 중…' : '정리하는 중…';
     el2.textContent = `${msg} ${sec}초` + (sec>150?' (오래 걸리면 검색을 많이 하는 중이에요)':'');
   },1000);
   const done=()=>{clearInterval(tk); btn.disabled=false; btn.textContent='보내기';};
