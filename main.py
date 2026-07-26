@@ -1470,11 +1470,13 @@ def jageum_acct_remind(request: Request, dry: int = 0, force: int = 0):
     threshold = int(os.getenv("ACCT_REMIND_DAYS", "6"))
     gap = int(os.getenv("ACCT_REMIND_GAP", "1"))     # 수정할 때까지 매일 (확인하면 days가 리셋돼 자동 중단)
     st = _acct_status()
-    out = {"ok": True, "sent": False, "threshold": threshold, "msg": _acct_msg(st), **st}
+    weekend = _kst_today().weekday() >= 5
+    out = {"ok": True, "sent": False, "threshold": threshold, "weekend": weekend,
+           "msg": _acct_msg(st), **st}
     if dry:
         return JSONResponse(out)
     # 주말엔 쉬게 둔다 (토=5, 일=6). 평일에 다시 판정하면 경과일이 더 늘어난 채로 나간다.
-    if _kst_today().weekday() >= 5 and os.getenv("ACCT_SKIP_WEEKEND", "1") == "1" and not force:
+    if weekend and os.getenv("ACCT_SKIP_WEEKEND", "1") == "1" and not force:
         out["skipped"] = "주말 — 발송하지 않음"
         return JSONResponse(out)
     if st["days"] < threshold and not force:
