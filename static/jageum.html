@@ -308,8 +308,8 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
 
  <div id="view_personal" style="display:none">
    <div class="card" style="border-top:3px solid #d97706">
-     <h2>🤖 투자 복기 파트너 <span class="muted big">— 블로그 원문을 다 읽은 냉철한 AI (Opus 5)</span></h2>
-     <div class="note">인생노트 블로그 중 <b>투자·부동산·아파트·주식</b> 얘기가 든 글을 <b>본문 그대로</b> 읽고 답해요. 누적 투자기록·원칙도 같이 봅니다.<div id="inv_rawstat" class="muted" style="font-size:11.5px;margin-top:4px"></div></div>
+     <h2>🧠 투자 그루 <span class="muted big">— 내 과거를 다 아는 투자 멘토 (Opus 5 · 웹검색)</span></h2>
+     <div class="note">내 블로그 원문 + 투자기록·원칙을 다 읽고, <b>버핏·멍거·김승호·기요사키·드마코</b>의 사고틀로 같이 봐요. 증시·환율 같은 <b>오늘 시점 정보는 웹에서 찾아</b> 출처와 함께 답합니다.<div id="inv_rawstat" class="muted" style="font-size:11.5px;margin-top:4px"></div></div>
      <div id="ic_log" style="max-height:420px;overflow:auto;border:1px solid #e9eaee;border-radius:10px;padding:12px;background:#fffdf6;margin:10px 0"></div>
      <div style="display:flex;gap:8px">
        <textarea id="ic_in" placeholder="지금 고민되는 투자 판단, 복기하고 싶은 거래를 편하게…" style="flex:1;min-height:54px;padding:11px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;resize:vertical" onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey))icSend()"></textarea>
@@ -373,6 +373,12 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
      <div style="margin-top:8px"><button onclick="investAdd()" style="background:#d97706;color:#fff;border:none;border-radius:9px;padding:10px 24px;font-weight:700;cursor:pointer">+ 투자기록 저장</button></div>
      <div style="margin-top:10px"><input id="inv_search" class="search" placeholder="🔎 기록 검색 (종목·태그·교훈)" oninput="renderInvest()"></div>
      <div id="inv_entries" style="margin-top:12px"></div>
+   </div>
+   <div class="card" style="border-top:3px solid #b45309">
+     <h2>📚 투자 그루 노트 <span class="muted big">— 책·영상에서 마음에 박힌 문장을 모아둬요</span></h2>
+     <div class="note">여기 적어둔 문장은 위 <b>투자 그루</b> 대화에 그대로 들어갑니다. 책 전체를 긁어오는 건 저작권 문제라 안 되지만, 내가 밑줄 친 구절을 모으는 건 내 자산이에요.</div>
+     <div style="display:flex;gap:8px;margin-top:8px"><input id="iv_guru" placeholder="예: 버핏 — 능력범위 밖은 아무리 좋아 보여도 사지 않는다 / 김승호 — 일정하게 들어오는 돈이 목돈보다 세다" style="flex:1;padding:10px;border:2px solid #e5e7eb;border-radius:9px;font-size:14px" onkeydown="if(event.key==='Enter')investGuruAdd()"><button onclick="investGuruAdd()" style="background:#b45309;color:#fff;border:none;border-radius:9px;padding:0 18px;font-weight:700;cursor:pointer">+ 추가</button></div>
+     <div id="inv_gurus" style="margin-top:10px"></div>
    </div>
    <div class="card" style="border-top:3px solid #d97706">
      <h2>📌 나의 투자 원칙 <span class="muted big">— 지킬 규칙을 못박아 둬요</span></h2>
@@ -1415,12 +1421,12 @@ function renderPast(){
   if(box)box.innerHTML=h;
 }
 // ── 💰 투자노트 (boss 전용: 누적기록 + 원칙 + AI 복기 + 과거 투자글) ──
-let INV={글:[],상담:[],과거투자:[],원칙:[]}, _invLoaded=false, _invPastCount=0;
+let INV={글:[],상담:[],과거투자:[],원칙:[],구루노트:[]}, _invLoaded=false, _invPastCount=0;
 function loadInvest(){
   if(MYROLE!=='boss')return;
   if(_invLoaded){renderInvest();return;}
   fetch('/jageum/api/invest').then(r=>r.ok?r.json():{}).then(d=>{
-    INV=Object.assign({글:[],상담:[],과거투자:[],원칙:[]},d||{}); _invPastCount=(INV.과거투자||[]).length; _invLoaded=true; renderInvest();
+    INV=Object.assign({글:[],상담:[],과거투자:[],원칙:[],구루노트:[]},d||{}); _invPastCount=(INV.과거투자||[]).length; _invLoaded=true; renderInvest();
     invRawStat();
   }).catch(()=>{renderInvest();});
 }
@@ -1461,6 +1467,11 @@ function investPrinAdd(){
   INV.원칙=INV.원칙||[]; INV.원칙.push(v); el.value=''; saveInvest(); renderInvest();
 }
 function investPrinDel(i){INV.원칙.splice(i,1);saveInvest();renderInvest();}
+function investGuruAdd(){
+  const el=document.getElementById('iv_guru'), v=(el.value||'').trim(); if(!v)return;
+  INV.구루노트=INV.구루노트||[]; INV.구루노트.push(v); el.value=''; saveInvest(); renderInvest();
+}
+function investGuruDel(i){INV.구루노트.splice(i,1);saveInvest();renderInvest();}
 const _ACTBADGE={'매수':'🟢 매수','매도':'🔴 매도','보유':'🔵 보유','관망':'⚪ 관망','추가매수':'🟢 추가매수'};
 function renderInvest(){
   // 통계
@@ -1477,6 +1488,9 @@ function renderInvest(){
   // 원칙
   const pb=document.getElementById('inv_prins');
   if(pb)pb.innerHTML=(INV.원칙||[]).length?(INV.원칙||[]).map((p,i)=>`<div style="display:flex;align-items:center;gap:8px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;margin-bottom:6px"><span style="font-size:14px;flex:1">📌 ${esc(p)}</span><span onclick="investPrinDel(${i})" style="cursor:pointer;color:#dc2626;font-size:12px">삭제</span></div>`).join(''):'<div class="muted" style="padding:6px">아직 원칙이 없어요. 나를 지켜줄 규칙을 적어두세요.</div>';
+  // 구루 노트
+  const gb=document.getElementById('inv_gurus');
+  if(gb)gb.innerHTML=(INV.구루노트||[]).length?(INV.구루노트||[]).map((g,i)=>`<div style="display:flex;align-items:center;gap:8px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:8px 12px;margin-bottom:6px"><span style="font-size:14px;flex:1">📚 ${esc(g)}</span><span onclick="investGuruDel(${i})" style="cursor:pointer;color:#dc2626;font-size:12px">삭제</span></div>`).join(''):'<div class="muted" style="padding:6px">책·영상에서 마음에 박힌 문장을 적어두세요. 그루가 대화에 써먹습니다.</div>';
   // 기록 목록
   const q=(document.getElementById('inv_search')?.value||'').trim();
   const rows=q?gl.filter(g=>((g.종목||'')+(g.body||'')+(g.교훈||'')+(g.tags||[]).join(' ')).includes(q)):gl;

@@ -1993,9 +1993,26 @@ async def jageum_invest_chat(request: Request):
         f"- [{n.get('date','')}] {n.get('종목','') or '무제'} / 판단:{n.get('판단','')} / 결과:{n.get('결과','') or '-'} / 교훈:{(n.get('교훈','') or n.get('body','') or '')[:160]}"
         for n in notes[:40])
     prin_ctx = "\n".join(f"- {p}" for p in principles[:30])
-    # ── 안정 파트(블로그 원문) — 매 턴 똑같으므로 prompt caching으로 재사용 ──
-    stable = f"""너는 이 사람의 냉철하고 솔직한 '투자 복기 파트너'야. 아부하지 않고, 데이터와 과거 기록으로 직언한다.
+    guru_notes = inv.get("구루노트", []) or []
+    guru_ctx = "\n".join(f"- {g}" for g in guru_notes[:200])
+    # ── 안정 파트(구루 사고틀 + 블로그 원문) — 매 턴 똑같으므로 prompt caching으로 재사용 ──
+    stable = f"""너는 이 사람의 과거를 다 아는 '투자 그루'다. 냉철하고 솔직하며, 아부하지 않고 데이터와 과거 기록으로 직언한다.
 이 사람은 '부자주방'(업소용 주방기기 셀러) 사업가이자 유튜버이고, 사업으로 번 돈을 투자로 불려 자산을 키우려 한다.
+
+[네가 빌려 쓰는 사고틀 — 이 사람이 좋아하는 투자가들]
+· **워런 버핏** — 능력범위(모르는 건 안 산다), 안전마진, 경제적 해자, 시장은 주인이 아니라 하인, 좋은 기업을 적정가에 사서 오래 들고 간다.
+· **찰리 멍거** — 격자틀 사고(여러 학문의 모델을 겹쳐 본다), 인버전("어떻게 하면 망할까"를 먼저 묻는다), 인센티브 편향 경계, 단순함, 안 하는 결정의 가치.
+· **김승호(돈의 속성)** — 돈을 인격체로 대하는 태도, 일정하게 들어오는 수입의 힘, 남의 돈을 대하는 방식이 내 돈의 크기를 정한다, 씨앗 자금은 함부로 건드리지 않는다.
+· **로버트 기요사키** — 자산은 내 주머니에 돈을 넣는 것·부채는 빼가는 것, 현금흐름 사분면(봉급생활자/자영업자/사업가/투자자), 금융 문해력, 내 집이 곧 자산은 아니다.
+· **MJ 드마코(부의 추월차선)** — 소비자가 아니라 생산자 편에 설 것, 통제·진입장벽·필요·시간·규모(CENTS), 부는 사건이 아니라 과정, 시간을 파는 구조에서 벗어나기.
+
+이 관점들을 상황에 맞게 겹쳐서 보되, **그 사람이 하지 않은 말을 지어내 따옴표로 인용하지 마라.** 실제 발언·수치가 필요하면 web_search로 확인하고 출처를 밝혀라. 사고틀은 도구이지 권위가 아니다 — 이 사람 상황에 안 맞으면 안 맞는다고 말해라.
+
+[이 사람이 직접 모아둔 구루 문장·메모]
+{guru_ctx or "(아직 없음 — 개인자산 탭의 '투자 그루 노트'에 좋아하는 구절을 넣으면 여기 반영된다)"}
+
+[최신 정보가 필요할 때]
+증시·환율·금리·특정 종목의 현재 상황, 최근 발언처럼 **오늘 시점의 사실**이 답에 영향을 주면 web_search로 찾아서 근거와 함께 말해라. 기억에 의존해 최신 수치를 말하지 마라. 반대로 검색이 필요 없는 원칙 질문에 굳이 검색하지는 마라.
 
 [로우데이터 — 과거 블로그에서 투자·부동산·아파트·주식 얘기가 들어간 글 {len(raw_chunks)}편의 본문 원문]
 아래는 요약이 아니라 이 사람이 실제로 쓴 글 그대로다. 답할 때 여기서 직접 근거를 찾아 인용해라.
@@ -2024,23 +2041,35 @@ async def jageum_invest_chat(request: Request):
 - 위 블로그 원문에 근거가 있으면 날짜와 함께 구체적으로 인용해. 원문에 없는 건 지어내지 말고 모른다고 해.
 - 서론 없이 핵심부터. 짧게 쓰되 문장은 끝까지."""
     effort = os.getenv("INVEST_EFFORT", "high")   # low|medium|high|xhigh|max
+    convo = [{"role": m["role"], "content": m["content"]} for m in messages[-30:]]
     body = {"model": "claude-opus-5", "max_tokens": 12000,
             "output_config": {"effort": effort},   # Opus 5는 thinking 기본 ON
             "system": [
-                # 블로그 원문은 매 턴 동일 → 캐시해서 2번째 질문부터 값·시간 아낌
+                # 구루 사고틀 + 블로그 원문은 매 턴 동일 → 캐시해서 2번째 질문부터 값·시간 아낌
                 {"type": "text", "text": stable, "cache_control": {"type": "ephemeral"}},
                 {"type": "text", "text": system_tail},
             ],
-            "messages": [{"role": m["role"], "content": m["content"]} for m in messages[-30:]]}
+            # 증시·환율·최근 발언 등 '오늘 시점' 사실은 웹검색으로 (서버측 실행, 출처 포함)
+            "tools": [{"type": "web_search_20260209", "name": "web_search", "max_uses": 6}],
+            "messages": convo}
     headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
     try:
-        async with httpx.AsyncClient(timeout=240) as c:
-            r = await c.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
-            if r.status_code != 200:
-                return JSONResponse({"error": f"AI 오류: {r.text[:200]}"}, status_code=500)
-            rd = r.json()
+        searched = 0
+        async with httpx.AsyncClient(timeout=300) as c:
+            for _ in range(4):    # 웹검색이 길어지면 pause_turn → 이어서 재요청
+                r = await c.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
+                if r.status_code != 200:
+                    return JSONResponse({"error": f"AI 오류: {r.text[:200]}"}, status_code=500)
+                rd = r.json()
+                searched += sum(1 for b in rd.get("content", [])
+                                if b.get("type") == "server_tool_use" and b.get("name") == "web_search")
+                if rd.get("stop_reason") != "pause_turn":
+                    break
+                convo = convo + [{"role": "assistant", "content": rd.get("content", [])}]
+                body["messages"] = convo
         text = "".join(b.get("text", "") for b in rd.get("content", []) if b.get("type") == "text")
-        return JSONResponse({"reply": text, "raw_posts": len(raw_chunks), "raw_chars": raw_chars})
+        return JSONResponse({"reply": text, "raw_posts": len(raw_chunks),
+                             "raw_chars": raw_chars, "searched": searched})
     except Exception as ex:
         return JSONResponse({"error": f"오류: {ex}"}, status_code=500)
 
