@@ -1591,7 +1591,14 @@ async def jageum_personal_prices(request: Request):
             d = json.loads(JAGEUM_PERSONAL_FILE.read_text(encoding="utf-8"))
         except Exception:
             d = {}
-    stocks = d.get("stocks") or []
+    # 보유 주식 + 손절 복기용 관심종목 둘 다 현재가가 필요하다
+    stocks = (d.get("stocks") or []) + (d.get("관심종목") or [])
+    seen, uniq = set(), []
+    for st in stocks:
+        c = st.get("code")
+        if c and c not in seen:
+            seen.add(c); uniq.append(st)
+    stocks = uniq
     prices, quotes, fx = {}, {}, None
     async with httpx.AsyncClient(headers=_NV_H, timeout=15) as c:
         try:
