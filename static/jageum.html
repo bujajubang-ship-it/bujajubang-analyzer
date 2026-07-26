@@ -51,6 +51,11 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
 }
 .rangebtn{border:1px solid #d1d5db;background:#fff;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;color:#374151}
 .rangebtn.on{background:#7c3aed;color:#fff;border-color:#7c3aed}
+  .gl{display:inline}
+  .gl-t{cursor:pointer;border-bottom:1.5px dotted #b45309;color:#b45309;font-weight:600}
+  .gl-a{font-size:10px;margin-left:1px}
+  .gl-d{display:none;margin:5px 0 7px;padding:8px 11px;background:#fffbeb;border-left:3px solid #f59e0b;
+        border-radius:0 7px 7px 0;font-size:13px;line-height:1.65;color:#3f3f46;white-space:normal}
 </style></head><body>
 <div class="top"><h1>💰 부자홀딩스 자금 대시보드</h1><span class="sub" id="period">불러오는 중…</span><span class="sub" id="whoami" style="margin-left:auto"></span><a href="/danga" style="background:rgba(255,255,255,.25);color:#fff;border:1px solid rgba(255,255,255,.5);border-radius:7px;padding:6px 14px;text-decoration:none;font-size:13px;font-weight:700;margin-right:8px">💰 단가/마진</a><button onclick="logout()" style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:7px;padding:6px 14px;cursor:pointer;font-size:13px">로그아웃</button></div>
 <div class="wrap">
@@ -1257,6 +1262,16 @@ function lifeCompare(){
   }).catch(()=>{box.innerHTML='<div class="err">비교 중 오류가 났어요.</div>';});
 }
 function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+// AI가 [[용어|설명]] 으로 표시한 전문용어를 '▾ 펼치기'로 바꿔준다
+function gloss(escaped){
+  return (escaped||'').replace(/\[\[([^\]|]{1,40})\|([^\]]{1,400})\]\]/g,
+    (m,term,desc)=>`<span class="gl"><span class="gl-t" onclick="glTog(this)">${term}<span class="gl-a">▾</span></span><span class="gl-d">${desc}</span></span>`);
+}
+function glTog(el){
+  const d=el.parentNode.querySelector('.gl-d'), a=el.querySelector('.gl-a');
+  const on=d.style.display==='block';
+  d.style.display=on?'none':'block'; if(a)a.textContent=on?'▾':'▴';
+}
 function renderMotto(){
   const v=document.getElementById('motto_view'); if(!v)return;
   const m=(LIFE.좌우명||'').trim();
@@ -1372,7 +1387,7 @@ function lcRender(){
     return;
   }
   log.innerHTML=r.msgs.map(m=>{const me=m.role==='user';
-    return `<div style="display:flex;justify-content:${me?'flex-end':'flex-start'};margin:7px 0"><div style="max-width:82%;padding:10px 13px;border-radius:13px;font-size:14px;line-height:1.65;white-space:pre-wrap;${me?'background:#16a34a;color:#fff':'background:#fff;border:1px solid #d1fae5'}">${esc(m.content)}</div></div>`;
+    return `<div style="display:flex;justify-content:${me?'flex-end':'flex-start'};margin:7px 0"><div style="max-width:82%;padding:10px 13px;border-radius:13px;font-size:14px;line-height:1.65;white-space:pre-wrap;${me?'background:#16a34a;color:#fff':'background:#fff;border:1px solid #d1fae5'}">${gloss(esc(m.content))}</div></div>`;
   }).join('');
   log.scrollTop=log.scrollHeight;
 }
@@ -1547,7 +1562,7 @@ function icRender(){
   const msgs=INV.상담||[];
   if(!msgs.length){log.innerHTML='<div class="muted" style="padding:14px;text-align:center;font-size:13.5px">투자 복기 파트너예요 💰 최근 산 것·판 것, 고민되는 판단을 꺼내봐요. 감정에 휘둘리지 않게, 과거 기록으로 냉정하게 같이 짚어줄게요.</div>';return;}
   log.innerHTML=msgs.map(m=>{const me=m.role==='user';
-    return `<div style="display:flex;justify-content:${me?'flex-end':'flex-start'};margin:7px 0"><div style="max-width:82%;padding:10px 13px;border-radius:13px;font-size:14px;line-height:1.65;white-space:pre-wrap;${me?'background:#d97706;color:#fff':'background:#fff;border:1px solid #fde68a'}">${esc(m.content)}</div></div>`;
+    return `<div style="display:flex;justify-content:${me?'flex-end':'flex-start'};margin:7px 0"><div style="max-width:82%;padding:10px 13px;border-radius:13px;font-size:14px;line-height:1.65;white-space:pre-wrap;${me?'background:#d97706;color:#fff':'background:#fff;border:1px solid #fde68a'}">${gloss(esc(m.content))}</div></div>`;
   }).join('');
   log.scrollTop=log.scrollHeight;
 }
