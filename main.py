@@ -1443,6 +1443,24 @@ def _acct_remind_log() -> dict:
             pass
     return _kv_restore("jageum_remind") or {}     # 재배포로 로컬 파일이 날아간 경우
 
+def _alert_mail(subject: str, text: str):
+    """문자 발송이 실패하면 조용히 묻히지 않게 메일로 알린다(알리고 IP인증·잔액 등)."""
+    sender = os.getenv("EMAIL_FROM", "").strip()
+    password = os.getenv("EMAIL_PASSWORD", "").strip()
+    to = os.getenv("ALERT_TO", MEMO_TO)
+    if not sender or not password:
+        return
+    msg = MIMEText(text, "plain", "utf-8")
+    msg["Subject"] = subject
+    msg["From"] = sender
+    msg["To"] = to
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(sender, password)
+            server.sendmail(sender, to, msg.as_string())
+    except Exception as e:
+        print(f"[alert] 메일 발송 실패: {e}")
+
 @app.post("/jageum/api/acct-remind")
 def jageum_acct_remind(request: Request, dry: int = 0, force: int = 0):
     """미확인이 오래됐으면 경리에게 문자. dry=1이면 문자 내용만 미리보기(발송 안 함)."""
@@ -1481,6 +1499,13 @@ def jageum_acct_remind(request: Request, dry: int = 0, force: int = 0):
         except Exception:
             pass
         _kv_backup("jageum_remind", log)
+    else:
+        _alert_mail(
+            "⚠️ 경리 체크리스트 문자 발송 실패",
+            "경리에게 알림 문자를 보내지 못했습니다.\n\n"
+            + json.dumps(results, ensure_ascii=False, indent=2)
+            + "\n\n알리고 IP인증(발송 서버 IP 등록)·충전 잔액을 확인해 주세요.",
+        )
     out["sent"] = sent
     out["results"] = results
     return JSONResponse(out)
