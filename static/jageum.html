@@ -49,6 +49,22 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
   .top h1{font-size:17px}
   .card{padding:14px 13px}
 }
+/* 인생노트 메모 입력칸 — 칸이 작으면 글도 짧게 쓰게 되므로 넉넉하게.
+   PC는 블로그 쓰듯, 휴대폰은 한 화면을 꽉 채우되 '메모 저장' 버튼은 보이게. */
+#life_body{
+  width:100%;padding:14px 15px;border:2px solid #e5e7eb;border-radius:10px;
+  font-size:15px;line-height:1.75;font-family:inherit;resize:vertical;
+  min-height:520px;                       /* PC: 블로그 글 쓸 정도 */
+}
+#life_body:focus{border-color:#16a34a;outline:none}
+@media(max-width:640px){
+  #life_body{
+    /* 화면 높이에서 제목·사진첨부줄·버튼줄·여백을 뺀 만큼 = 한 화면 꽉 차되 버튼은 남는다.
+       dvh 는 모바일 브라우저 주소창이 접힐 때도 실제 보이는 높이를 따라간다. */
+    min-height:max(300px, calc(100dvh - 300px));
+    font-size:16px;                       /* 16px 미만이면 iOS가 입력 시 화면을 확대해버린다 */
+  }
+}
 .rangebtn{border:1px solid #d1d5db;background:#fff;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;color:#374151}
 .rangebtn.on{background:#7c3aed;color:#fff;border-color:#7c3aed}
   .gl{display:inline}
@@ -572,7 +588,7 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    </div>
    <div class="card" style="border-top:3px solid #16a34a">
      <h2>✍️ 인생 노트 <span class="muted big">— 메모하듯 막 적어요 (구글 킵처럼)</span></h2>
-     <textarea id="life_body" placeholder="지금 떠오른 생각·아이디어·감정을 그냥 막 적어요. 제목 필요 없어요…" style="width:100%;min-height:110px;padding:12px;border:2px solid #e5e7eb;border-radius:10px;font-size:14px;font-family:inherit;resize:vertical" onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey))lifeAdd()"></textarea>
+     <textarea id="life_body" placeholder="지금 떠오른 생각·아이디어·감정을 그냥 막 적어요. 제목 필요 없어요…&#10;&#10;길게 써도 됩니다. 칸은 아래 모서리를 끌어서 더 키울 수 있어요." onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey))lifeAdd()"></textarea>
      <div id="life_imgstrip" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"></div>
      <div style="margin-top:8px">
        <label style="display:inline-flex;align-items:center;gap:6px;background:#f0fdf4;border:1.5px dashed #86efac;color:#16a34a;border-radius:8px;padding:7px 12px;font-size:13px;font-weight:600;cursor:pointer">📷 사진 첨부<input id="life_imgfile" type="file" accept="image/*" multiple style="display:none" onchange="lifeImgFiles(this.files);this.value=''"></label>
