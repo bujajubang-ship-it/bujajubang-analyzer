@@ -57,6 +57,14 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
   min-height:520px;                       /* PC: 블로그 글 쓸 정도 */
 }
 #life_body:focus{border-color:#16a34a;outline:none}
+.life-edit-ta{
+  width:100%;padding:12px 13px;border:2px solid #fde68a;border-radius:9px;
+  font-size:15px;line-height:1.75;font-family:inherit;resize:vertical;min-height:300px;
+}
+.life-edit-ta:focus{border-color:#f59e0b;outline:none}
+@media(max-width:640px){
+  .life-edit-ta{min-height:max(240px, calc(100dvh - 380px));font-size:16px}
+}
 @media(max-width:640px){
   #life_body{
     /* 화면 높이에서 제목·사진첨부줄·버튼줄·여백을 뺀 만큼 = 한 화면 꽉 차되 버튼은 남는다.
@@ -1311,6 +1319,25 @@ function lifeAdd(){
   saveLife();renderLife();
 }
 function lifeDel(id){if(!confirm('이 기록 삭제할까요?'))return;LIFE.글=(LIFE.글||[]).filter(e=>e.id!==id);saveLife();renderLife();}
+// ── 메모 수정 ──
+// 위 입력칸으로 올려보내면 '새 메모'인지 '수정'인지 헷갈리므로, 그 자리에서 바로 고친다.
+let _lifeEditing=null;   // 지금 수정 중인 메모 id (없으면 null)
+function lifeEdit(id){ _lifeEditing=id; renderLife();
+  setTimeout(function(){ const t=document.getElementById('life_edit_'+id);
+    if(t){ t.focus(); t.setSelectionRange(t.value.length,t.value.length); t.scrollIntoView({block:'center'}); } },30);
+}
+function lifeEditCancel(){ _lifeEditing=null; renderLife(); }
+function lifeEditSave(id){
+  const en=(LIFE.글||[]).find(e=>e.id===id); if(!en)return;
+  const ta=document.getElementById('life_edit_'+id);
+  const ti=document.getElementById('life_edit_t_'+id);
+  const b=(ta?ta.value:'').trim();
+  if(!b && !(en.imgs&&en.imgs.length)){ alert('내용이 비었어요. 지우시려면 삭제를 눌러주세요.'); return; }
+  en.body=b;
+  if(ti) en.title=ti.value.trim();
+  en.edited=_ymd();          // 인생노트는 생각의 흐름을 보는 곳이라 고친 날짜를 남긴다
+  _lifeEditing=null; saveLife(); renderLife();
+}
 function lifeCompare(){
   const t='', b=document.getElementById('life_body').value.trim();
   if(!b){alert('비교할 내용을 적어주세요.');return;}
@@ -1378,10 +1405,23 @@ function renderLife(){
   const e=document.getElementById('life_entries');
   if(e)e.innerHTML=(LIFE.글||[]).length?(LIFE.글||[]).map(en=>{
       const hasTitle=en.title&&en.title!=='(무제)';
+      const imgs=(en.imgs&&en.imgs.length)?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${en.imgs.map((src,i)=>`<img src="${src}" onclick="lifeImgView(${en.id},${i})" style="width:88px;height:88px;object-fit:cover;border-radius:8px;border:1px solid #d1fae5;cursor:zoom-in">`).join('')}</div>`:'';
+      const when=en.date+(en.edited&&en.edited!==en.date?` <span title="${en.edited}에 고침">(수정됨)</span>`:'');
+      if(_lifeEditing===en.id){
+        return `<div style="border-left:3px solid #f59e0b;background:#fffbeb;border-radius:8px;padding:12px 14px;margin-bottom:10px">
+        <div class="muted" style="font-size:12px;margin-bottom:8px">✏️ 고치는 중 — ${when}</div>
+        ${hasTitle?`<input id="life_edit_t_${en.id}" value="${esc(en.title)}" style="width:100%;padding:9px 11px;border:2px solid #fde68a;border-radius:8px;font-size:15px;font-weight:700;font-family:inherit;margin-bottom:8px">`:''}
+        <textarea id="life_edit_${en.id}" class="life-edit-ta" onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey))lifeEditSave(${en.id});if(event.key==='Escape')lifeEditCancel()">${esc(en.body)}</textarea>
+        ${imgs}
+        <div style="margin-top:9px;display:flex;gap:8px;flex-wrap:wrap">
+          <button onclick="lifeEditSave(${en.id})" style="background:#16a34a;color:#fff;border:none;border-radius:9px;padding:9px 20px;font-weight:700;cursor:pointer">저장</button>
+          <button onclick="lifeEditCancel()" style="background:#fff;color:#6b7280;border:1.5px solid #d1d5db;border-radius:9px;padding:9px 16px;font-weight:600;cursor:pointer">취소</button>
+        </div></div>`;
+      }
       return `<div style="border-left:3px solid #16a34a;background:#f6fdf8;border-radius:8px;padding:12px 14px;margin-bottom:10px">
-      <div style="display:flex;justify-content:${hasTitle?'space-between':'flex-end'};gap:8px;align-items:baseline">${hasTitle?`<b style="font-size:15px">${esc(en.title)}</b>`:''}<span class="muted" style="font-size:12px;white-space:nowrap">${en.date} <a onclick="lifeDel(${en.id})" style="cursor:pointer;color:#dc2626">삭제</a></span></div>
+      <div style="display:flex;justify-content:${hasTitle?'space-between':'flex-end'};gap:8px;align-items:baseline">${hasTitle?`<b style="font-size:15px">${esc(en.title)}</b>`:''}<span class="muted" style="font-size:12px;white-space:nowrap">${when} <a onclick="lifeEdit(${en.id})" style="cursor:pointer;color:#16a34a;font-weight:600">수정</a> <a onclick="lifeDel(${en.id})" style="cursor:pointer;color:#dc2626">삭제</a></span></div>
       <div style="white-space:pre-wrap;margin-top:${hasTitle?'6px':'0'};font-size:14px;line-height:1.6">${esc(en.body)}</div>
-      ${(en.imgs&&en.imgs.length)?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${en.imgs.map((src,i)=>`<img src="${src}" onclick="lifeImgView(${en.id},${i})" style="width:88px;height:88px;object-fit:cover;border-radius:8px;border:1px solid #d1fae5;cursor:zoom-in">`).join('')}</div>`:''}</div>`;
+      ${imgs}</div>`;
     }).join(''):'<div class="muted" style="padding:8px">메모하듯 막 적어보세요. 매일 쌓이면 생각의 흐름이 보여요.</div>';
   renderPast();
   lcRenderAll();
