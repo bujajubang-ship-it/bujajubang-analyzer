@@ -616,8 +616,8 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
      <div id="vb_grid"></div>
    </div>
    <div class="card" id="prj_card" style="border-top:3px solid #ea580c">
-     <h2>🎯 프로젝트 진행상황 <span class="muted big">— 올해 목표가 몇 월까지 왔는지</span></h2>
-     <div class="note">유튜브 · 쇼핑몰 · 영업 · 투자. 월을 눌러 어디까지 왔는지 표시해요 (같은 달을 다시 누르면 한 칸 되돌아갑니다). 이번 달은 노란 테두리로 표시됩니다.</div>
+     <h2>🎯 프로젝트 진행상황 <span class="muted big">— 지금 목표가 몇 월까지 왔는지</span></h2>
+     <div class="note">유튜브 · 쇼핑몰 · 영업 · 투자. 월을 눌러 어디까지 왔는지 표시해요 (같은 달을 다시 누르면 한 칸 되돌아갑니다). 월 밑 칸에는 그 달에 할 일을 한 단어로 적어두세요 — 예: 7월 밑에 “로켓그로스”. 이번 달은 노란 테두리입니다.</div>
      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0">
        <select id="prj_year" onchange="prjRender()" style="padding:8px 10px;border:2px solid #e5e7eb;border-radius:9px;font-size:13px"></select>
        <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#6b7280;cursor:pointer">
@@ -1315,7 +1315,7 @@ function prjAdd(p){
   const y=document.getElementById('prj_year').value||prjThisYear();
   // 올해면 이번 달까지, 지난 해면 1월부터 시작
   const mon = (y===prjThisYear()) ? prjThisMonth() : 1;
-  const it={id:'p'+Date.now()+Math.floor(Math.random()*1000),프로젝트:p,연도:y,진행월:mon,목표:'',메모:'',완료:false};
+  const it={id:'p'+Date.now()+Math.floor(Math.random()*1000),프로젝트:p,연도:y,진행월:mon,목표:'',메모:'',월별:{},완료:false};
   PRJ_ITEMS.push(it); prjRender(); prjSave();
   setTimeout(()=>{ const el=document.querySelector('[data-goal="'+it.id+'"]'); if(el)el.focus(); },50);
 }
@@ -1330,6 +1330,14 @@ function prjSetMonth(id,mon){
   it.진행월=(it.진행월===mon)?mon-1:mon;   // 같은 달을 다시 누르면 한 칸 되돌린다
   if(it.진행월<0)it.진행월=0;
   prjRender(); prjSave();
+}
+
+function prjMonthWord(id,mon,val){
+  const it=PRJ_ITEMS.find(x=>x.id===id); if(!it)return;
+  if(!it.월별)it.월별={};
+  const v=(val||'').trim();
+  if(v) it.월별[String(mon)]=v; else delete it.월별[String(mon)];
+  PRJ_DIRTY=true;
 }
 
 function prjField(id,key,val){ const it=PRJ_ITEMS.find(x=>x.id===id); if(it){ it[key]=val; PRJ_DIRTY=true; } }
@@ -1350,19 +1358,26 @@ function prjRow(it){
     const on=i<=cur, c=PRJ_MCOLOR[(i-1)%12];
     const nowMark=(isNow&&i===thisM);
     const line=i<12?`<div style="flex:1;height:3px;background:${i<cur?c:'#e5e7eb'};margin-top:11px"></div>`:'';
+    const wv=(it.월별||{})[String(i)]||'';
     dots.push(`<div style="display:flex;align-items:flex-start;flex:${i<12?'1':'0 0 auto'};min-width:0">
-      <div style="text-align:center;flex:0 0 auto;cursor:pointer" onclick="prjSetMonth('${it.id}',${i})" title="${i}월까지 진행">
-        <div style="width:24px;height:24px;border-radius:50%;border:2.5px solid ${on?c:(nowMark?'#f59e0b':'#d1d5db')};
-             background:${on?c:'#fff'};color:#fff;font-size:13px;line-height:20px;margin:0 auto;
-             ${nowMark?'box-shadow:0 0 0 3px #fef3c7':''}">${on?'✓':''}</div>
-        <div style="font-size:10.5px;margin-top:3px;color:${on?c:(nowMark?'#d97706':'#9ca3af')};font-weight:${nowMark||i===cur?'700':'500'};white-space:nowrap">${i}월</div>
+      <div style="text-align:center;flex:0 0 auto">
+        <div style="cursor:pointer" onclick="prjSetMonth('${it.id}',${i})" title="${i}월까지 진행">
+          <div style="width:24px;height:24px;border-radius:50%;border:2.5px solid ${on?c:(nowMark?'#f59e0b':'#d1d5db')};
+               background:${on?c:'#fff'};color:#fff;font-size:13px;line-height:20px;margin:0 auto;
+               ${nowMark?'box-shadow:0 0 0 3px #fef3c7':''}">${on?'✓':''}</div>
+          <div style="font-size:10.5px;margin-top:3px;color:${on?c:(nowMark?'#d97706':'#9ca3af')};font-weight:${nowMark||i===cur?'700':'500'};white-space:nowrap">${i}월</div>
+        </div>
+        <input value="${esc(wv)}" placeholder="—" title="${i}월에 할 일 (한 단어)"
+          oninput="prjMonthWord('${it.id}',${i},this.value)" onblur="prjBlurSave()"
+          style="width:58px;margin-top:3px;border:none;border-bottom:1px dashed ${wv?c:'#e5e7eb'};background:transparent;
+                 text-align:center;font-size:10.5px;font-family:inherit;color:${wv?c:'#9ca3af'};font-weight:${wv?'700':'400'};padding:1px 0">
       </div>${line}</div>`);
   }
   const bg=it.완료?'#f0fdf4':'#fff';
   return `<div style="border:1.5px solid #f1f5f9;border-radius:12px;padding:11px 13px;margin-bottom:9px;background:${bg}">
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:9px">
       <span style="background:${PRJ_HUE[it.프로젝트]}15;color:${PRJ_HUE[it.프로젝트]};border-radius:6px;padding:3px 8px;font-size:11.5px;font-weight:700;flex:0 0 auto">${PRJ_ICON[it.프로젝트]||''} ${esc(it.연도)}</span>
-      <input data-goal="${it.id}" value="${esc(it.목표)}" placeholder="올해 목표 (예: 영상 매달 4편 올리기)"
+      <input data-goal="${it.id}" value="${esc(it.목표)}" placeholder="현재 목표 (예: 영상 매달 4편 올리기)"
         oninput="prjField('${it.id}','목표',this.value)" onblur="prjBlurSave()"
         style="flex:1;min-width:120px;border:none;border-bottom:1.5px solid #f1f5f9;padding:4px 2px;font-size:14.5px;font-weight:700;font-family:inherit;background:transparent">
       <span class="muted" style="font-size:11.5px;white-space:nowrap">${cur?cur+'월까지':'시작 전'}</span>

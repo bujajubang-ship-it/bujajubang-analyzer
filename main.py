@@ -1846,12 +1846,18 @@ async def jageum_projects_post(request: Request):
             mon = int(it.get("진행월") or 0)
         except Exception:
             mon = 0
+        # 월별 한 단어 메모 ({"7": "로켓그로스"}) — 그 달에 뭘 하기로 했는지 짧게
+        wm = {}
+        for k, v in (it.get("월별") or {}).items():
+            if str(k).isdigit() and 1 <= int(k) <= 12 and str(v).strip():
+                wm[str(int(k))] = str(v).strip()[:20]
         items.append({
             "id": str(it.get("id") or "")[:40] or f"{y}-{len(items)}",
             "프로젝트": p, "연도": y,
             "진행월": min(12, max(0, mon)),
             "목표": str(it.get("목표", ""))[:300],
             "메모": str(it.get("메모", ""))[:2000],
+            "월별": wm,
             "완료": bool(it.get("완료")),
         })
     import datetime as _dt
