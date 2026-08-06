@@ -203,6 +203,27 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
      </div>
    </div>
 
+   <!-- 정산파일 보관함 -->
+   <div class="card" id="slfiles_card" style="border-top:3px solid #0f766e">
+     <h2>📁 정산파일 보관함 <span class="muted big">— 견적서·엑셀을 월별로 올려두고 어디서든 열어봅니다</span></h2>
+     <div class="note">올려둔 파일은 계속 보관됩니다. 영업사원은 본인 파일만, 사장님·경리는 전체를 봅니다.</div>
+     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0">
+       <input type="month" id="slf_month" style="padding:8px 10px;border:2px solid #e5e7eb;border-radius:9px;font-size:13px">
+       <input type="file" id="slf_input" multiple
+              style="flex:1;min-width:200px;padding:7px;border:2px dashed #d1d5db;border-radius:9px;font-size:13px">
+       <button id="slf_btn" onclick="slfUpload()"
+               style="border:none;background:#0f766e;color:#fff;border-radius:9px;padding:9px 16px;font-size:14px;font-weight:700;cursor:pointer">올리기</button>
+     </div>
+     <div id="slf_msg" style="font-size:13px;margin-bottom:6px"></div>
+     <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+       <select id="slf_filter" onchange="slfRender()" style="padding:7px 10px;border:2px solid #e5e7eb;border-radius:9px;font-size:13px">
+         <option value="">전체 월</option>
+       </select>
+       <span class="muted" style="font-size:12px">엑셀·PDF·한글·이미지·zip · 한 개 25MB까지</span>
+     </div>
+     <div style="max-height:44vh;overflow:auto"><table id="slf_table" style="font-size:13px;width:100%"></table></div>
+   </div>
+
    <!-- 영업 AI 비서 -->
    <div class="card" id="slchat_card" style="border-top:3px solid #5b21b6">
      <h2>💬 영업 AI 비서 <span class="muted big">— 기능 문의 · 개선 요청(사장님 결재)</span></h2>
@@ -594,6 +615,17 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
      <input type="file" id="vb_file" accept="image/*" multiple style="display:none">
      <div id="vb_grid"></div>
    </div>
+   <div class="card" id="prj_card" style="border-top:3px solid #ea580c">
+     <h2>🎯 프로젝트 진행상황 <span class="muted big">— 이번 달 목표와 어디까지 왔는지</span></h2>
+     <div class="note">유튜브 · 쇼핑몰 · 영업 · 투자. 월별로 남으니 지난달에 뭘 하려 했는지 돌아볼 수 있어요.</div>
+     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0">
+       <input type="month" id="prj_month" onchange="prjLoadMonth()" style="padding:8px 10px;border:2px solid #e5e7eb;border-radius:9px;font-size:13px">
+       <button onclick="prjSave()" id="prj_savebtn" style="border:none;background:#ea580c;color:#fff;border-radius:9px;padding:9px 18px;font-size:14px;font-weight:700;cursor:pointer">저장</button>
+       <span id="prj_msg" style="font-size:13px;color:#6b7280"></span>
+     </div>
+     <div id="prj_grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px"></div>
+   </div>
+
    <div class="card" style="border-top:3px solid #16a34a">
      <h2>✍️ 인생 노트 <span class="muted big">— 메모하듯 막 적어요 (구글 킵처럼)</span></h2>
      <textarea id="life_body" placeholder="지금 떠오른 생각·아이디어·감정을 그냥 막 적어요. 제목 필요 없어요…&#10;&#10;길게 써도 됩니다. 칸은 아래 모서리를 끌어서 더 키울 수 있어요." onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey))lifeAdd()"></textarea>
@@ -1002,7 +1034,7 @@ function showTab(v,btn){
   if(v==='total')renderTotal();
   if(v==='personal')loadInvest();   // 투자노트가 이 탭에 통합됨
   if(v==='life')loadLife();
-  if(v==='sales')loadSales();
+  if(v==='sales'){loadSales();loadSalesFiles();}
   window.scrollTo(0,0);
 }
 function renderTotal(){
@@ -1243,7 +1275,71 @@ function renderAcct(){
 }
 // ── 🌱 인생 노트 (boss 전용: 비전보드 + 글쓰기 + 과거 블로그) ──
 let LIFE={비전보드:[],글:[],과거:[],상담:[],상담방:[],상담현재:null}, _lifeLoaded=false;
+// ===== 프로젝트 진행상황 =====
+const PRJ_ICON={'유튜브':'🎬','쇼핑몰':'🛒','영업':'📈','투자':'💰'};
+const PRJ_STATES=['진행중','잘됨','막힘','쉬는중'];
+const PRJ_COLOR={'진행중':'#0f766e','잘됨':'#16a34a','막힘':'#dc2626','쉬는중':'#6b7280'};
+let PRJ_ALL={}, PRJ_LIST=[];
+
+function loadProjects(){
+  const mi=document.getElementById('prj_month');
+  if(mi&&!mi.value){ const t=new Date(); mi.value=t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0'); }
+  fetch('/jageum/api/projects').then(r=>r.json()).then(d=>{
+    PRJ_LIST=d.projects||[]; PRJ_ALL=d.months||{};
+    prjLoadMonth();
+  }).catch(()=>{ document.getElementById('prj_grid').innerHTML='<div style="color:#dc2626">불러오지 못했어요.</div>'; });
+}
+
+function prjLoadMonth(){
+  const m=document.getElementById('prj_month').value;
+  const cur=PRJ_ALL[m]||{};
+  // 이번 달에 아직 안 적었으면 지난달 목표를 흐리게 보여줘 이어서 쓰게 한다
+  const prev=Object.keys(PRJ_ALL).filter(k=>k!=='_meta'&&k<m).sort().pop();
+  const prevData=(prev&&PRJ_ALL[prev])||{};
+  document.getElementById('prj_grid').innerHTML=PRJ_LIST.map(p=>{
+    const v=cur[p]||{}; const pv=prevData[p]||{};
+    const st=v.상태||'진행중';
+    const hint=(!v.목표&&pv.목표)?`<div style="font-size:11.5px;color:#9ca3af;margin-top:4px">지난달 목표: ${esc(pv.목표).slice(0,60)}</div>`:'';
+    return `<div style="border:1.5px solid #f1f5f9;border-radius:12px;padding:12px;background:#fff">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <b style="font-size:15px">${PRJ_ICON[p]||'•'} ${esc(p)}</b>
+        <select id="prj_st_${esc(p)}" style="border:1.5px solid #e5e7eb;border-radius:8px;padding:4px 8px;font-size:12px;color:${PRJ_COLOR[st]};font-weight:700">
+          ${PRJ_STATES.map(s=>`<option ${s===st?'selected':''}>${s}</option>`).join('')}
+        </select>
+      </div>
+      <label style="font-size:12px;color:#6b7280;font-weight:600">이번 달 목표</label>
+      <textarea id="prj_goal_${esc(p)}" rows="2" placeholder="예) 영상 4편 올리기"
+        style="width:100%;padding:8px 10px;border:2px solid #e5e7eb;border-radius:9px;font-size:13px;font-family:inherit;margin:4px 0 2px">${esc(v.목표||'')}</textarea>
+      ${hint}
+      <label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-top:8px">진행상황</label>
+      <textarea id="prj_prog_${esc(p)}" rows="4" placeholder="어디까지 했는지, 막힌 건 뭔지"
+        style="width:100%;padding:8px 10px;border:2px solid #e5e7eb;border-radius:9px;font-size:13px;font-family:inherit;margin-top:4px">${esc(v.진행||'')}</textarea>
+    </div>`;
+  }).join('');
+}
+
+function prjSave(){
+  const m=document.getElementById('prj_month').value;
+  if(!m){ alert('월을 골라주세요'); return; }
+  const items={};
+  PRJ_LIST.forEach(p=>{
+    items[p]={목표:(document.getElementById('prj_goal_'+p)||{}).value||'',
+              진행:(document.getElementById('prj_prog_'+p)||{}).value||'',
+              상태:(document.getElementById('prj_st_'+p)||{}).value||'진행중'};
+  });
+  const btn=document.getElementById('prj_savebtn'), msg=document.getElementById('prj_msg');
+  btn.disabled=true; msg.style.color='#6b7280'; msg.textContent='저장 중…';
+  fetch('/jageum/api/projects',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({month:m,items})}).then(r=>r.json()).then(d=>{
+    btn.disabled=false;
+    if(!d.ok){ msg.style.color='#dc2626'; msg.textContent=d.error||'저장 실패'; return; }
+    PRJ_ALL[m]=items; msg.style.color='#16a34a'; msg.textContent='저장했어요 ✓';
+    setTimeout(()=>{msg.textContent='';},2500);
+  }).catch(()=>{ btn.disabled=false; msg.style.color='#dc2626'; msg.textContent='저장 실패'; });
+}
+
 function loadLife(){
+  loadProjects();
   if(MYROLE!=='boss')return;
   if(_lifeLoaded){renderLife();return;}
   fetch('/jageum/api/life').then(r=>r.ok?r.json():{}).then(d=>{
@@ -2457,6 +2553,72 @@ function renderBoard(rows){
   }).join('');
   document.getElementById('sl_board').innerHTML=cols;
 }
+// ===== 정산파일 보관함 =====
+let SLFILES=[], SLF_ROLE='';
+function slfSize(n){ return n>=1048576 ? (n/1048576).toFixed(1)+'MB' : Math.max(1,Math.round(n/1024))+'KB'; }
+function slfEsc(s){ const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+
+function loadSalesFiles(){
+  const mi=document.getElementById('slf_month');
+  if(mi&&!mi.value){ const t=new Date(); mi.value=t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0'); }
+  fetch('/jageum/api/sales_files').then(r=>r.json()).then(d=>{
+    SLFILES=d.files||[]; SLF_ROLE=d.role||'';
+    const sel=document.getElementById('slf_filter');
+    if(sel){ const cur=sel.value;
+      sel.innerHTML='<option value="">전체 월</option>'+(d.months||[]).map(m=>`<option value="${m}">${m}</option>`).join('');
+      sel.value=cur; }
+    slfRender();
+  }).catch(()=>{ document.getElementById('slf_table').innerHTML='<tr><td style="padding:12px;color:#dc2626">파일 목록을 불러오지 못했어요.</td></tr>'; });
+}
+
+function slfRender(){
+  const f=(document.getElementById('slf_filter')||{}).value||'';
+  const rows=SLFILES.filter(x=>!f||x.월===f);
+  const t=document.getElementById('slf_table');
+  if(!rows.length){ t.innerHTML='<tr><td style="padding:14px;color:#6b7280">아직 올린 파일이 없어요. 위에서 월을 고르고 파일을 올려주세요.</td></tr>'; return; }
+  // 영업사원은 자기 것만 보이니 담당자 칸을 숨긴다
+  const showWho = SLF_ROLE!=='sales';
+  t.innerHTML='<tr style="background:#f9fafb;text-align:left">'+
+    (showWho?'<th style="padding:7px 8px">담당자</th>':'')+
+    '<th style="padding:7px 8px">월</th><th style="padding:7px 8px">파일</th>'+
+    '<th style="padding:7px 8px">크기</th><th style="padding:7px 8px">올린시각</th><th></th></tr>'+
+    rows.map(x=>{
+      const q=`담당자=${encodeURIComponent(x.담당자)}&month=${encodeURIComponent(x.월)}&name=${encodeURIComponent(x.파일명)}`;
+      return `<tr style="border-top:1px solid #f1f5f9">`+
+        (showWho?`<td style="padding:7px 8px">${slfEsc(x.담당자)}</td>`:'')+
+        `<td style="padding:7px 8px">${slfEsc(x.월)}</td>`+
+        `<td style="padding:7px 8px"><a href="/jageum/api/sales_files/download?${q}" style="color:#0f766e;font-weight:600;text-decoration:none">${slfEsc(x.파일명)}</a></td>`+
+        `<td style="padding:7px 8px;color:#6b7280">${slfSize(x.크기)}</td>`+
+        `<td style="padding:7px 8px;color:#6b7280">${slfEsc(x.올린시각)}</td>`+
+        `<td style="padding:7px 8px"><button onclick="slfDel('${encodeURIComponent(x.담당자)}','${x.월}','${encodeURIComponent(x.파일명)}')" style="border:none;background:#fef2f2;color:#dc2626;border-radius:7px;padding:5px 10px;cursor:pointer;font-size:12px">삭제</button></td>`+
+      `</tr>`;
+    }).join('');
+}
+
+function slfUpload(){
+  const mi=document.getElementById('slf_month'), fi=document.getElementById('slf_input');
+  const msg=document.getElementById('slf_msg'), btn=document.getElementById('slf_btn');
+  if(!mi.value){ msg.style.color='#dc2626'; msg.textContent='월을 골라주세요.'; return; }
+  if(!fi.files.length){ msg.style.color='#dc2626'; msg.textContent='올릴 파일을 골라주세요.'; return; }
+  const fd=new FormData(); fd.append('month', mi.value);
+  for(const f of fi.files) fd.append('files', f);
+  btn.disabled=true; msg.style.color='#6b7280'; msg.textContent='올리는 중…';
+  fetch('/jageum/api/sales_files',{method:'POST',body:fd}).then(r=>r.json()).then(d=>{
+    btn.disabled=false;
+    if(!d.ok){ msg.style.color='#dc2626'; msg.textContent=d.error||'올리지 못했어요.'; return; }
+    msg.style.color='#0f766e';
+    msg.textContent=`${d.saved.length}개 올렸어요.`+(d.skipped.length?` (건너뜀: ${d.skipped.join(', ')})`:'');
+    fi.value=''; loadSalesFiles();
+  }).catch(()=>{ btn.disabled=false; msg.style.color='#dc2626'; msg.textContent='올리지 못했어요.'; });
+}
+
+function slfDel(who,month,name){
+  if(!confirm('이 파일을 삭제할까요?'))return;
+  fetch('/jageum/api/sales_files/delete',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({담당자:decodeURIComponent(who),월:month,파일명:decodeURIComponent(name)})})
+    .then(()=>loadSalesFiles());
+}
+
 function loadSales(){
   fetch('/jageum/api/sales').then(r=>r.json()).then(d=>{
     SALES=d.deals||[];

@@ -1175,6 +1175,141 @@ def sales_deposits(request: Request):
                     "linked": linked.get(key)})
     return JSONResponse({"deposits": out})
 
+# ===== 직원별 정산파일 보관함 (견적서·엑셀) =====
+# 담당자별 / 월별로 올려두고 어디서든 열어보는 곳. 영업사원은 자기 것만, 사장·경리는 전부 본다.
+# DATA_DIR 은 Render 영구디스크라 재배포해도 파일이 남는다.
+SALES_FILES_DIR = data_path("sales_files")
+_FILE_OK_EXT = {".xlsx", ".xls", ".csv", ".pdf", ".hwp", ".hwpx", ".doc", ".docx",
+                ".png", ".jpg", ".jpeg", ".zip", ".ppt", ".pptx", ".txt"}
+_MAX_FILE_MB = 25
+
+
+def _safe_seg(s: str) -> str:
+    """폴더명으로 쓸 수 있게 다듬는다. 경로를 거슬러 올라가는 문자는 전부 없앤다."""
+    s = (s or "").replace("\\", "/").split("/")[-1].strip()
+    s = re.sub(r'[<>:"|?*\x00-\x1f]', "", s).strip(". ")
+    return s[:120]
+
+
+def _month_ok(m: str) -> bool:
+    return bool(re.fullmatch(r"\d{4}-\d{2}", m or ""))
+
+
+def _files_owner(request: Request, want: str = "") -> str:
+    """어느 담당자 폴더를 다룰지. 영업사원은 무조건 본인 것으로 고정한다."""
+    role, who = _jageum_role(request), _jageum_who(request)
+    if role == "sales":
+        return who
+    return _safe_seg(want) or who or "공용"
+
+
+@app.get("/jageum/api/sales_files")
+def sales_files_list(request: Request, month: str = ""):
+    if not _sales_auth(request):
+        return _AUTH401
+    role, who = _jageum_role(request), _jageum_who(request)
+    out = []
+    if SALES_FILES_DIR.exists():
+        for owner_dir in sorted(SALES_FILES_DIR.iterdir()):
+            if not owner_dir.is_dir():
+                continue
+            if role == "sales" and owner_dir.name != who:   # 남의 파일은 안 보인다
+                continue
+            for m_dir in sorted(owner_dir.iterdir(), reverse=True):
+                if not m_dir.is_dir() or (month and m_dir.name != month):
+                    continue
+                for f in sorted(m_dir.iterdir()):
+                    if not f.is_file():
+                        continue
+                    st = f.stat()
+                    import datetime as _dt
+                    out.append({"담당자": owner_dir.name, "월": m_dir.name, "파일명": f.name,
+                                "크기": st.st_size,
+                                "올린시각": _dt.datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M")})
+    out.sort(key=lambda x: (x["월"], x["올린시각"]), reverse=True)
+    months = sorted({x["월"] for x in out}, reverse=True)
+    return JSONResponse({"files": out, "months": months, "me": who, "role": role})
+
+
+@app.post("/jageum/api/sales_files")
+async def sales_files_upload(request: Request):
+    if not _sales_auth(request):
+        return _AUTH401
+    form = await request.form()
+    month = (form.get("month") or "").strip()
+    if not _month_ok(month):
+        return JSONResponse({"ok": False, "error": "월을 YYYY-MM 으로 골라주세요"}, status_code=400)
+    owner = _files_owner(request, form.get("담당자") or "")
+    if not owner:
+        return JSONResponse({"ok": False, "error": "담당자를 알 수 없습니다"}, status_code=400)
+
+    saved, skipped = [], []
+    for up in form.getlist("files"):
+        if not hasattr(up, "filename"):
+            continue
+        name = _safe_seg(up.filename)
+        if not name:
+            continue
+        ext = os.path.splitext(name)[1].lower()
+        if ext not in _FILE_OK_EXT:
+            skipped.append(f"{name} (지원 안 하는 형식)")
+            continue
+        raw = await up.read()
+        if len(raw) > _MAX_FILE_MB * 1024 * 1024:
+            skipped.append(f"{name} ({_MAX_FILE_MB}MB 초과)")
+            continue
+        d = SALES_FILES_DIR / _safe_seg(owner) / month
+        d.mkdir(parents=True, exist_ok=True)
+        target = d / name
+        if target.exists():          # 같은 이름이면 덮어쓰지 않고 (2), (3) 을 붙인다
+            stem, e = os.path.splitext(name)
+            i = 2
+            while (d / f"{stem} ({i}){e}").exists():
+                i += 1
+            target = d / f"{stem} ({i}){e}"
+        target.write_bytes(raw)
+        saved.append(target.name)
+    return JSONResponse({"ok": True, "saved": saved, "skipped": skipped, "담당자": owner, "월": month})
+
+
+def _files_resolve(request: Request, owner: str, month: str, name: str):
+    """요청한 파일의 실제 경로. 권한 밖이거나 경로를 벗어나면 None."""
+    role, who = _jageum_role(request), _jageum_who(request)
+    owner, month, name = _safe_seg(owner), (month or "").strip(), _safe_seg(name)
+    if not owner or not _month_ok(month) or not name:
+        return None
+    if role == "sales" and owner != who:
+        return None
+    p = (SALES_FILES_DIR / owner / month / name).resolve()
+    try:
+        p.relative_to(SALES_FILES_DIR.resolve())   # 상위 폴더로 빠져나가는 요청 차단
+    except ValueError:
+        return None
+    return p if p.is_file() else None
+
+
+@app.get("/jageum/api/sales_files/download")
+def sales_files_download(request: Request, 담당자: str = "", month: str = "", name: str = ""):
+    if not _sales_auth(request):
+        return _AUTH401
+    p = _files_resolve(request, 담당자, month, name)
+    if not p:
+        return JSONResponse({"ok": False, "error": "파일을 찾을 수 없습니다"}, status_code=404)
+    return FileResponse(str(p), filename=p.name)
+
+
+@app.post("/jageum/api/sales_files/delete")
+async def sales_files_delete(request: Request):
+    if not _sales_auth(request):
+        return _AUTH401
+    body = await request.json()
+    p = _files_resolve(request, body.get("담당자", ""), body.get("월", ""), body.get("파일명", ""))
+    if not p:
+        return JSONResponse({"ok": False, "error": "파일을 찾을 수 없습니다"}, status_code=404)
+    p.unlink()
+    return JSONResponse({"ok": True})
+
+
 @app.post("/jageum/api/sales_refresh")
 async def sales_refresh(request: Request):
     """영업직원이 이카운트 판매조회로 넘긴 뒤 눌러 판매 데이터를 즉시 재수집(온디맨드).
@@ -1666,6 +1801,54 @@ async def jageum_life_post(request: Request):
     body = await request.body()
     JAGEUM_LIFE_FILE.write_text(body.decode("utf-8"), encoding="utf-8")
     return JSONResponse({"ok": True})
+
+# ===== 프로젝트 진행상황 (월별 목표) =====
+# 지금 신경 쓰고 있는 4가지를 한 화면에서 본다. 인생노트와 같은 성격이라 사장님만 본다.
+PROJECTS = ["유튜브", "쇼핑몰", "영업", "투자"]
+PROJECTS_FILE = data_path("jageum_projects.json")
+
+
+def _load_projects() -> dict:
+    if PROJECTS_FILE.exists():
+        try:
+            d = json.loads(PROJECTS_FILE.read_text(encoding="utf-8"))
+            if isinstance(d, dict):
+                return d
+        except Exception:
+            pass
+    return {}
+
+
+@app.get("/jageum/api/projects")
+def jageum_projects_get(request: Request):
+    if not _boss_only(request):
+        return _AUTH401
+    return JSONResponse({"projects": PROJECTS, "months": _load_projects()})
+
+
+@app.post("/jageum/api/projects")
+async def jageum_projects_post(request: Request):
+    """한 달치를 통째로 저장한다. {month: 'YYYY-MM', items: {프로젝트: {목표, 진행, 상태}}}"""
+    if not _boss_only(request):
+        return _AUTH401
+    body = await request.json()
+    month = (body.get("month") or "").strip()
+    if not re.fullmatch(r"\d{4}-\d{2}", month):
+        return JSONResponse({"ok": False, "error": "월 형식이 올바르지 않습니다"}, status_code=400)
+    items = body.get("items") or {}
+    clean = {}
+    for p in PROJECTS:
+        v = items.get(p) or {}
+        clean[p] = {"목표": str(v.get("목표", ""))[:2000],
+                    "진행": str(v.get("진행", ""))[:4000],
+                    "상태": (v.get("상태") if v.get("상태") in ("진행중", "잘됨", "막힘", "쉬는중") else "진행중")}
+    data = _load_projects()
+    data[month] = clean
+    import datetime as _dt
+    data.setdefault("_meta", {})[month] = _dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+    PROJECTS_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    return JSONResponse({"ok": True, "saved": month})
+
 
 @app.post("/jageum/api/life/compare")
 async def jageum_life_compare(request: Request):
