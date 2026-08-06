@@ -1819,32 +1819,19 @@ def _load_projects() -> dict:
     return {}
 
 
-# 프로젝트마다 일이 흘러가는 순서가 다르다. 화면에서 고칠 수 있고, 여기 값은 처음 기본값이다.
-DEFAULT_STAGES = {
-    "유튜브": ["기획", "촬영", "편집자 전달", "편집 중", "편집 완료", "섬네일 제작", "업로드"],
-    "쇼핑몰": ["소싱", "상세페이지", "상품등록", "광고/노출", "판매중", "정산"],
-    "영업":   ["견적", "계약", "발주/제작", "설치", "마감"],
-    "투자":   ["리서치", "매수", "보유", "점검", "정리"],
-}
-
-
 @app.get("/jageum/api/projects")
 def jageum_projects_get(request: Request):
     if not _boss_only(request):
         return _AUTH401
     d = _load_projects()
-    stages = d.get("stages") or {}
-    for p in PROJECTS:                      # 새 프로젝트가 생겨도 기본 단계는 항상 채워둔다
-        if not stages.get(p):
-            stages[p] = DEFAULT_STAGES.get(p, ["시작", "진행중", "완료"])
-    return JSONResponse({"projects": PROJECTS, "stages": stages, "items": d.get("items") or []})
+    return JSONResponse({"projects": PROJECTS, "items": d.get("items") or []})
 
 
 @app.post("/jageum/api/projects")
 async def jageum_projects_post(request: Request):
-    """목표 목록을 통째로 저장한다. {items: [...], stages: {프로젝트: [단계...]}}
+    """목표 목록을 통째로 저장한다. {items: [...]}
 
-    항목 하나 = 목표 하나. 월(month)로 묶어서 지난달에 뭘 하려 했는지 돌아본다.
+    목표 하나가 한 해를 따라간다. '진행월'(1~12)이 지금 어디까지 왔는지를 뜻한다.
     """
     if not _boss_only(request):
         return _AUTH401
@@ -1852,25 +1839,24 @@ async def jageum_projects_post(request: Request):
     items = []
     for it in (body.get("items") or [])[:500]:
         p = it.get("프로젝트")
-        m = (it.get("월") or "").strip()
-        if p not in PROJECTS or not re.fullmatch(r"\d{4}-\d{2}", m):
+        y = str(it.get("연도") or "").strip()
+        if p not in PROJECTS or not re.fullmatch(r"\d{4}", y):
             continue
+        try:
+            mon = int(it.get("진행월") or 0)
+        except Exception:
+            mon = 0
         items.append({
-            "id": str(it.get("id") or "")[:40] or f"{m}-{len(items)}",
-            "프로젝트": p, "월": m,
+            "id": str(it.get("id") or "")[:40] or f"{y}-{len(items)}",
+            "프로젝트": p, "연도": y,
+            "진행월": min(12, max(0, mon)),
             "목표": str(it.get("목표", ""))[:300],
-            "단계": str(it.get("단계", ""))[:40],
             "메모": str(it.get("메모", ""))[:2000],
             "완료": bool(it.get("완료")),
         })
-    stages = {}
-    for p in PROJECTS:
-        v = (body.get("stages") or {}).get(p) or DEFAULT_STAGES.get(p) or []
-        stages[p] = [str(x)[:20] for x in v][:12] or ["시작", "완료"]
     import datetime as _dt
     PROJECTS_FILE.write_text(json.dumps(
-        {"items": items, "stages": stages,
-         "updated": _dt.datetime.now().strftime("%Y-%m-%d %H:%M")},
+        {"items": items, "updated": _dt.datetime.now().strftime("%Y-%m-%d %H:%M")},
         ensure_ascii=False), encoding="utf-8")
     return JSONResponse({"ok": True, "count": len(items)})
 

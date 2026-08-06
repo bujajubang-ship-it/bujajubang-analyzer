@@ -616,12 +616,12 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
      <div id="vb_grid"></div>
    </div>
    <div class="card" id="prj_card" style="border-top:3px solid #ea580c">
-     <h2>🎯 프로젝트 진행상황 <span class="muted big">— 이번 달 목표와 어디까지 왔는지</span></h2>
-     <div class="note">유튜브 · 쇼핑몰 · 영업 · 투자. 월별로 남으니 지난달에 뭘 하려 했는지 돌아볼 수 있어요.</div>
+     <h2>🎯 프로젝트 진행상황 <span class="muted big">— 올해 목표가 몇 월까지 왔는지</span></h2>
+     <div class="note">유튜브 · 쇼핑몰 · 영업 · 투자. 월을 눌러 어디까지 왔는지 표시해요 (같은 달을 다시 누르면 한 칸 되돌아갑니다). 이번 달은 노란 테두리로 표시됩니다.</div>
      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0">
-       <input type="month" id="prj_month" onchange="prjRender()" style="padding:8px 10px;border:2px solid #e5e7eb;border-radius:9px;font-size:13px">
+       <select id="prj_year" onchange="prjRender()" style="padding:8px 10px;border:2px solid #e5e7eb;border-radius:9px;font-size:13px"></select>
        <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#6b7280;cursor:pointer">
-         <input type="checkbox" id="prj_showpast" onchange="prjRender()"> 지난 달도 보기
+         <input type="checkbox" id="prj_hidedone" onchange="prjRender()"> 끝난 목표 숨기기
        </label>
        <span id="prj_msg" style="font-size:13px;color:#6b7280;margin-left:auto"></span>
      </div>
@@ -1278,20 +1278,24 @@ function renderAcct(){
 // ── 🌱 인생 노트 (boss 전용: 비전보드 + 글쓰기 + 과거 블로그) ──
 let LIFE={비전보드:[],글:[],과거:[],상담:[],상담방:[],상담현재:null}, _lifeLoaded=false;
 // ===== 프로젝트 진행상황 =====
-// 목표 하나 = 줄 하나. 줄마다 단계 진행바가 있어 어디까지 왔는지 한눈에 본다.
+// 목표 하나 = 줄 하나. 진행바 자리에 1월~12월이 들어가서, 그 목표가 올해 어디까지 왔는지 본다.
 const PRJ_ICON={'유튜브':'🎬','쇼핑몰':'🛒','영업':'📈','투자':'💰'};
 const PRJ_HUE={'유튜브':'#dc2626','쇼핑몰':'#0f766e','영업':'#2563eb','투자':'#ca8a04'};
-// 단계마다 색이 이어지도록 (유튜브 리서처 진행바와 같은 느낌)
-const PRJ_DOT=['#6366f1','#8b5cf6','#f97316','#eab308','#22c55e','#ec4899','#06b6d4','#10b981','#f43f5e','#0ea5e9','#84cc16','#a855f7'];
-let PRJ_LIST=[], PRJ_STAGES={}, PRJ_ITEMS=[], PRJ_DIRTY=false;
+// 월마다 색이 이어지도록 (유튜브 리서처 진행바와 같은 느낌)
+const PRJ_MCOLOR=['#6366f1','#7c3aed','#8b5cf6','#a855f7','#ec4899','#f43f5e','#f97316','#eab308','#84cc16','#22c55e','#10b981','#06b6d4'];
+let PRJ_LIST=[], PRJ_ITEMS=[], PRJ_DIRTY=false;
 
-function prjThisMonth(){ const t=new Date(); return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0'); }
+function prjThisYear(){ return String(new Date().getFullYear()); }
+function prjThisMonth(){ return new Date().getMonth()+1; }
 
 function loadProjects(){
-  const mi=document.getElementById('prj_month');
-  if(mi&&!mi.value) mi.value=prjThisMonth();
+  const ys=document.getElementById('prj_year');
+  if(ys&&!ys.options.length){
+    const y=new Date().getFullYear();
+    ys.innerHTML=[y+1,y,y-1,y-2].map(v=>`<option value="${v}" ${v===y?'selected':''}>${v}년</option>`).join('');
+  }
   fetch('/jageum/api/projects').then(r=>r.json()).then(d=>{
-    PRJ_LIST=d.projects||[]; PRJ_STAGES=d.stages||{}; PRJ_ITEMS=d.items||[];
+    PRJ_LIST=d.projects||[]; PRJ_ITEMS=d.items||[];
     prjRender();
   }).catch(()=>{ document.getElementById('prj_body').innerHTML='<div style="color:#dc2626">불러오지 못했어요.</div>'; });
 }
@@ -1300,7 +1304,7 @@ function prjSave(){
   const msg=document.getElementById('prj_msg');
   msg.style.color='#6b7280'; msg.textContent='저장 중…';
   fetch('/jageum/api/projects',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({items:PRJ_ITEMS,stages:PRJ_STAGES})}).then(r=>r.json()).then(d=>{
+    body:JSON.stringify({items:PRJ_ITEMS})}).then(r=>r.json()).then(d=>{
       if(!d.ok){ msg.style.color='#dc2626'; msg.textContent='저장 실패'; return; }
       msg.style.color='#16a34a'; msg.textContent='저장했어요 ✓';
       setTimeout(()=>{ if(msg.textContent==='저장했어요 ✓') msg.textContent=''; },2000);
@@ -1308,11 +1312,12 @@ function prjSave(){
 }
 
 function prjAdd(p){
-  const m=document.getElementById('prj_month').value||prjThisMonth();
-  const st=(PRJ_STAGES[p]||[])[0]||'';
-  PRJ_ITEMS.push({id:'p'+Date.now()+Math.floor(Math.random()*1000),프로젝트:p,월:m,목표:'',단계:st,메모:'',완료:false});
-  prjRender(); prjSave();
-  setTimeout(()=>{ const el=document.querySelector('[data-goal="'+PRJ_ITEMS[PRJ_ITEMS.length-1].id+'"]'); if(el)el.focus(); },50);
+  const y=document.getElementById('prj_year').value||prjThisYear();
+  // 올해면 이번 달까지, 지난 해면 1월부터 시작
+  const mon = (y===prjThisYear()) ? prjThisMonth() : 1;
+  const it={id:'p'+Date.now()+Math.floor(Math.random()*1000),프로젝트:p,연도:y,진행월:mon,목표:'',메모:'',완료:false};
+  PRJ_ITEMS.push(it); prjRender(); prjSave();
+  setTimeout(()=>{ const el=document.querySelector('[data-goal="'+it.id+'"]'); if(el)el.focus(); },50);
 }
 
 function prjDel(id){
@@ -1320,82 +1325,72 @@ function prjDel(id){
   PRJ_ITEMS=PRJ_ITEMS.filter(x=>x.id!==id); prjRender(); prjSave();
 }
 
-function prjSetStage(id,stage){
+function prjSetMonth(id,mon){
   const it=PRJ_ITEMS.find(x=>x.id===id); if(!it)return;
-  it.단계=stage; it.완료=false; prjRender(); prjSave();
+  it.진행월=(it.진행월===mon)?mon-1:mon;   // 같은 달을 다시 누르면 한 칸 되돌린다
+  if(it.진행월<0)it.진행월=0;
+  prjRender(); prjSave();
 }
 
-function prjField(id,key,val){
-  const it=PRJ_ITEMS.find(x=>x.id===id); if(!it)return;
-  it[key]=val; PRJ_DIRTY=true;
-}
-
+function prjField(id,key,val){ const it=PRJ_ITEMS.find(x=>x.id===id); if(it){ it[key]=val; PRJ_DIRTY=true; } }
 function prjBlurSave(){ if(PRJ_DIRTY){ PRJ_DIRTY=false; prjSave(); } }
 
 function prjToggleDone(id){
   const it=PRJ_ITEMS.find(x=>x.id===id); if(!it)return;
-  it.완료=!it.완료;
-  if(it.완료){ const ss=PRJ_STAGES[it.프로젝트]||[]; it.단계=ss[ss.length-1]||it.단계; }
-  prjRender(); prjSave();
+  it.완료=!it.완료; prjRender(); prjSave();
 }
 
-// 한 줄(목표 하나) — 제목 + 단계 진행바
-function prjRow(it, editable){
-  const ss=PRJ_STAGES[it.프로젝트]||[];
-  let cur=ss.indexOf(it.단계); if(cur<0)cur=0;
-  if(it.완료)cur=ss.length-1;
-  const dots=ss.map((s,i)=>{
-    const on=i<=cur, c=PRJ_DOT[i%PRJ_DOT.length];
-    const line=i<ss.length-1
-      ? `<div style="flex:1;height:3px;background:${i<cur?c:'#e5e7eb'};margin-top:11px"></div>` : '';
-    return `<div style="display:flex;align-items:flex-start;flex:${i<ss.length-1?'1':'0 0 auto'};min-width:0">
-      <div style="text-align:center;flex:0 0 auto;${editable?'cursor:pointer':''}"
-           ${editable?`onclick="prjSetStage('${it.id}','${s.replace(/'/g,"\\'")}')"`:''} title="${esc(s)}">
-        <div style="width:24px;height:24px;border-radius:50%;border:2.5px solid ${on?c:'#d1d5db'};
-             background:${on?c:'#fff'};color:#fff;font-size:13px;line-height:20px;margin:0 auto">${on?'✓':''}</div>
-        <div style="font-size:10.5px;margin-top:3px;color:${on?c:'#9ca3af'};font-weight:${i===cur?'700':'500'};white-space:nowrap">${esc(s)}</div>
-      </div>${line}</div>`;
-  }).join('');
-  const donebg=it.완료?'#f0fdf4':'#fff';
-  return `<div style="border:1.5px solid #f1f5f9;border-radius:12px;padding:11px 13px;margin-bottom:9px;background:${donebg}">
+// 한 줄(목표 하나) — 제목 + 1월~12월 진행바
+function prjRow(it){
+  const cur=Math.min(12,Math.max(0,it.진행월||0));
+  const isNow=(it.연도===prjThisYear());
+  const thisM=prjThisMonth();
+  const dots=[];
+  for(let i=1;i<=12;i++){
+    const on=i<=cur, c=PRJ_MCOLOR[(i-1)%12];
+    const nowMark=(isNow&&i===thisM);
+    const line=i<12?`<div style="flex:1;height:3px;background:${i<cur?c:'#e5e7eb'};margin-top:11px"></div>`:'';
+    dots.push(`<div style="display:flex;align-items:flex-start;flex:${i<12?'1':'0 0 auto'};min-width:0">
+      <div style="text-align:center;flex:0 0 auto;cursor:pointer" onclick="prjSetMonth('${it.id}',${i})" title="${i}월까지 진행">
+        <div style="width:24px;height:24px;border-radius:50%;border:2.5px solid ${on?c:(nowMark?'#f59e0b':'#d1d5db')};
+             background:${on?c:'#fff'};color:#fff;font-size:13px;line-height:20px;margin:0 auto;
+             ${nowMark?'box-shadow:0 0 0 3px #fef3c7':''}">${on?'✓':''}</div>
+        <div style="font-size:10.5px;margin-top:3px;color:${on?c:(nowMark?'#d97706':'#9ca3af')};font-weight:${nowMark||i===cur?'700':'500'};white-space:nowrap">${i}월</div>
+      </div>${line}</div>`);
+  }
+  const bg=it.완료?'#f0fdf4':'#fff';
+  return `<div style="border:1.5px solid #f1f5f9;border-radius:12px;padding:11px 13px;margin-bottom:9px;background:${bg}">
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:9px">
-      <span style="background:${PRJ_HUE[it.프로젝트]}15;color:${PRJ_HUE[it.프로젝트]};border-radius:6px;padding:3px 8px;font-size:11.5px;font-weight:700;flex:0 0 auto">${PRJ_ICON[it.프로젝트]||''} ${esc(it.월)}</span>
-      ${editable
-        ? `<input data-goal="${it.id}" value="${esc(it.목표)}" placeholder="이번 달 목표 (예: 영상 4편 올리기)"
-             oninput="prjField('${it.id}','목표',this.value)" onblur="prjBlurSave()"
-             style="flex:1;min-width:120px;border:none;border-bottom:1.5px solid #f1f5f9;padding:4px 2px;font-size:14.5px;font-weight:700;font-family:inherit;background:transparent">`
-        : `<b style="flex:1;font-size:14px;color:#374151">${esc(it.목표||'(제목 없음)')}</b>`}
-      ${editable?`<button onclick="prjToggleDone('${it.id}')" title="완료"
-           style="border:none;background:${it.완료?'#dcfce7':'#f3f4f6'};color:${it.완료?'#16a34a':'#6b7280'};border-radius:7px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer">${it.완료?'완료 ✓':'완료'}</button>
-        <button onclick="prjDel('${it.id}')" style="border:none;background:#fef2f2;color:#dc2626;border-radius:7px;padding:5px 9px;font-size:12px;cursor:pointer">삭제</button>`:''}
+      <span style="background:${PRJ_HUE[it.프로젝트]}15;color:${PRJ_HUE[it.프로젝트]};border-radius:6px;padding:3px 8px;font-size:11.5px;font-weight:700;flex:0 0 auto">${PRJ_ICON[it.프로젝트]||''} ${esc(it.연도)}</span>
+      <input data-goal="${it.id}" value="${esc(it.목표)}" placeholder="올해 목표 (예: 영상 매달 4편 올리기)"
+        oninput="prjField('${it.id}','목표',this.value)" onblur="prjBlurSave()"
+        style="flex:1;min-width:120px;border:none;border-bottom:1.5px solid #f1f5f9;padding:4px 2px;font-size:14.5px;font-weight:700;font-family:inherit;background:transparent">
+      <span class="muted" style="font-size:11.5px;white-space:nowrap">${cur?cur+'월까지':'시작 전'}</span>
+      <button onclick="prjToggleDone('${it.id}')" title="완료"
+        style="border:none;background:${it.완료?'#dcfce7':'#f3f4f6'};color:${it.완료?'#16a34a':'#6b7280'};border-radius:7px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer">${it.완료?'완료 ✓':'완료'}</button>
+      <button onclick="prjDel('${it.id}')" style="border:none;background:#fef2f2;color:#dc2626;border-radius:7px;padding:5px 9px;font-size:12px;cursor:pointer">삭제</button>
     </div>
-    <div style="display:flex;align-items:flex-start;overflow-x:auto;padding-bottom:2px">${dots}</div>
-    ${editable
-      ? `<input value="${esc(it.메모||'')}" placeholder="메모 (막힌 것·다음에 할 것)"
-           oninput="prjField('${it.id}','메모',this.value)" onblur="prjBlurSave()"
-           style="width:100%;margin-top:9px;border:none;background:#f9fafb;border-radius:8px;padding:7px 10px;font-size:12.5px;font-family:inherit">`
-      : (it.메모?`<div style="margin-top:8px;font-size:12.5px;color:#6b7280">${esc(it.메모)}</div>`:'')}
+    <div style="display:flex;align-items:flex-start;overflow-x:auto;padding-bottom:2px">${dots.join('')}</div>
+    <input value="${esc(it.메모||'')}" placeholder="메모 (막힌 것·다음에 할 것)"
+      oninput="prjField('${it.id}','메모',this.value)" onblur="prjBlurSave()"
+      style="width:100%;margin-top:9px;border:none;background:#f9fafb;border-radius:8px;padding:7px 10px;font-size:12.5px;font-family:inherit">
   </div>`;
 }
 
 function prjRender(){
-  const m=document.getElementById('prj_month').value||prjThisMonth();
-  const past=document.getElementById('prj_showpast').checked;
+  const y=document.getElementById('prj_year').value||prjThisYear();
+  const hide=document.getElementById('prj_hidedone').checked;
   document.getElementById('prj_body').innerHTML=PRJ_LIST.map(p=>{
-    const mine=PRJ_ITEMS.filter(x=>x.프로젝트===p);
-    const now=mine.filter(x=>x.월===m);
-    const old=mine.filter(x=>x.월<m).sort((a,b)=>b.월.localeCompare(a.월));
-    const doneN=now.filter(x=>x.완료).length;
+    let mine=PRJ_ITEMS.filter(x=>x.프로젝트===p&&x.연도===y);
+    const doneN=mine.filter(x=>x.완료).length;
+    if(hide)mine=mine.filter(x=>!x.완료);
     return `<div style="margin-bottom:18px">
       <div style="display:flex;align-items:center;gap:9px;margin-bottom:8px">
         <b style="font-size:16px;color:${PRJ_HUE[p]}">${PRJ_ICON[p]} ${esc(p)}</b>
-        <span class="muted" style="font-size:12px">이번 달 ${now.length}개${now.length?` · 완료 ${doneN}개`:''}</span>
+        <span class="muted" style="font-size:12px">목표 ${mine.length}개${doneN?` · 완료 ${doneN}개`:''}</span>
         <button onclick="prjAdd('${p}')" style="border:none;background:${PRJ_HUE[p]};color:#fff;border-radius:8px;padding:5px 12px;font-size:12.5px;font-weight:700;cursor:pointer">+ 목표 추가</button>
       </div>
-      ${now.length?now.map(x=>prjRow(x,true)).join(''):'<div style="color:#9ca3af;font-size:13px;padding:8px 2px 12px">이번 달 목표가 없어요. <b>+ 목표 추가</b>를 눌러 적어보세요.</div>'}
-      ${past&&old.length?`<div style="margin-top:6px;padding-top:8px;border-top:1px dashed #e5e7eb">
-        <div style="font-size:12px;color:#9ca3af;margin-bottom:7px">지난 달 목표 ${old.length}개</div>
-        ${old.map(x=>prjRow(x,false)).join('')}</div>`:''}
+      ${mine.length?mine.map(prjRow).join(''):'<div style="color:#9ca3af;font-size:13px;padding:8px 2px 12px">목표가 없어요. <b>+ 목표 추가</b>를 눌러 적어보세요.</div>'}
     </div>`;
   }).join('');
 }
