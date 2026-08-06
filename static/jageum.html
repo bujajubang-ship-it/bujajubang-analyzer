@@ -619,11 +619,13 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
      <h2>🎯 프로젝트 진행상황 <span class="muted big">— 이번 달 목표와 어디까지 왔는지</span></h2>
      <div class="note">유튜브 · 쇼핑몰 · 영업 · 투자. 월별로 남으니 지난달에 뭘 하려 했는지 돌아볼 수 있어요.</div>
      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0">
-       <input type="month" id="prj_month" onchange="prjLoadMonth()" style="padding:8px 10px;border:2px solid #e5e7eb;border-radius:9px;font-size:13px">
-       <button onclick="prjSave()" id="prj_savebtn" style="border:none;background:#ea580c;color:#fff;border-radius:9px;padding:9px 18px;font-size:14px;font-weight:700;cursor:pointer">저장</button>
-       <span id="prj_msg" style="font-size:13px;color:#6b7280"></span>
+       <input type="month" id="prj_month" onchange="prjRender()" style="padding:8px 10px;border:2px solid #e5e7eb;border-radius:9px;font-size:13px">
+       <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#6b7280;cursor:pointer">
+         <input type="checkbox" id="prj_showpast" onchange="prjRender()"> 지난 달도 보기
+       </label>
+       <span id="prj_msg" style="font-size:13px;color:#6b7280;margin-left:auto"></span>
      </div>
-     <div id="prj_grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px"></div>
+     <div id="prj_body"></div>
    </div>
 
    <div class="card" style="border-top:3px solid #16a34a">
@@ -1276,66 +1278,126 @@ function renderAcct(){
 // ── 🌱 인생 노트 (boss 전용: 비전보드 + 글쓰기 + 과거 블로그) ──
 let LIFE={비전보드:[],글:[],과거:[],상담:[],상담방:[],상담현재:null}, _lifeLoaded=false;
 // ===== 프로젝트 진행상황 =====
+// 목표 하나 = 줄 하나. 줄마다 단계 진행바가 있어 어디까지 왔는지 한눈에 본다.
 const PRJ_ICON={'유튜브':'🎬','쇼핑몰':'🛒','영업':'📈','투자':'💰'};
-const PRJ_STATES=['진행중','잘됨','막힘','쉬는중'];
-const PRJ_COLOR={'진행중':'#0f766e','잘됨':'#16a34a','막힘':'#dc2626','쉬는중':'#6b7280'};
-let PRJ_ALL={}, PRJ_LIST=[];
+const PRJ_HUE={'유튜브':'#dc2626','쇼핑몰':'#0f766e','영업':'#2563eb','투자':'#ca8a04'};
+// 단계마다 색이 이어지도록 (유튜브 리서처 진행바와 같은 느낌)
+const PRJ_DOT=['#6366f1','#8b5cf6','#f97316','#eab308','#22c55e','#ec4899','#06b6d4','#10b981','#f43f5e','#0ea5e9','#84cc16','#a855f7'];
+let PRJ_LIST=[], PRJ_STAGES={}, PRJ_ITEMS=[], PRJ_DIRTY=false;
+
+function prjThisMonth(){ const t=new Date(); return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0'); }
 
 function loadProjects(){
   const mi=document.getElementById('prj_month');
-  if(mi&&!mi.value){ const t=new Date(); mi.value=t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0'); }
+  if(mi&&!mi.value) mi.value=prjThisMonth();
   fetch('/jageum/api/projects').then(r=>r.json()).then(d=>{
-    PRJ_LIST=d.projects||[]; PRJ_ALL=d.months||{};
-    prjLoadMonth();
-  }).catch(()=>{ document.getElementById('prj_grid').innerHTML='<div style="color:#dc2626">불러오지 못했어요.</div>'; });
-}
-
-function prjLoadMonth(){
-  const m=document.getElementById('prj_month').value;
-  const cur=PRJ_ALL[m]||{};
-  // 이번 달에 아직 안 적었으면 지난달 목표를 흐리게 보여줘 이어서 쓰게 한다
-  const prev=Object.keys(PRJ_ALL).filter(k=>k!=='_meta'&&k<m).sort().pop();
-  const prevData=(prev&&PRJ_ALL[prev])||{};
-  document.getElementById('prj_grid').innerHTML=PRJ_LIST.map(p=>{
-    const v=cur[p]||{}; const pv=prevData[p]||{};
-    const st=v.상태||'진행중';
-    const hint=(!v.목표&&pv.목표)?`<div style="font-size:11.5px;color:#9ca3af;margin-top:4px">지난달 목표: ${esc(pv.목표).slice(0,60)}</div>`:'';
-    return `<div style="border:1.5px solid #f1f5f9;border-radius:12px;padding:12px;background:#fff">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <b style="font-size:15px">${PRJ_ICON[p]||'•'} ${esc(p)}</b>
-        <select id="prj_st_${esc(p)}" style="border:1.5px solid #e5e7eb;border-radius:8px;padding:4px 8px;font-size:12px;color:${PRJ_COLOR[st]};font-weight:700">
-          ${PRJ_STATES.map(s=>`<option ${s===st?'selected':''}>${s}</option>`).join('')}
-        </select>
-      </div>
-      <label style="font-size:12px;color:#6b7280;font-weight:600">이번 달 목표</label>
-      <textarea id="prj_goal_${esc(p)}" rows="2" placeholder="예) 영상 4편 올리기"
-        style="width:100%;padding:8px 10px;border:2px solid #e5e7eb;border-radius:9px;font-size:13px;font-family:inherit;margin:4px 0 2px">${esc(v.목표||'')}</textarea>
-      ${hint}
-      <label style="font-size:12px;color:#6b7280;font-weight:600;display:block;margin-top:8px">진행상황</label>
-      <textarea id="prj_prog_${esc(p)}" rows="4" placeholder="어디까지 했는지, 막힌 건 뭔지"
-        style="width:100%;padding:8px 10px;border:2px solid #e5e7eb;border-radius:9px;font-size:13px;font-family:inherit;margin-top:4px">${esc(v.진행||'')}</textarea>
-    </div>`;
-  }).join('');
+    PRJ_LIST=d.projects||[]; PRJ_STAGES=d.stages||{}; PRJ_ITEMS=d.items||[];
+    prjRender();
+  }).catch(()=>{ document.getElementById('prj_body').innerHTML='<div style="color:#dc2626">불러오지 못했어요.</div>'; });
 }
 
 function prjSave(){
-  const m=document.getElementById('prj_month').value;
-  if(!m){ alert('월을 골라주세요'); return; }
-  const items={};
-  PRJ_LIST.forEach(p=>{
-    items[p]={목표:(document.getElementById('prj_goal_'+p)||{}).value||'',
-              진행:(document.getElementById('prj_prog_'+p)||{}).value||'',
-              상태:(document.getElementById('prj_st_'+p)||{}).value||'진행중'};
-  });
-  const btn=document.getElementById('prj_savebtn'), msg=document.getElementById('prj_msg');
-  btn.disabled=true; msg.style.color='#6b7280'; msg.textContent='저장 중…';
+  const msg=document.getElementById('prj_msg');
+  msg.style.color='#6b7280'; msg.textContent='저장 중…';
   fetch('/jageum/api/projects',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({month:m,items})}).then(r=>r.json()).then(d=>{
-    btn.disabled=false;
-    if(!d.ok){ msg.style.color='#dc2626'; msg.textContent=d.error||'저장 실패'; return; }
-    PRJ_ALL[m]=items; msg.style.color='#16a34a'; msg.textContent='저장했어요 ✓';
-    setTimeout(()=>{msg.textContent='';},2500);
-  }).catch(()=>{ btn.disabled=false; msg.style.color='#dc2626'; msg.textContent='저장 실패'; });
+    body:JSON.stringify({items:PRJ_ITEMS,stages:PRJ_STAGES})}).then(r=>r.json()).then(d=>{
+      if(!d.ok){ msg.style.color='#dc2626'; msg.textContent='저장 실패'; return; }
+      msg.style.color='#16a34a'; msg.textContent='저장했어요 ✓';
+      setTimeout(()=>{ if(msg.textContent==='저장했어요 ✓') msg.textContent=''; },2000);
+    }).catch(()=>{ msg.style.color='#dc2626'; msg.textContent='저장 실패'; });
+}
+
+function prjAdd(p){
+  const m=document.getElementById('prj_month').value||prjThisMonth();
+  const st=(PRJ_STAGES[p]||[])[0]||'';
+  PRJ_ITEMS.push({id:'p'+Date.now()+Math.floor(Math.random()*1000),프로젝트:p,월:m,목표:'',단계:st,메모:'',완료:false});
+  prjRender(); prjSave();
+  setTimeout(()=>{ const el=document.querySelector('[data-goal="'+PRJ_ITEMS[PRJ_ITEMS.length-1].id+'"]'); if(el)el.focus(); },50);
+}
+
+function prjDel(id){
+  if(!confirm('이 목표를 지울까요?'))return;
+  PRJ_ITEMS=PRJ_ITEMS.filter(x=>x.id!==id); prjRender(); prjSave();
+}
+
+function prjSetStage(id,stage){
+  const it=PRJ_ITEMS.find(x=>x.id===id); if(!it)return;
+  it.단계=stage; it.완료=false; prjRender(); prjSave();
+}
+
+function prjField(id,key,val){
+  const it=PRJ_ITEMS.find(x=>x.id===id); if(!it)return;
+  it[key]=val; PRJ_DIRTY=true;
+}
+
+function prjBlurSave(){ if(PRJ_DIRTY){ PRJ_DIRTY=false; prjSave(); } }
+
+function prjToggleDone(id){
+  const it=PRJ_ITEMS.find(x=>x.id===id); if(!it)return;
+  it.완료=!it.완료;
+  if(it.완료){ const ss=PRJ_STAGES[it.프로젝트]||[]; it.단계=ss[ss.length-1]||it.단계; }
+  prjRender(); prjSave();
+}
+
+// 한 줄(목표 하나) — 제목 + 단계 진행바
+function prjRow(it, editable){
+  const ss=PRJ_STAGES[it.프로젝트]||[];
+  let cur=ss.indexOf(it.단계); if(cur<0)cur=0;
+  if(it.완료)cur=ss.length-1;
+  const dots=ss.map((s,i)=>{
+    const on=i<=cur, c=PRJ_DOT[i%PRJ_DOT.length];
+    const line=i<ss.length-1
+      ? `<div style="flex:1;height:3px;background:${i<cur?c:'#e5e7eb'};margin-top:11px"></div>` : '';
+    return `<div style="display:flex;align-items:flex-start;flex:${i<ss.length-1?'1':'0 0 auto'};min-width:0">
+      <div style="text-align:center;flex:0 0 auto;${editable?'cursor:pointer':''}"
+           ${editable?`onclick="prjSetStage('${it.id}','${s.replace(/'/g,"\\'")}')"`:''} title="${esc(s)}">
+        <div style="width:24px;height:24px;border-radius:50%;border:2.5px solid ${on?c:'#d1d5db'};
+             background:${on?c:'#fff'};color:#fff;font-size:13px;line-height:20px;margin:0 auto">${on?'✓':''}</div>
+        <div style="font-size:10.5px;margin-top:3px;color:${on?c:'#9ca3af'};font-weight:${i===cur?'700':'500'};white-space:nowrap">${esc(s)}</div>
+      </div>${line}</div>`;
+  }).join('');
+  const donebg=it.완료?'#f0fdf4':'#fff';
+  return `<div style="border:1.5px solid #f1f5f9;border-radius:12px;padding:11px 13px;margin-bottom:9px;background:${donebg}">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:9px">
+      <span style="background:${PRJ_HUE[it.프로젝트]}15;color:${PRJ_HUE[it.프로젝트]};border-radius:6px;padding:3px 8px;font-size:11.5px;font-weight:700;flex:0 0 auto">${PRJ_ICON[it.프로젝트]||''} ${esc(it.월)}</span>
+      ${editable
+        ? `<input data-goal="${it.id}" value="${esc(it.목표)}" placeholder="이번 달 목표 (예: 영상 4편 올리기)"
+             oninput="prjField('${it.id}','목표',this.value)" onblur="prjBlurSave()"
+             style="flex:1;min-width:120px;border:none;border-bottom:1.5px solid #f1f5f9;padding:4px 2px;font-size:14.5px;font-weight:700;font-family:inherit;background:transparent">`
+        : `<b style="flex:1;font-size:14px;color:#374151">${esc(it.목표||'(제목 없음)')}</b>`}
+      ${editable?`<button onclick="prjToggleDone('${it.id}')" title="완료"
+           style="border:none;background:${it.완료?'#dcfce7':'#f3f4f6'};color:${it.완료?'#16a34a':'#6b7280'};border-radius:7px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer">${it.완료?'완료 ✓':'완료'}</button>
+        <button onclick="prjDel('${it.id}')" style="border:none;background:#fef2f2;color:#dc2626;border-radius:7px;padding:5px 9px;font-size:12px;cursor:pointer">삭제</button>`:''}
+    </div>
+    <div style="display:flex;align-items:flex-start;overflow-x:auto;padding-bottom:2px">${dots}</div>
+    ${editable
+      ? `<input value="${esc(it.메모||'')}" placeholder="메모 (막힌 것·다음에 할 것)"
+           oninput="prjField('${it.id}','메모',this.value)" onblur="prjBlurSave()"
+           style="width:100%;margin-top:9px;border:none;background:#f9fafb;border-radius:8px;padding:7px 10px;font-size:12.5px;font-family:inherit">`
+      : (it.메모?`<div style="margin-top:8px;font-size:12.5px;color:#6b7280">${esc(it.메모)}</div>`:'')}
+  </div>`;
+}
+
+function prjRender(){
+  const m=document.getElementById('prj_month').value||prjThisMonth();
+  const past=document.getElementById('prj_showpast').checked;
+  document.getElementById('prj_body').innerHTML=PRJ_LIST.map(p=>{
+    const mine=PRJ_ITEMS.filter(x=>x.프로젝트===p);
+    const now=mine.filter(x=>x.월===m);
+    const old=mine.filter(x=>x.월<m).sort((a,b)=>b.월.localeCompare(a.월));
+    const doneN=now.filter(x=>x.완료).length;
+    return `<div style="margin-bottom:18px">
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:8px">
+        <b style="font-size:16px;color:${PRJ_HUE[p]}">${PRJ_ICON[p]} ${esc(p)}</b>
+        <span class="muted" style="font-size:12px">이번 달 ${now.length}개${now.length?` · 완료 ${doneN}개`:''}</span>
+        <button onclick="prjAdd('${p}')" style="border:none;background:${PRJ_HUE[p]};color:#fff;border-radius:8px;padding:5px 12px;font-size:12.5px;font-weight:700;cursor:pointer">+ 목표 추가</button>
+      </div>
+      ${now.length?now.map(x=>prjRow(x,true)).join(''):'<div style="color:#9ca3af;font-size:13px;padding:8px 2px 12px">이번 달 목표가 없어요. <b>+ 목표 추가</b>를 눌러 적어보세요.</div>'}
+      ${past&&old.length?`<div style="margin-top:6px;padding-top:8px;border-top:1px dashed #e5e7eb">
+        <div style="font-size:12px;color:#9ca3af;margin-bottom:7px">지난 달 목표 ${old.length}개</div>
+        ${old.map(x=>prjRow(x,false)).join('')}</div>`:''}
+    </div>`;
+  }).join('');
 }
 
 function loadLife(){
