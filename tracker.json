@@ -1,0 +1,21 @@
+{
+  "1": {
+    "name": "소스거치대",
+    "stage": "sample_check",
+    "memo": "",
+    "pipeline": "rocket"
+  },
+  "2": {
+    "name": "냉장고",
+    "pipeline": "sourcing",
+    "stage": "keyword",
+    "link1688": "",
+    "orderOption": "",
+    "unitPrice": "",
+    "orderQty": "",
+    "coupangLink": "",
+    "initialPrice": "",
+    "expectedRevenue": "",
+    "memo": ""
+  }
+}

@@ -22,6 +22,7 @@
         <button class="nav-btn" id="nav-danga" onclick="switchPage('danga')">💰 단가/마진</button>
         <button class="nav-btn" id="nav-margin" onclick="switchPage('margin')">📉 마진분석</button>
         <button class="nav-btn" id="nav-catrec" onclick="switchPage('catrec')">🏷️ 카테고리 추천</button>
+        <button class="nav-btn" id="nav-market" onclick="switchPage('market')">📊 시장조사</button>
       </nav>
       <div class="search-wrap" id="header-search" style="display:none">
         <input type="text" id="header-keyword" placeholder="키워드 검색..." onkeydown="if(event.key==='Enter')doSearch()" />
@@ -761,6 +762,11 @@
       </div>
 
     </div>
+  </section>
+
+  <!-- ── 시장조사 (iframe 통합 탭) ── -->
+  <section id="market-page" class="hidden">
+    <iframe id="market-frame" title="시장조사" style="width:100%;height:calc(100vh - 130px);min-height:600px;border:1px solid #e5e7eb;border-radius:12px;background:#fff"></iframe>
   </section>
 
   <!-- ── CN메이커 (iframe 통합 탭) ── -->

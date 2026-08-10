@@ -31,6 +31,7 @@ function switchPage(page) {
   const isDanga     = page === 'danga';
   const isMargin    = page === 'margin';
   const isCatrec    = page === 'catrec';
+  const isMarket    = page === 'market';
 
   const navTracker = document.getElementById('nav-tracker');
   if (navTracker) navTracker.classList.toggle('active', isTracker);
@@ -42,6 +43,8 @@ function switchPage(page) {
   if (navCn) navCn.classList.toggle('active', isCnmaker);
   const navDg = document.getElementById('nav-danga');
   if (navDg) navDg.classList.toggle('active', isDanga);
+  const navMk = document.getElementById('nav-market');
+  if (navMk) navMk.classList.toggle('active', isMarket);
   const navMz = document.getElementById('nav-margin');
   if (navMz) navMz.classList.toggle('active', isMargin);
   const navCr = document.getElementById('nav-catrec');
@@ -60,6 +63,14 @@ function switchPage(page) {
     if (isCnmaker) {  // iframe 지연 로딩 (처음 열 때만)
       const fr = document.getElementById('cnmaker-frame');
       if (fr && !fr.src) fr.src = '/cnmaker';
+    }
+  }
+  const _mk = document.getElementById('market-page');
+  if (_mk) {
+    _mk.classList.toggle('hidden', !isMarket);
+    if (isMarket) {                       // iframe 지연 로딩 (처음 열 때만)
+      const fr = document.getElementById('market-frame');
+      if (fr && !fr.src) fr.src = '/market';
     }
   }
   const _dg = document.getElementById('danga-page');

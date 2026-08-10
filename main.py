@@ -3223,4 +3223,18 @@ async def cnmaker_result(job: str, thumb: str = ""):
         return Response(content=content, media_type="image/jpeg")
 
 
+# ── 📊 시장조사 (쿠팡 윙 원천 데이터 뷰어) ──────────────────────────
+from market_api import router as market_router, upload_router as market_upload_router
+app.include_router(market_router)
+app.include_router(market_upload_router)
+
+
+@app.get("/market")
+async def market_page(request: Request):
+    # 소싱 사이트와 같은 잠금 — 로그인 안 했으면 못 본다
+    if not _site_auth(request):
+        return FileResponse("static/site_login.html", headers={"Cache-Control": "no-store"})
+    return FileResponse("static/market.html", headers={"Cache-Control": "no-store"})
+
+
 app.mount("/static", StaticFiles(directory="static"), name="static")

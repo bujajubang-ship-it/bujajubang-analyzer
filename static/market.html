@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>부자주방 시장조사</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<style>
+:root{
+  --red:#D70010; --ink:#1b1b1e; --sub:#6b6b73; --line:#e6e6ea;
+  --bg:#f7f7f9; --card:#fff; --up:#0a8f4a; --down:#c62828;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:Pretendard,-apple-system,BlinkMacSystemFont,sans-serif;font-size:14px}
+a{color:inherit;text-decoration:none}
+header{background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+.hwrap{max-width:1480px;margin:0 auto;padding:14px 20px;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.logo{font-weight:800;font-size:19px;letter-spacing:-.5px}
+.logo b{color:var(--red)}
+.period{font-size:12px;color:var(--sub);background:#f2f2f5;padding:5px 10px;border-radius:20px}
+.tabs{display:flex;gap:4px;margin-left:auto}
+.tab{padding:9px 16px;border-radius:9px;cursor:pointer;font-weight:600;color:var(--sub);
+  border:1px solid transparent;white-space:nowrap}
+.tab:hover{background:#f2f2f5}
+.tab.on{background:var(--red);color:#fff}
+main{max-width:1480px;margin:0 auto;padding:20px}
+.bar{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px;
+  display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.bar label{font-size:12px;color:var(--sub);font-weight:600;margin-right:-4px}
+select,input{font-family:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--line);
+  border-radius:9px;background:#fff;color:var(--ink);outline:none}
+input:focus,select:focus{border-color:var(--red)}
+input[type=search]{min-width:260px}
+.btn{background:var(--red);color:#fff;border:none;padding:9px 18px;border-radius:9px;
+  font-weight:700;cursor:pointer;font-family:inherit;font-size:13px}
+.btn.ghost{background:#fff;color:var(--sub);border:1px solid var(--line)}
+.hint{font-size:12px;color:var(--sub);line-height:1.6;margin:-6px 2px 14px}
+.count{font-size:13px;color:var(--sub);margin:0 2px 10px}
+.count b{color:var(--ink)}
+table{width:100%;border-collapse:collapse;background:#fff;border-radius:14px;overflow:hidden;
+  border:1px solid var(--line)}
+th{background:#fafafc;font-size:12px;color:var(--sub);text-align:left;padding:11px 12px;
+  border-bottom:1px solid var(--line);font-weight:700;white-space:nowrap}
+td{padding:11px 12px;border-bottom:1px solid #f2f2f5;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tbody tr:hover{background:#fcfcfe}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.up{color:var(--up);font-weight:600}
+.down{color:var(--down)}
+.dim{color:var(--sub);font-size:12px}
+.path{font-size:11.5px;color:var(--sub)}
+.name{font-weight:600;line-height:1.45;max-width:520px}
+.thumb{width:52px;height:52px;border-radius:8px;object-fit:cover;background:#f2f2f5;flex:none}
+.prow{display:flex;gap:11px;align-items:center}
+.badge{display:inline-block;font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;
+  background:#f2f2f5;color:var(--sub)}
+.badge.hot{background:#ffe9ea;color:var(--red)}
+.badge.new{background:#e7f5ed;color:var(--up)}
+.links{display:flex;gap:6px}
+.links a{font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid var(--line);
+  color:var(--sub);white-space:nowrap}
+.links a:hover{border-color:var(--red);color:var(--red)}
+.clickable{cursor:pointer}
+.clickable:hover .name,.clickable:hover .catname{color:var(--red)}
+.catname{font-weight:600}
+#more{display:block;margin:16px auto 40px;padding:11px 30px}
+#more[hidden]{display:none}
+.empty{text-align:center;padding:60px;color:var(--sub)}
+/* 상세 패널 */
+#panel{position:fixed;inset:0;background:rgba(20,20,24,.45);display:none;z-index:50}
+#panel.show{display:block}
+.sheet{position:absolute;right:0;top:0;bottom:0;width:min(1080px,94vw);background:var(--bg);
+  overflow-y:auto;box-shadow:-8px 0 40px rgba(0,0,0,.15)}
+.shead{background:#fff;padding:18px 22px;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.shead h2{margin:4px 0 8px;font-size:20px}
+.close{position:absolute;right:18px;top:16px;font-size:22px;color:var(--sub);cursor:pointer;
+  line-height:1;padding:4px 8px}
+.stats{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.stat{background:#fafafc;border:1px solid var(--line);border-radius:10px;padding:8px 12px;min-width:96px}
+.stat .k{font-size:11px;color:var(--sub);font-weight:600}
+.stat .v{font-size:16px;font-weight:700;margin-top:2px;font-variant-numeric:tabular-nums}
+.sbody{padding:18px 22px 60px}
+.stabs{display:flex;gap:6px;margin-bottom:14px}
+.stab{padding:7px 14px;border-radius:8px;background:#fff;border:1px solid var(--line);
+  cursor:pointer;font-weight:600;font-size:13px;color:var(--sub)}
+.stab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hwrap">
+    <div class="logo">부자<b>주방</b> 시장조사</div>
+    <div class="period" id="period">불러오는 중…</div>
+    <div class="tabs">
+      <div class="tab on" data-tab="opp">🎯 기회 발굴</div>
+      <div class="tab" data-tab="cat">📂 카테고리</div>
+      <div class="tab" data-tab="prod">🔍 상품 검색</div>
+      <div class="tab" data-tab="kw">💬 키워드</div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <!-- 기회 발굴 -->
+  <section id="v-opp">
+    <div class="bar">
+      <label>분야</label><select id="o-top"></select>
+      <label>보는 눈</label>
+      <select id="o-mode">
+        <option value="sales">상품 — 많이 팔리는데 리뷰 적은 것</option>
+        <option value="conv">상품 — 조회 대비 잘 팔리는 것</option>
+        <option value="product">상품 — 많이 보는데 리뷰 적은 것</option>
+        <option value="category">카테고리 — 경쟁 덜한 자리</option>
+      </select>
+      <span id="o-pf">
+        <label>리뷰 최대</label>
+        <select id="o-review">
+          <option value="30">30개 이하</option>
+          <option value="100" selected>100개 이하</option>
+          <option value="300">300개 이하</option>
+          <option value="1000">1000개 이하</option>
+        </select>
+        <label>출시</label>
+        <select id="o-since">
+          <option value="2026-01-01">2026년 이후</option>
+          <option value="2025-01-01" selected>2025년 이후</option>
+          <option value="2023-01-01">2023년 이후</option>
+          <option value="">전체</option>
+        </select>
+        <label>최소 조회수</label>
+        <select id="o-gv">
+          <option value="200">200</option>
+          <option value="500" selected>500</option>
+          <option value="2000">2,000</option>
+          <option value="5000">5,000</option>
+        </select>
+        <label>가격대</label>
+        <select id="o-price">
+          <option value="">전체</option>
+          <option value="5000,50000">5천~5만 (소형·부피작음)</option>
+          <option value="5000,300000" selected>5천~30만 (소싱 현실권)</option>
+          <option value="30000,300000">3만~30만 (단가 높은 것)</option>
+          <option value="100000,3000000">10만 이상 (대형장비)</option>
+        </select>
+      </span>
+      <button class="btn" id="o-go">찾기</button>
+    </div>
+    <div class="hint">
+      <b>28일 판매량</b>은 실제로 팔린 개수입니다(2026-07-02~07-29). 상위 상품 중 잡힌 것만 나옵니다.<br>
+      <b>많이 팔리는데 리뷰가 적다</b> = 수요는 확실한데 아직 자리가 안 굳었다는 뜻 → 진입할 만한 자리입니다.<br>
+      분야를 <b>🏪 업소용</b>으로 두면 식당·카페·베이커리 여는 사람들이 사는 물건만 봅니다.
+    </div>
+    <div class="count" id="o-count"></div>
+    <div id="o-table"></div>
+  </section>
+
+  <!-- 카테고리 -->
+  <section id="v-cat" hidden>
+    <div class="bar">
+      <label>분야</label><select id="c-top"></select>
+      <input type="search" id="c-q" placeholder="카테고리 이름 (예: 냄비, 도마)">
+      <label>정렬</label>
+      <select id="c-sort">
+        <option value="sales">많이 팔리는 순</option>
+        <option value="gv">조회수 많은 순</option>
+        <option value="growth">전월 대비 급상승</option>
+        <option value="ads_low">광고 안 해도 되는 순</option>
+        <option value="review_low">리뷰 적은 순(진입 쉬움)</option>
+        <option value="new">신상품 많은 순</option>
+        <option value="expensive">단가 높은 순</option>
+        <option value="cheap">단가 낮은 순</option>
+      </select>
+      <button class="btn" id="c-go">보기</button>
+    </div>
+    <div class="hint">카테고리를 클릭하면 그 안의 상품 100개·검색어 100개·브랜드를 볼 수 있습니다.</div>
+    <div class="count" id="c-count"></div>
+    <div id="c-table"></div>
+  </section>
+
+  <!-- 상품 검색 -->
+  <section id="v-prod" hidden>
+    <div class="bar">
+      <input type="search" id="p-q" placeholder="상품명 검색 (예: 스텐 냄비)">
+      <label>분야</label><select id="p-top"></select>
+      <label>정렬</label>
+      <select id="p-sort">
+        <option value="sales">28일 많이 팔린 순</option>
+        <option value="conv">잘 팔리는 순 (조회 대비 판매)</option>
+        <option value="gv">조회수 많은 순</option>
+        <option value="clicks">검색 클릭 많은 순</option>
+        <option value="ctr">CTR 높은 순</option>
+        <option value="growth">전월 대비 급상승</option>
+        <option value="new">최신 출시 순</option>
+        <option value="review_low">리뷰 적은 순</option>
+        <option value="expensive">비싼 순</option>
+        <option value="cheap">싼 순</option>
+      </select>
+      <input type="number" id="p-min" placeholder="최저가" style="width:96px">
+      <input type="number" id="p-max" placeholder="최고가" style="width:96px">
+      <button class="btn" id="p-go">검색</button>
+    </div>
+    <div class="hint">상품 83만 건 전체에서 찾습니다. 이름을 클릭하면 그 상품이 어느 카테고리들에 걸려 있는지 보여줍니다.</div>
+    <div class="count" id="p-count"></div>
+    <div id="p-table"></div>
+  </section>
+
+  <!-- 키워드 -->
+  <section id="v-kw" hidden>
+    <div class="bar">
+      <input type="search" id="k-q" placeholder="검색어 (예: 냄비)">
+      <label>분야</label><select id="k-top"></select>
+      <label>정렬</label>
+      <select id="k-sort">
+        <option value="volume">검색량 많은 순</option>
+        <option value="growth">전월 대비 급상승</option>
+        <option value="clicks">클릭 많은 순</option>
+        <option value="expensive">평균가 높은 순</option>
+      </select>
+      <label><input type="checkbox" id="k-split" style="vertical-align:-2px"> 카테고리별로 나눠 보기</label>
+      <button class="btn" id="k-go">검색</button>
+    </div>
+    <div class="hint">손님이 쿠팡에서 실제로 친 검색어와 30일 검색량입니다. 상품명 지을 때·광고 키워드 고를 때 씁니다.</div>
+    <div class="count" id="k-count"></div>
+    <div id="k-table"></div>
+  </section>
+</main>
+
+<button class="btn ghost" id="more" hidden>더 보기</button>
+
+<div id="panel"><div class="sheet" id="sheet"></div></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const n = v => (v==null?'':Number(v).toLocaleString('ko-KR'));
+const won = v => v ? Number(v).toLocaleString('ko-KR')+'원' : '-';
+const esc = s => (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function vr(v){ // 증감률
+  if(v==null) return '';
+  const r = Math.round(v);
+  if(Math.abs(r) < 1) return '<span class="dim">–</span>';
+  return r>0 ? `<span class="up">▲${n(r)}%</span>` : `<span class="down">▼${n(-r)}%</span>`;
+}
+// 쿠팡 원본 이미지는 1장에 1MB쯤 된다 → 목록에선 20KB짜리 썸네일 주소로 바꿔 쓴다
+function thumb(u, px){
+  if(!u) return '';
+  return u.replace(/^https:\/\/image(\d*)\.coupangcdn\.com\/image\//,
+                   `https://thumbnail$1.coupangcdn.com/thumbnails/remote/${px||120}x${px||120}ex/image/`);
+}
+function cLink(p){
+  const u = p.product_id ? `https://www.coupang.com/vp/products/${p.product_id}?itemId=${p.item_id}&vendorItemId=${p.vendor_item_id}` : null;
+  const s = `https://www.coupang.com/np/search?q=${encodeURIComponent((p.name||'').slice(0,40))}`;
+  return `<div class="links">${u?`<a href="${u}" target="_blank">쿠팡</a>`:''}<a href="${s}" target="_blank">검색</a></div>`;
+}
+async function api(path, params){
+  const q = new URLSearchParams(Object.entries(params||{}).filter(([k,v])=>v!==''&&v!=null&&v!==0||v===0&&k.startsWith('min')));
+  const r = await fetch(path + (q.toString()?'?'+q:''));
+  return r.json();
+}
+
+let META = null, cur = {tab:'opp', offset:0, load:null};
+
+// ── 탭 전환
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on', x===t));
+  cur.tab = t.dataset.tab;
+  ['opp','cat','prod','kw'].forEach(v => $('#v-'+v).hidden = (v!==cur.tab));
+  $('#more').hidden = true;
+  ({opp:loadOpp, cat:loadCat, prod:loadProd, kw:loadKw})[cur.tab](true);
+});
+
+// ── 초기화
+(async () => {
+  META = await api('/market/api/meta');
+  if (META && META.ready === false) {
+    document.body.innerHTML = `<div style="max-width:640px;margin:80px auto;padding:0 20px;
+      font-family:Pretendard,-apple-system,sans-serif;text-align:center;color:#374151">
+      <div style="font-size:44px">📊</div>
+      <h2 style="margin:12px 0 8px">데이터가 아직 안 올라왔습니다</h2>
+      <p style="color:#6b7280;line-height:1.7">맥에서 아래를 실행하면 채워집니다.<br>
+      <code style="background:#f3f4f6;padding:3px 8px;border-radius:6px;font-size:13px">python3 ~/wing-viewer/upload_to_render.py</code></p>
+    </div>`;
+    return;
+  }
+  $('#period').innerHTML = `상품 ${n(META.n_products)}건 · 카테고리 ${n(META.n_categories)}개 ·
+    <b style="color:var(--red)">🔵 표시 ${n(META.n_fresh)}건은 7/07~8/05 최신</b>
+    <span style="opacity:.7">(나머지 지표 ${META.period[0]}~${META.period[1]} · 판매량 7/02~7/29)</span>`;
+  // '주방 전체'는 주방용품 대분류뿐 아니라 가전>주방가전, 가구>주방가구,
+  // 생활용품>주방세제, 캠핑주방용품까지 흩어진 주방 물건을 한데 모은 것
+  const opts = `<option value="-2">🏪 업소용 (식당·카페·매장)</option>` +
+    `<option value="-1">🍳 주방 전체 (${n(META.kitchen.n)}개)</option>` +
+    '<option value="0">쿠팡 전체</option>' +
+    META.tops.map(t=>`<option value="${t.code}">${t.name}</option>`).join('');
+  ['#o-top','#c-top','#p-top','#k-top'].forEach(s => { $(s).innerHTML = opts; $(s).value = '-2'; });
+  $('#o-mode').onchange = () => { $('#o-pf').style.display = $('#o-mode').value==='category'?'none':''; };
+  $('#o-go').onclick = () => loadOpp(true);
+  $('#c-go').onclick = () => loadCat(true);
+  $('#p-go').onclick = () => loadProd(true);
+  $('#k-go').onclick = () => loadKw(true);
+  $('#c-q').onkeydown = e => e.key==='Enter' && loadCat(true);
+  $('#p-q').onkeydown = e => e.key==='Enter' && loadProd(true);
+  $('#k-q').onkeydown = e => e.key==='Enter' && loadKw(true);
+  $('#more').onclick = () => cur.load(false);
+  loadOpp(true);
+})();
+
+function paginate(reset, total, shown){
+  $('#more').hidden = shown >= total;
+}
+
+// ── 기회 발굴
+async function loadOpp(reset){
+  cur.load = loadOpp;
+  if(reset) cur.offset = 0;
+  const mode = $('#o-mode').value;
+  const d = await api('/market/api/opportunity', {
+    top: $('#o-top').value, mode,
+    max_review: $('#o-review').value, since: $('#o-since').value,
+    min_gv: $('#o-gv').value,
+    min_price: ($('#o-price').value.split(',')[0] || ''),
+    max_price: ($('#o-price').value.split(',')[1] || ''),
+    limit: 60, offset: cur.offset
+  });
+  cur.offset += d.items.length;
+  $('#o-count').innerHTML = `<b>${n(d.total)}</b>건 중 ${n(cur.offset)}건 표시`;
+  if(mode === 'category') renderCatTable('#o-table', d.items, reset, true);
+  else renderProdTable('#o-table', d.items, reset, true);
+  paginate(reset, d.total, cur.offset);
+}
+
+// ── 카테고리
+async function loadCat(reset){
+  cur.load = loadCat;
+  if(reset) cur.offset = 0;
+  const d = await api('/market/api/categories', {
+    top: $('#c-top').value, q: $('#c-q').value, sort: $('#c-sort').value,
+    limit: 100, offset: cur.offset
+  });
+  cur.offset += d.items.length;
+  $('#c-count').innerHTML = `<b>${n(d.total)}</b>개 중 ${n(cur.offset)}개 표시`;
+  renderCatTable('#c-table', d.items, reset, false);
+  paginate(reset, d.total, cur.offset);
+}
+
+// ── 상품
+async function loadProd(reset){
+  cur.load = loadProd;
+  if(reset) cur.offset = 0;
+  const d = await api('/market/api/products', {
+    q: $('#p-q').value, top: $('#p-top').value, sort: $('#p-sort').value,
+    min_price: $('#p-min').value, max_price: $('#p-max').value,
+    limit: 60, offset: cur.offset
+  });
+  cur.offset += d.items.length;
+  $('#p-count').innerHTML = `<b>${n(d.total)}</b>건 중 ${n(cur.offset)}건 표시`;
+  renderProdTable('#p-table', d.items, reset, false);
+  paginate(reset, d.total, cur.offset);
+}
+
+// ── 키워드
+async function loadKw(reset){
+  cur.load = loadKw;
+  if(reset) cur.offset = 0;
+  const d = await api('/market/api/keywords', {
+    q: $('#k-q').value, top: $('#k-top').value, sort: $('#k-sort').value,
+    group: $('#k-split').checked ? '0' : '1', limit: 60, offset: cur.offset
+  });
+  cur.offset += d.items.length;
+  $('#k-count').innerHTML = `<b>${n(d.total)}</b>건 중 ${n(cur.offset)}건 표시`;
+  renderKwTable('#k-table', d.items, reset);
+  paginate(reset, d.total, cur.offset);
+}
+
+// ── 표 그리기
+function renderProdTable(sel, items, reset, opp){
+  const head = `<tr><th>상품</th><th class="num">28일 판매</th><th class="num">전환율</th>
+    <th class="num">조회수</th><th class="num">증감</th>
+    <th class="num">검색클릭</th><th class="num">CTR</th><th class="num">가격</th>
+    <th class="num">리뷰</th><th class="num">출시</th><th>카테고리</th><th></th></tr>`;
+  const body = items.map(p => `<tr>
+    <td class="clickable" onclick="openItem(${p.item_id})">
+      <div class="prow">
+        <img class="thumb" loading="lazy" src="${thumb(p.image_url,120)}" onerror="this.style.visibility='hidden'">
+        <div><div class="name">${p.fresh?'<span title="7/07~8/05 최신 지표" style="color:#1a73e8">🔵</span> ':''}${esc(p.name)}</div>
+        ${p.option_name?`<div class="dim">${esc(p.option_name)}</div>`:''}
+        ${p.sales_keyword?`<div class="dim">🔎 ${esc(p.sales_keyword)}</div>`:''}</div>
+      </div></td>
+    <td class="num">${p.sales_28d!=null
+        ? `<b style="color:var(--red);font-size:15px">${n(p.sales_28d)}</b>`
+        : '<span class="dim">–</span>'}</td>
+    <td class="num">${p.sales_28d!=null && p.pv_28d
+        ? (p.sales_28d*100/p.pv_28d).toFixed(1)+'%' : '<span class="dim">–</span>'}</td>
+    <td class="num"><b>${n(p.glance_view)}</b></td>
+    <td class="num">${vr(p.gv_var)}</td>
+    <td class="num">${n(p.srp_clicks)}</td>
+    <td class="num">${p.ctr?p.ctr.toFixed(1)+'%':'-'}</td>
+    <td class="num">${won(p.avg_price)}</td>
+    <td class="num">${p.rating_count<=30?`<span class="badge hot">${n(p.rating_count)}</span>`:n(p.rating_count)}</td>
+    <td class="num dim">${(p.launch_date||'').slice(2,7)}</td>
+    <td class="path">${esc((p.cat_path||'').replace('ROOT>',''))}</td>
+    <td>${cLink(p)}</td></tr>`).join('');
+  const el = $(sel);
+  if(reset || !el.querySelector('tbody'))
+    el.innerHTML = items.length ? `<table><thead>${head}</thead><tbody>${body}</tbody></table>`
+      : `<div class="empty">조건에 맞는 상품이 없습니다. 조건을 넓혀보세요.</div>`;
+  else el.querySelector('tbody').insertAdjacentHTML('beforeend', body);
+}
+
+function renderCatTable(sel, items, reset, opp){
+  const head = `<tr><th>카테고리</th><th class="num">28일 판매</th><th class="num">조회수</th>
+    <th class="num">증감</th><th class="num">광고비중</th><th class="num">리뷰중앙값</th>
+    <th class="num">신상비율</th><th class="num">평균가</th><th class="num">상위10 집중</th></tr>`;
+  const body = items.map(c => {
+    const conc = c.gv_top100 ? Math.round(c.gv_top10*100/c.gv_top100) : 0;
+    return `<tr class="clickable" onclick="openCat(${c.code})">
+    <td><div class="catname">${esc(c.name)}</div><div class="path">${esc((c.path||'').replace('ROOT>',''))}</div></td>
+    <td class="num">${c.sales_sum ? `<b style="color:var(--red)">${n(c.sales_sum)}</b>
+        <div class="dim">${c.sales_n}개 상품</div>` : '<span class="dim">–</span>'}</td>
+    <td class="num"><b>${n(c.glance_view)}</b></td>
+    <td class="num">${vr(c.gv_var)}</td>
+    <td class="num">${c.ads_pct?c.ads_pct.toFixed(0)+'%':'-'}</td>
+    <td class="num">${c.med_review<=50?`<span class="badge hot">${n(c.med_review)}</span>`:n(c.med_review)}</td>
+    <td class="num">${c.new_ratio>=30?`<span class="badge new">${c.new_ratio}%</span>`:c.new_ratio+'%'}</td>
+    <td class="num">${won(c.avg_price)}</td>
+    <td class="num ${conc>=70?'down':''}">${conc}%</td></tr>`;
+  }).join('');
+  const el = $(sel);
+  if(reset || !el.querySelector('tbody'))
+    el.innerHTML = items.length ? `<table><thead>${head}</thead><tbody>${body}</tbody></table>`
+      : `<div class="empty">결과가 없습니다.</div>`;
+  else el.querySelector('tbody').insertAdjacentHTML('beforeend', body);
+}
+
+function renderKwTable(sel, items, reset){
+  const grouped = items.length && items[0].n_cats != null;
+  const head = `<tr><th>검색어</th><th class="num">검색량</th><th class="num">증감</th>
+    <th class="num">클릭</th><th class="num">${grouped?'걸린 곳':'클릭점유'}</th><th class="num">평균가</th>
+    <th class="num">가격대</th><th>${grouped?'클릭 1위 카테고리':'카테고리'}</th><th></th></tr>`;
+  const body = items.map(k => `<tr>
+    <td><b>${esc(k.keyword)}</b></td>
+    <td class="num"><b>${n(k.search_volume)}</b></td>
+    <td class="num">${vr(k.sv_var)}</td>
+    <td class="num">${n(k.srp_click)}</td>
+    <td class="num">${grouped ? n(k.n_cats)+'곳' : (k.srp_share?k.srp_share.toFixed(1)+'%':'-')}</td>
+    <td class="num">${won(k.avg_price)}</td>
+    <td class="num dim">${k.price_start?n(k.price_start)+'~'+n(k.price_end):'-'}</td>
+    <td class="path clickable" onclick="openCat(${k.cat_code})">${esc((k.cat_path||'').replace('ROOT>',''))}</td>
+    <td><div class="links"><a href="https://www.coupang.com/np/search?q=${encodeURIComponent(k.keyword)}" target="_blank">쿠팡</a></div></td>
+    </tr>`).join('');
+  const el = $(sel);
+  if(reset || !el.querySelector('tbody'))
+    el.innerHTML = items.length ? `<table><thead>${head}</thead><tbody>${body}</tbody></table>`
+      : `<div class="empty">결과가 없습니다.</div>`;
+  else el.querySelector('tbody').insertAdjacentHTML('beforeend', body);
+}
+
+// ── 상세 패널
+$('#panel').onclick = e => { if(e.target.id==='panel') closePanel(); };
+document.onkeydown = e => e.key==='Escape' && closePanel();
+function closePanel(){ $('#panel').classList.remove('show'); }
+
+async function openCat(code){
+  const d = await api('/market/api/category/'+code);
+  if(d.error) return;
+  const c = d.category, conc = c.gv_top100 ? Math.round(c.gv_top10*100/c.gv_top100) : 0;
+  $('#sheet').innerHTML = `
+    <div class="shead">
+      <div class="close" onclick="closePanel()">×</div>
+      <div class="path">${esc((c.path||'').replace('ROOT>',''))}</div>
+      <h2>${esc(c.name)}</h2>
+      <div class="stats">
+        <div class="stat"><div class="k">28일 판매량</div>
+          <div class="v" style="color:var(--red)">${c.sales_sum?n(c.sales_sum):'–'}</div></div>
+        <div class="stat"><div class="k">30일 조회수</div><div class="v">${n(c.glance_view)}</div></div>
+        <div class="stat"><div class="k">전월 대비</div><div class="v">${vr(c.gv_var)}</div></div>
+        <div class="stat"><div class="k">노출수</div><div class="v">${n(c.impression)}</div></div>
+        <div class="stat"><div class="k">광고 비중</div><div class="v">${(c.ads_pct||0).toFixed(0)}%</div></div>
+        <div class="stat"><div class="k">리뷰 중앙값</div><div class="v">${n(c.med_review)}</div></div>
+        <div class="stat"><div class="k">평균가</div><div class="v">${won(c.avg_price)}</div></div>
+        <div class="stat"><div class="k">신상 비율</div><div class="v">${c.new_ratio}%</div></div>
+        <div class="stat"><div class="k">상위10 집중</div><div class="v">${conc}%</div></div>
+      </div>
+    </div>
+    <div class="sbody">
+      <div class="stabs">
+        <div class="stab on" data-s="p">상품 ${c.n_products}</div>
+        <div class="stab" data-s="k">검색어 ${c.n_keywords}</div>
+        <div class="stab" data-s="b">브랜드</div>
+        ${d.reg ? '<div class="stab" data-s="r">📋 등록 요건</div>' : ''}
+      </div>
+      <div id="s-p"></div><div id="s-k" hidden></div><div id="s-b" hidden></div>
+      <div id="s-r" hidden></div>
+    </div>`;
+  if(d.reg) renderReg(d.reg);
+  renderProdTable('#s-p', d.products, true, false);
+  renderKwTable('#s-k', d.keywords.map(k=>({...k, cat_path:'', cat_code:code})), true);
+  $('#s-b').innerHTML = `<table><thead><tr><th>브랜드</th><th class="num">조회수</th>
+    <th class="num">증감</th><th class="num">클릭</th><th class="num">점유</th><th class="num">CTR</th></tr></thead>
+    <tbody>${d.brands.map(b=>`<tr><td><b>${esc(b.brand_name)}</b></td>
+    <td class="num">${n(b.glance_view)}</td><td class="num">${vr(b.gv_var)}</td>
+    <td class="num">${n(b.srp_clicks)}</td><td class="num">${(b.srp_share||0).toFixed(1)}%</td>
+    <td class="num">${(b.ctr||0).toFixed(1)}%</td></tr>`).join('')}</tbody></table>`;
+  $('#sheet').querySelectorAll('.stab').forEach(t => t.onclick = () => {
+    $('#sheet').querySelectorAll('.stab').forEach(x=>x.classList.toggle('on',x===t));
+    ['p','k','b','r'].forEach(s => $('#s-'+s).hidden = (s!==t.dataset.s));
+  });
+  $('#panel').classList.add('show');
+  $('#sheet').scrollTop = 0;
+}
+
+// 쿠팡이 이 카테고리에 요구하는 것들.
+// 주의: 인증 목록은 전부 '선택'이다(첫 항목이 '인증대상아님'). 의무가 아니므로
+// 진입장벽처럼 보여주면 거짓말이 된다. 진짜 의무는 필수옵션과 상품고시정보뿐이다.
+function renderReg(r){
+  const chip = (t, hot) => `<span class="badge${hot?' hot':''}" style="margin:2px 4px 2px 0">${esc(t)}</span>`;
+  const chips = (a, hot) => a.length ? a.map(x=>chip(x, hot)).join('') : '<span class="dim">없음</span>';
+  const noticeMust = (r.notice||[]).flatMap(n=>n.must||[]);
+  const docs = (r.docs||[]).map(d => d.name + (d.when && d.when!=='OPTIONAL' ? ' (조건부)' : ''));
+  $('#s-r').innerHTML = `
+    <div class="hint">이 카테고리에 상품을 올릴 때 쿠팡이 요구하는 항목입니다.
+      <b>빨간 것은 반드시 채워야 합니다.</b> 필수 옵션을 제대로 채워야 손님의 필터 검색에 걸립니다.</div>
+    <div class="stats" style="margin-bottom:16px">
+      <div class="stat"><div class="k">필수 옵션</div><div class="v">${r.must.length}개</div></div>
+      <div class="stat"><div class="k">선택 옵션</div><div class="v">${r.opt.length}개</div></div>
+      <div class="stat"><div class="k">고시정보 필수</div><div class="v">${noticeMust.length}개</div></div>
+      <div class="stat"><div class="k">단품 등록</div><div class="v">${r.singleItem?'가능':'불가'}</div></div>
+    </div>
+    <table><tbody>
+      <tr><th style="width:130px">필수 옵션</th>
+        <td>${chips(r.must.map(x=>x.name+(x.unit&&x.unit!=='없음'?' ('+x.unit+')':'')), true)}</td></tr>
+      <tr><th>상품고시정보<div class="dim" style="font-weight:400">상세페이지에 넣을 것</div></th>
+        <td>${chips(noticeMust, true)}
+        ${(r.notice||[]).some(nn=>(nn.opt||[]).length)
+          ? '<div style="margin-top:6px">'+chips((r.notice||[]).flatMap(nn=>nn.opt||[]))+'</div>' : ''}</td></tr>
+      <tr><th>선택 옵션<div class="dim" style="font-weight:400">채우면 더 걸림</div></th>
+        <td>${chips(r.opt)}</td></tr>
+      <tr><th>구비서류<div class="dim" style="font-weight:400">해당될 때만</div></th>
+        <td>${chips(docs)}</td></tr>
+      <tr><th>인증<div class="dim" style="font-weight:400">고를 수 있는 목록 · 의무 아님</div></th>
+        <td><span class="dim">${(r.certs||[]).length}종 중 해당되는 것만 —
+          ${esc((r.certs||[]).slice(0,6).join(', '))}…</span></td></tr>
+    </tbody></table>`;
+}
+
+async function openItem(itemId){
+  const d = await api('/market/api/item/'+itemId);
+  if(!d.items.length) return;
+  const p = d.items[0];
+  $('#sheet').innerHTML = `
+    <div class="shead">
+      <div class="close" onclick="closePanel()">×</div>
+      <div class="prow">
+        <img class="thumb" style="width:80px;height:80px" src="${thumb(p.image_url,200)}">
+        <div>
+          <h2 style="margin:0 0 6px">${esc(p.name)}</h2>
+          <div class="dim">${esc(p.option_name||'')} · 출시 ${p.launch_date||'-'} ·
+            ★${p.rating||'-'} (${n(p.rating_count)}) · ${won(p.avg_price)}</div>
+          <div style="margin-top:8px">${cLink(p)}</div>
+        </div>
+      </div>
+    </div>
+    <div class="sbody">
+      <div class="hint">이 상품이 노출되는 카테고리 <b>${d.items.length}곳</b>입니다.
+        조회수가 큰 카테고리가 이 상품의 실제 주력 자리예요.</div>
+      <table><thead><tr><th>카테고리</th><th class="num">순위</th><th class="num">조회수</th>
+        <th class="num">노출</th><th class="num">검색클릭</th><th class="num">CTR</th></tr></thead>
+      <tbody>${d.items.map(x=>`<tr class="clickable" onclick="openCat(${x.cat_code})">
+        <td><div class="catname">${esc(x.cat_name)}</div>
+            <div class="path">${esc((x.cat_path||'').replace('ROOT>',''))}</div></td>
+        <td class="num">${x.rank}위</td><td class="num"><b>${n(x.glance_view)}</b></td>
+        <td class="num">${n(x.impression)}</td><td class="num">${n(x.srp_clicks)}</td>
+        <td class="num">${(x.ctr||0).toFixed(1)}%</td></tr>`).join('')}</tbody></table>
+    </div>`;
+  $('#panel').classList.add('show');
+  $('#sheet').scrollTop = 0;
+}
+</script>
+</body>
+</html>

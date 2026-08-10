@@ -1,0 +1,105 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>경리 입력 매뉴얼 — 부자홀딩스 자금 대시보드</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,'Malgun Gothic',sans-serif;background:#f4f6fa;color:#1f2937;line-height:1.65}
+.wrap{max-width:840px;margin:0 auto;padding:24px}
+.bar{position:sticky;top:0;background:#5b21b6;color:#fff;padding:12px 24px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;z-index:10}
+.bar h1{font-size:17px;margin:0;flex:1}
+.bar button{border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:14px;font-weight:600}
+.btn-print{background:#fff;color:#5b21b6}.btn-pdf{background:#fbbf24;color:#1f2937}
+.doc{background:#fff;border-radius:14px;padding:32px 36px;box-shadow:0 1px 4px rgba(0,0,0,.08);margin-top:18px}
+h2{font-size:20px;border-bottom:3px solid #5b21b6;padding-bottom:8px;margin-top:34px}
+h3{font-size:16px;color:#5b21b6;margin-top:24px}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+th,td{border:1px solid #e5e7eb;padding:8px 10px;text-align:left}
+th{background:#faf5ff}
+.box{background:#f3e8ff;border-left:4px solid #5b21b6;padding:12px 16px;border-radius:6px;margin:14px 0}
+.warn{background:#fef2f2;border-left:4px solid #dc2626}
+.ok{background:#ecfdf5;border-left:4px solid #059669}
+code{background:#f3f4f6;padding:2px 7px;border-radius:5px;font-size:13px;color:#b91c1c}
+.big-summary{font-size:17px;font-weight:700;background:#5b21b6;color:#fff;padding:18px 22px;border-radius:12px;margin:20px 0}
+ul li{margin:5px 0}
+@media print{.bar{display:none}body{background:#fff}.doc{box-shadow:none;padding:0;margin:0}.wrap{padding:0}}
+</style></head><body>
+<div class="bar">
+  <h1>📒 경리 입력 매뉴얼</h1>
+  <button class="btn-print" onclick="window.print()">🖨️ 인쇄 / PDF 저장</button>
+  <button class="btn-pdf" onclick="dl()">⬇️ 텍스트 파일 다운로드</button>
+  <a href="/jageum" style="color:#fff;text-decoration:none;font-size:13px">← 대시보드</a>
+</div>
+<div class="wrap"><div class="doc" id="doc">
+<h1 style="font-size:24px">📒 이카운트 입력 매뉴얼</h1>
+<p style="color:#6b7280">자금 대시보드에서 부서별·직원별·프로젝트별 매출/비용/순이익이 자동으로 정확히 계산되도록 하기 위한 입력 가이드입니다.</p>
+
+<div class="big-summary">한 줄 요약: 입출금마다 ① 프로젝트명 꼭 적기(영업은 끝에 담당자 이름) · ② 쇼핑몰은 '쇼핑몰' 글자 · ③ 투자·정부지원 출금은 적요에 키워드. 계정과목은 평소대로.</div>
+
+<h2>✅ 매일 입력 3원칙</h2>
+<ol>
+<li><b>모든 입금·출금 전표에 "프로젝트명"을 반드시 입력</b> (비워두면 분류가 안 됩니다)</li>
+<li><b>담당자가 있는 영업 건은 프로젝트명 끝에 담당자 이름</b>을 붙입니다</li>
+<li><b>특수 항목(투자·정부지원)은 적요에 지정 키워드</b>를 적습니다</li>
+</ol>
+
+<h2>1. 프로젝트명 입력 규칙 (제일 중요)</h2>
+<h3>① 쇼핑몰 매출·비용</h3>
+<p>네이버·쿠팡·카페24 등 온라인 판매 관련은 프로젝트명에 <b>"쇼핑몰"</b> 글자가 들어가게 합니다.</p>
+<div class="box">예) <code>쇼핑몰</code> · <code>쇼핑몰 / MD</code> · <code>쇼핑몰 광고비</code></div>
+
+<h3>② 영업(B2B) — 담당자별</h3>
+<p>형식: <b>거래처/현장명 - 담당자이름</b>. 담당자 이름은 아래 중 하나로 <b>정확히</b> (직급·띄어쓰기는 무관, 이름만 정확하면 됨):</p>
+<table>
+<tr><th>담당자</th><th>프로젝트명 예시</th></tr>
+<tr><td>성기민</td><td>홍길동 식당-<b>성기민</b> 선임</td></tr>
+<tr><td>김성주</td><td>OO고깃집-<b>김성주</b> 책임</td></tr>
+<tr><td>대표</td><td>OO한식집-<b>대표</b>님</td></tr>
+</table>
+<div class="box warn">⚠️ 위 3명 외 담당자나, 담당자 없는 영업 건은 자동으로 <b>"본사·공통"</b>에 들어갑니다.</div>
+
+<h3>③ 본사·공통 (담당자 없는 것)</h3>
+<p>매입(상품 사오는 돈), 본사 운영비, 인건비, 임대료, 공통 관리비 등.</p>
+<ul><li>프로젝트명: <code>본사(사무실)</code> 또는 비워두면 자동으로 본사·공통 처리</li>
+<li>⚠️ <b>매입·공통비는 담당자에 넣지 마세요</b> (담당자 순익이 왜곡됩니다)</li></ul>
+
+<h3>④ 태양광 (전력판매)</h3>
+<p>한국전력 전기요금 입금, 종보전기 등은 <b>거래처명에 "한국전력/종보전기"</b>가 있으면 자동 분류됩니다. 별도 프로젝트명 안 적어도 됩니다.</p>
+
+<h2>2. 적요(메모) 키워드 — 특수 항목</h2>
+<p>특정 출금은 <b>비용이 아니라 자산</b>이라 적요에 키워드를 꼭 적어야 합니다.</p>
+<table>
+<tr><th>상황</th><th>적요에 넣을 키워드</th><th>처리</th></tr>
+<tr><td>설비 투자 (태양광·한전 설비)</td><td><code>투자</code></td><td>비용 아님 → 투자자산</td></tr>
+<tr><td>정부지원사업 자부담금 (수출바우처 등)</td><td><code>정부지원</code></td><td>비용 아님 → 정부지원 자산(선금성)</td></tr>
+</table>
+<div class="box">예) 수출바우처 자부담 30% 출금 → 적요: <code>정부지원 수출바우처 자부담</code><br>예) 태양광 패널 추가 설치 → 적요: <code>투자 태양광 설비</code></div>
+
+<h2>3. 계정과목(상대계정) — 평소대로</h2>
+<p>원래 하던 대로 정확히 입력하면 대시보드가 자동 분류합니다. (매입=외상매입금/상품, 인건비=급여/잡급, 4대보험=예수금/세금과공과, 카드대금=법인카드/미지급비용, 판관비=수수료/운반비 등) <b>바꿀 필요 없습니다.</b></p>
+
+<h2>❌ 자주 하는 실수 (이것만 피하면 됨)</h2>
+<div class="box warn">
+<ol style="margin:0">
+<li><b>프로젝트명 비워두기</b> → 전부 본사·공통으로 가서 직원별 실적이 안 잡힘</li>
+<li><b>담당자 이름 오타</b> (성기만·김성준 ❌ → 성기민·김성주 ✅)</li>
+<li><b>매입·공통비를 담당자 프로젝트에 넣기</b> → 담당자 순익이 마이너스로 왜곡</li>
+<li><b>투자·정부지원 출금에 키워드 안 적기</b> → 비용으로 잡혀 순이익이 낮게 나옴</li>
+<li><b>쇼핑몰 건에 "쇼핑몰" 글자 누락</b> → 영업으로 잘못 분류</li>
+</ol></div>
+
+<h2>📅 월말 마감 체크리스트</h2>
+<div class="box ok">
+<ul style="margin:0">
+<li>□ "본사·공통"의 매출이 비정상적으로 크지 않은가? → 크면 담당자 프로젝트명 누락 의심</li>
+<li>□ 각 직원(성기민/김성주/대표) 매출이 실제 영업 실적과 맞는가?</li>
+<li>□ 투자·정부지원 출금이 자산에 잘 잡혔는가? (적요 키워드 확인)</li>
+<li>□ 묶인 선금·미수금 변동 있으면 → 대시보드에서 직접 수정 (사장님)</li>
+</ul></div>
+
+<p style="color:#9ca3af;font-size:12px;margin-top:30px">부자홀딩스 자금 대시보드 · 경리 입력 매뉴얼</p>
+</div></div>
+<script>
+function dl(){
+ const txt=document.getElementById('doc').innerText;
+ const blob=new Blob(['﻿'+txt],{type:'text/plain;charset=utf-8'});
+ const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='경리_입력매뉴얼.txt';a.click();
+}
+</script></body></html>
