@@ -98,6 +98,7 @@ tbody tr:hover{background:#fcfcfe}
       <div class="tab" data-tab="cat">📂 카테고리</div>
       <div class="tab" data-tab="prod">🔍 상품 검색</div>
       <div class="tab" data-tab="kw">💬 키워드</div>
+      <div class="tab" data-tab="doc">📝 상품명 처방</div>
     </div>
   </div>
 </header>
@@ -225,6 +226,21 @@ tbody tr:hover{background:#fcfcfe}
     <div class="count" id="k-count"></div>
     <div id="k-table"></div>
   </section>
+
+  <!-- 상품명 처방 -->
+  <section id="v-doc" hidden>
+    <div class="bar">
+      <input type="search" id="d-q" placeholder="내 상품 검색 (예: 숯불구이기, 파스타렌지)">
+      <button class="btn" id="d-go">찾기</button>
+      <span class="dim" id="d-info"></span>
+    </div>
+    <div class="hint">
+      쿠팡은 <b>상품명에 든 말</b>로 검색에 걸립니다. 같은 물건이라도 어떤 말을 넣었느냐로 노출이 갈립니다.<br>
+      내 상품을 고르면 <b>그 카테고리에서 잘 나가는 상품들이 쓰는 말</b> 중 내 이름에 빠진 것을 찾아줍니다.
+    </div>
+    <div id="d-list"></div>
+    <div id="d-result"></div>
+  </section>
 </main>
 
 <button class="btn ghost" id="more" hidden>더 보기</button>
@@ -265,9 +281,9 @@ let META = null, cur = {tab:'opp', offset:0, load:null};
 document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
   document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on', x===t));
   cur.tab = t.dataset.tab;
-  ['opp','cat','prod','kw'].forEach(v => $('#v-'+v).hidden = (v!==cur.tab));
+  ['opp','cat','prod','kw','doc'].forEach(v => $('#v-'+v).hidden = (v!==cur.tab));
   $('#more').hidden = true;
-  ({opp:loadOpp, cat:loadCat, prod:loadProd, kw:loadKw})[cur.tab](true);
+  ({opp:loadOpp, cat:loadCat, prod:loadProd, kw:loadKw, doc:loadDoc})[cur.tab](true);
 });
 
 // ── 초기화
@@ -301,6 +317,8 @@ document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
   $('#c-q').onkeydown = e => e.key==='Enter' && loadCat(true);
   $('#p-q').onkeydown = e => e.key==='Enter' && loadProd(true);
   $('#k-q').onkeydown = e => e.key==='Enter' && loadKw(true);
+  $('#d-go').onclick = () => loadDoc();
+  $('#d-q').onkeydown = e => e.key==='Enter' && loadDoc();
   $('#more').onclick = () => cur.load(false);
   loadOpp(true);
 })();
@@ -453,6 +471,64 @@ function renderKwTable(sel, items, reset){
     el.innerHTML = items.length ? `<table><thead>${head}</thead><tbody>${body}</tbody></table>`
       : `<div class="empty">결과가 없습니다.</div>`;
   else el.querySelector('tbody').insertAdjacentHTML('beforeend', body);
+}
+
+// ── 상품명 처방
+async function loadDoc(){
+  cur.load = null; $('#more').hidden = true;
+  const d = await api('/market/api/doctor/my', {q: $('#d-q').value, limit: 200});
+  if(!d.ready){
+    $('#d-list').innerHTML = `<div class="empty">내 상품 목록이 아직 안 올라왔습니다.<br>
+      <span class="dim">맥에서 python3 upload_my_products.py 를 실행하세요.</span></div>`;
+    return;
+  }
+  $('#d-info').textContent = `내 상품 ${n(d.total)}개`;
+  $('#d-result').innerHTML = '';
+  $('#d-list').innerHTML = `<table><thead><tr><th>내 상품</th><th>쿠팡이 본 카테고리</th>
+    <th class="num">옵션</th><th class="num">가격</th><th></th></tr></thead><tbody>${
+    d.items.map(x=>`<tr>
+      <td class="name">${esc(x.name)}</td>
+      <td>${x.cat_name?esc(x.cat_name):'<span class="dim">판정 안 됨</span>'}
+        ${x.known?'':'<span class="dim"> · 데이터 없음</span>'}</td>
+      <td class="num dim">${x.vids?x.vids.length:0}</td>
+      <td class="num">${won(x.price)}</td>
+      <td>${x.known?`<button class="btn" style="padding:6px 12px;font-size:12px"
+           onclick="prescribe('${esc(x.name).replace(/'/g,"&#39;")}')">처방 보기</button>`:''}</td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
+async function prescribe(name){
+  $('#d-result').innerHTML = '<div class="empty">분석 중…</div>';
+  const r = await api('/market/api/doctor/prescribe', {name});
+  if(r.error){ $('#d-result').innerHTML = `<div class="empty">${esc(r.error)}</div>`; return; }
+  const chip = (w, hot) => `<span class="badge${hot?' hot':''}" style="margin:3px 5px 3px 0;font-size:13px">${esc(w)}</span>`;
+  $('#d-result').innerHTML = `
+    <div style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px;margin-top:16px">
+      <div class="path">${esc((r.category.path||'').replace('ROOT>',''))}</div>
+      <h3 style="margin:6px 0 4px">${esc(r.my_name)}</h3>
+      <div class="dim">비교 대상: ${esc(r.category.name)} 상위 ${r.compared.top}개 vs 하위 ${r.compared.bottom}개
+        · 리뷰 중앙값 ${n(r.category.med_review)} · 평균가 ${won(r.category.avg_price)}</div>
+
+      <div style="margin:16px 0 6px;font-weight:700;color:var(--red)">📌 넣으면 좋을 말</div>
+      <table><thead><tr><th>말</th><th class="num">상위가 씀</th><th class="num">하위가 씀</th>
+        <th class="num">차이</th><th class="num">검색량</th></tr></thead><tbody>
+        ${r.missing.length ? r.missing.map(m=>`<tr>
+          <td><b style="font-size:15px">${esc(m.word)}</b></td>
+          <td class="num"><b style="color:var(--red)">${m.top_pct}%</b></td>
+          <td class="num dim">${m.bot_pct}%</td>
+          <td class="num ${m.gap>=20?'up':''}">${m.gap>0?'+':''}${m.gap}%p</td>
+          <td class="num">${m.search?n(m.search):'<span class="dim">–</span>'}</td></tr>`).join('')
+          : '<tr><td colspan="5" class="dim">빠진 말이 없습니다. 상품명이 이미 좋습니다.</td></tr>'}
+      </tbody></table>
+
+      ${r.useless.length?`<div style="margin:16px 0 6px;font-weight:700">🗑 아무도 안 쓰고 검색도 안 되는 말</div>
+        <div>${r.useless.map(w=>chip(w)).join('')}</div>
+        <div class="dim" style="margin-top:4px">빼도 손해가 없습니다. 자리를 위 단어에 쓰세요.</div>`:''}
+
+      <div style="margin:16px 0 6px;font-weight:700">🏆 이 카테고리 상위 상품 이름</div>
+      ${r.top_examples.map(t=>`<div class="dim" style="line-height:1.9">· ${esc(t)}</div>`).join('')}
+    </div>`;
+  $('#d-result').scrollIntoView({behavior:'smooth', block:'start'});
 }
 
 // ── 상세 패널

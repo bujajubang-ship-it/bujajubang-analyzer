@@ -3228,6 +3228,10 @@ from market_api import router as market_router, upload_router as market_upload_r
 app.include_router(market_router)
 app.include_router(market_upload_router)
 
+from name_doctor import router as doctor_router, upload_router as doctor_upload_router
+app.include_router(doctor_router)
+app.include_router(doctor_upload_router)
+
 
 @app.get("/market")
 async def market_page(request: Request):
