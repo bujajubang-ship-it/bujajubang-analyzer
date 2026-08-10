@@ -1911,7 +1911,9 @@ async def jageum_life_compare(request: Request):
  "관련과거글":[{{"date":"YYYY-MM-DD","title":"블로그면 실제 제목, 메모면 내용 요약(앞에 '메모:' 표기)","연결":"어떻게 통하는지 또는 달라졌는지 한 문장"}}],
  "코멘트":"과거 맥락(블로그+메모)에서 본 통찰·조언 2-3문장. 응원하되 솔직하게."}}
 관련과거글은 위 블로그 목록·메모에 실제로 있는 것만, 가장 관련 깊은 2-4개."""
-    body = {"model": "claude-opus-4-8", "max_tokens": 1500,
+    body = {"model": "claude-opus-5", "max_tokens": 4000,
+            # 정해진 JSON 을 뽑아내는 일이라 생각은 끄고 빠르게 (Opus 5 는 기본이 켜짐)
+            "thinking": {"type": "disabled"},
             "messages": [{"role": "user", "content": prompt}]}
     headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
     try:
@@ -2222,7 +2224,9 @@ async def jageum_invest_extract(request: Request):
   "강점":["투자에서 잘하는 점 1-3개"],
   "주의점":["반복되는 실수·조심할 점 1-3개"]}}}}
 투자글번호는 위 목록에 실제 있는 번호만."""
-    body = {"model": "claude-opus-4-8", "max_tokens": 1500,
+    body = {"model": "claude-opus-5", "max_tokens": 4000,
+            # 정해진 JSON 을 뽑아내는 일이라 생각은 끄고 빠르게 (Opus 5 는 기본이 켜짐)
+            "thinking": {"type": "disabled"},
             "messages": [{"role": "user", "content": prompt}]}
     headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
     try:
@@ -2629,7 +2633,11 @@ async def jageum_chat(request: Request):
 {_APPROVAL_SPEC_RULE}
 - 모르는 건 모른다고 하세요."""
     body = {
-        "model": "claude-opus-4-8", "max_tokens": 1500, "system": system,
+        # Opus 5 는 생각이 기본으로 켜지고 max_tokens 가 생각+답변을 합쳐 제한한다.
+        # 예전 1,500 을 그대로 두면 생각하다가 답이 잘리므로 넉넉히 준다.
+        "model": "claude-opus-5", "max_tokens": 8000, "system": system,
+        "thinking": {"type": "adaptive"},
+        "output_config": {"effort": "medium"},   # 대화창이라 응답 속도도 중요
         "messages": [{"role": m["role"], "content": m["content"]} for m in messages[-12:]],
     }
     headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
@@ -2704,7 +2712,9 @@ async def jageum_approval_chat(aid: int, request: Request):
 {chr(10).join(('· '+m.get('role','')+': '+m.get('text','')) for m in appr.get('대화',[])) or '(대화 기록 없음)'}"""
     conv = [{"role": m.get("role"), "content": m.get("text", "")} for m in thread if m.get("role") in ("user", "assistant")]
     conv.append({"role": "user", "content": msg})
-    body = {"model": "claude-opus-4-8", "max_tokens": 1200, "system": system, "messages": conv[-16:]}
+    body = {"model": "claude-opus-5", "max_tokens": 8000, "system": system,
+            "thinking": {"type": "adaptive"}, "output_config": {"effort": "medium"},
+            "messages": conv[-16:]}
     headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
     async with httpx.AsyncClient(timeout=90) as client:
         r = await client.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
@@ -2783,7 +2793,11 @@ async def jageum_sales_chat(request: Request):
 {_APPROVAL_SPEC_RULE}
 - 승인·결정은 사장님 몫입니다. 모르는 건 모른다고 하세요."""
     body = {
-        "model": "claude-opus-4-8", "max_tokens": 1500, "system": system,
+        # Opus 5 는 생각이 기본으로 켜지고 max_tokens 가 생각+답변을 합쳐 제한한다.
+        # 예전 1,500 을 그대로 두면 생각하다가 답이 잘리므로 넉넉히 준다.
+        "model": "claude-opus-5", "max_tokens": 8000, "system": system,
+        "thinking": {"type": "adaptive"},
+        "output_config": {"effort": "medium"},   # 대화창이라 응답 속도도 중요
         "messages": [{"role": m["role"], "content": m["content"]} for m in messages[-12:]],
     }
     headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
