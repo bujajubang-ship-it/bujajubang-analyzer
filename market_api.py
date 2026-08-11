@@ -104,6 +104,34 @@ def add_text_filter(q, col, fts_table, join, where, args):
     return join
 
 
+# 표 제목을 눌러 정렬할 때 쓰는 열 정의 (방향은 dir 파라미터로 따로 받는다)
+P_COL = {
+    "sales": "sales_28d", "conv": "CAST(sales_28d AS REAL)/NULLIF(pv_28d,0)",
+    "gv": "glance_view", "growth": "gv_var", "clicks": "srp_clicks", "ctr": "ctr",
+    "price": "avg_price", "review": "rating_count", "launch": "launch_date",
+    "impression": "impression", "rank": "rank", "name": "name",
+}
+C_COL = {
+    "sales": "sales_sum", "gv": "glance_view", "growth": "gv_var", "ads": "ads_pct",
+    "review": "med_review", "new": "new_ratio", "price": "avg_price",
+    "conc": "CAST(gv_top10 AS REAL)/NULLIF(gv_top100,0)", "name": "path",
+    "nprod": "n_products",
+}
+K_COL = {
+    "volume": "search_volume", "growth": "sv_var", "clicks": "srp_click",
+    "ctr": "ctr", "price": "avg_price", "cats": "n_cats", "name": "keyword",
+}
+
+
+def order_by(col, dir_, table_cols, fallback):
+    """표 제목 클릭 정렬. 허용된 열 이름만 쓴다(임의 SQL 방지)."""
+    if col and col in table_cols:
+        d = "ASC" if str(dir_).lower() == "asc" else "DESC"
+        # 값이 없는 행은 어느 방향으로 정렬하든 항상 뒤로 보낸다
+        return "(%s) IS NULL, (%s) %s" % (table_cols[col], table_cols[col], d)
+    return fallback
+
+
 P_SORT = {
     "sales": "sales_28d DESC",
     "conv": "CAST(sales_28d AS REAL)/NULLIF(pv_28d,0) DESC",
@@ -156,17 +184,26 @@ def api_meta():
 
 @router.get("/categories")
 def api_categories(top: int = 0, q: str = "", sort: str = "gv",
+                   col: str = "", dir: str = "desc",
                    min_gv: int = 0, max_ads: float = 100,
+                   min_price: int = 0, max_price: int = 0,
                    limit: int = 100, offset: int = 0):
     where, args = ["glance_view >= ?", "ads_pct <= ?"], [min_gv, max_ads]
+    if min_price:
+        where.append("avg_price >= ?")
+        args.append(min_price)
+    if max_price:
+        where.append("avg_price <= ?")
+        args.append(max_price)
     add_scope(top, where, args, "")
     if q.strip():
         where.append("path LIKE ?")
         args.append("%" + q.strip() + "%")
     w = " AND ".join(where)
     total = one("SELECT COUNT(*) c FROM category WHERE " + w, args)["c"]
+    order = order_by(col, dir, C_COL, C_SORT.get(sort, C_SORT["gv"]))
     items = rows("SELECT * FROM category WHERE %s ORDER BY %s LIMIT ? OFFSET ?"
-                 % (w, C_SORT.get(sort, C_SORT["gv"])), args + [min(limit, 500), offset])
+                 % (w, order), args + [min(limit, 500), offset])
     return {"total": total, "items": items}
 
 
@@ -186,6 +223,7 @@ def api_category(code: int):
 
 @router.get("/products")
 def api_products(q: str = "", cat: int = 0, top: int = 0, sort: str = "gv",
+                 col: str = "", dir: str = "desc",
                  min_gv: int = 0, max_review: int = 0, since: str = "",
                  min_sales: int = 0, max_price: int = 0, min_price: int = 0,
                  limit: int = 60, offset: int = 0):
@@ -199,7 +237,7 @@ def api_products(q: str = "", cat: int = 0, top: int = 0, sort: str = "gv",
     if min_sales:
         where.append("p.sales_28d >= ?")
         args.append(min_sales)
-    if min_sales or sort in ("sales", "conv"):
+    if min_sales or sort in ("sales", "conv") or col in ("sales", "conv"):
         where.append("p.sales_dup = 0")
     if max_review:
         where.append("p.rating_count <= ?")
@@ -214,8 +252,9 @@ def api_products(q: str = "", cat: int = 0, top: int = 0, sort: str = "gv",
         where.append("p.avg_price <= ?")
         args.append(max_price)
     w = " AND ".join(where)
-    order = re.sub(r"\b(glance_view|ctr|srp_clicks|gv_var|launch_date|avg_price|rating_count|cat_code|rank|sales_28d|pv_28d)\b",
-                   r"p.\1", P_SORT.get(sort, P_SORT["gv"]))
+    order = order_by(col, dir, P_COL, P_SORT.get(sort, P_SORT["gv"]))
+    order = re.sub(r"\b(glance_view|ctr|srp_clicks|gv_var|launch_date|avg_price|rating_count|cat_code|rank|sales_28d|pv_28d|impression|name)\b",
+                   r"p.\1", order)
     total = one("SELECT COUNT(*) c %s WHERE %s" % (join, w), args)["c"]
     items = rows("""SELECT p.*, c.name AS cat_name, c.path AS cat_path, c.top_name
                     %s WHERE %s ORDER BY %s LIMIT ? OFFSET ?""" % (join, w, order),
@@ -225,6 +264,7 @@ def api_products(q: str = "", cat: int = 0, top: int = 0, sort: str = "gv",
 
 @router.get("/keywords")
 def api_keywords(q: str = "", cat: int = 0, top: int = 0, sort: str = "volume",
+                 col: str = "", dir: str = "desc",
                  min_volume: int = 0, group: int = 1, limit: int = 60, offset: int = 0):
     """같은 '냄비'가 카테고리마다 한 줄씩 들어있다. 기본은 검색어당 한 줄로 묶는다."""
     join = "FROM keyword k JOIN category c ON c.code = k.cat_code"
@@ -235,8 +275,8 @@ def api_keywords(q: str = "", cat: int = 0, top: int = 0, sort: str = "volume",
         args.append(cat)
     add_scope(top, where, args)
     w = " AND ".join(where)
-    order = re.sub(r"\b(search_volume|sv_var|srp_click|ctr|avg_price)\b", r"k.\1",
-                   K_SORT.get(sort, K_SORT["volume"]))
+    order = order_by(col, dir, K_COL, K_SORT.get(sort, K_SORT["volume"]))
+    order = re.sub(r"\b(search_volume|sv_var|srp_click|ctr|avg_price|keyword)\b", r"k.\1", order)
     if not group:
         total = one("SELECT COUNT(*) c %s WHERE %s" % (join, w), args)["c"]
         items = rows("""SELECT k.*, c.name AS cat_name, c.path AS cat_path
@@ -244,7 +284,8 @@ def api_keywords(q: str = "", cat: int = 0, top: int = 0, sort: str = "volume",
                      args + [min(limit, 300), offset])
         return {"total": total, "items": items}
 
-    order = order.replace("k.search_volume", "search_volume").replace("k.srp_click", "srp_click")
+    for c_ in ("search_volume", "srp_click", "n_cats", "keyword"):
+        order = order.replace("k." + c_, c_)
     grouped = """
         WITH g AS (
           SELECT k.keyword, k.sv_var, k.avg_price, k.price_start, k.price_end, k.ctr,
@@ -264,6 +305,7 @@ def api_keywords(q: str = "", cat: int = 0, top: int = 0, sort: str = "volume",
 
 @router.get("/opportunity")
 def api_opportunity(top: int = 0, mode: str = "sales",
+                    col: str = "", dir: str = "desc",
                     min_gv: int = 500, max_review: int = 100,
                     since: str = "2025-01-01", min_price: int = 0, max_price: int = 0,
                     limit: int = 60, offset: int = 0):
@@ -275,7 +317,8 @@ def api_opportunity(top: int = 0, mode: str = "sales",
         w = " AND ".join(where)
         total = one("SELECT COUNT(*) c FROM category WHERE " + w, args)["c"]
         items = rows("""SELECT *, ROUND(glance_view/(med_review+50.0)/(ads_pct+5.0)*100,1) AS score
-                        FROM category WHERE %s ORDER BY score DESC LIMIT ? OFFSET ?""" % w,
+                        FROM category WHERE %s ORDER BY %s LIMIT ? OFFSET ?"""
+                     % (w, order_by(col, dir, C_COL, "score DESC")),
                      args + [min(limit, 300), offset])
         return {"total": total, "items": items, "mode": "category"}
 
@@ -299,9 +342,12 @@ def api_opportunity(top: int = 0, mode: str = "sales",
         "sales": "ROUND(p.sales_28d/(p.rating_count+20.0)*100,1)",
         "conv": "ROUND(CAST(p.sales_28d AS REAL)/p.pv_28d*100,2)",
     }.get(mode, "ROUND(p.glance_view/(p.rating_count+20.0),1)")
+    o = order_by(col, dir, P_COL, "score DESC")
+    o = re.sub(r"\b(glance_view|ctr|srp_clicks|gv_var|launch_date|avg_price|rating_count|rank|sales_28d|pv_28d|impression|name)\b",
+               r"p.\1", o)
     items = rows("""SELECT p.*, c.name AS cat_name, c.path AS cat_path, c.top_name, %s AS score
                     FROM product p JOIN category c ON c.code=p.cat_code
-                    WHERE %s ORDER BY score DESC LIMIT ? OFFSET ?""" % (score, w),
+                    WHERE %s ORDER BY %s LIMIT ? OFFSET ?""" % (score, w, o),
                  args + [min(limit, 300), offset])
     return {"total": total, "items": items, "mode": mode}
 

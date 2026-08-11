@@ -139,11 +139,14 @@ tbody tr:hover{background:#fcfcfe}
         </select>
         <label>가격대</label>
         <select id="o-price">
-          <option value="">전체</option>
-          <option value="5000,50000">5천~5만 (소형·부피작음)</option>
-          <option value="5000,300000" selected>5천~30만 (소싱 현실권)</option>
-          <option value="30000,300000">3만~30만 (단가 높은 것)</option>
-          <option value="100000,3000000">10만 이상 (대형장비)</option>
+          <option value="">가격 전체</option>
+          <option value="0,10000">1만원 이하</option>
+          <option value="10000,30000">1만~3만</option>
+          <option value="30000,60000">3만~6만</option>
+          <option value="60000,150000">6만~15만</option>
+          <option value="150000,300000">15만~30만</option>
+          <option value="300000,1000000">30만~100만</option>
+          <option value="1000000,0">100만 이상</option>
         </select>
       </span>
       <button class="btn" id="o-go">찾기</button>
@@ -162,6 +165,17 @@ tbody tr:hover{background:#fcfcfe}
     <div class="bar">
       <label>분야</label><select id="c-top"></select>
       <input type="search" id="c-q" placeholder="카테고리 이름 (예: 냄비, 도마)">
+      <label>평균가</label>
+      <select id="c-price" onchange="loadCat(true)">
+        <option value="">가격 전체</option>
+          <option value="0,10000">1만원 이하</option>
+          <option value="10000,30000">1만~3만</option>
+          <option value="30000,60000">3만~6만</option>
+          <option value="60000,150000">6만~15만</option>
+          <option value="150000,300000">15만~30만</option>
+          <option value="300000,1000000">30만~100만</option>
+          <option value="1000000,0">100만 이상</option>
+      </select>
       <label>정렬</label>
       <select id="c-sort">
         <option value="sales">많이 팔리는 순</option>
@@ -197,6 +211,16 @@ tbody tr:hover{background:#fcfcfe}
         <option value="review_low">리뷰 적은 순</option>
         <option value="expensive">비싼 순</option>
         <option value="cheap">싼 순</option>
+      </select>
+      <select id="p-price" onchange="const v=this.value.split(','); $('#p-min').value=v[0]&&v[0]!=='0'?v[0]:''; $('#p-max').value=v[1]&&v[1]!=='0'?v[1]:''; loadProd(true);">
+        <option value="">가격 전체</option>
+          <option value="0,10000">1만원 이하</option>
+          <option value="10000,30000">1만~3만</option>
+          <option value="30000,60000">3만~6만</option>
+          <option value="60000,150000">6만~15만</option>
+          <option value="150000,300000">15만~30만</option>
+          <option value="300000,1000000">30만~100만</option>
+          <option value="1000000,0">100만 이상</option>
       </select>
       <input type="number" id="p-min" placeholder="최저가" style="width:96px">
       <input type="number" id="p-max" placeholder="최고가" style="width:96px">
@@ -276,6 +300,28 @@ async function api(path, params){
 }
 
 let META = null, cur = {tab:'opp', offset:0, load:null};
+// 표 제목을 눌러 정렬한다. 같은 제목을 다시 누르면 방향이 바뀐다.
+const SORTST = {opp:{col:'',dir:'desc'}, cat:{col:'',dir:'desc'},
+                prod:{col:'',dir:'desc'}, kw:{col:'',dir:'desc'}};
+
+function sortableHead(cols, tab){
+  const st = SORTST[tab] || {};
+  return '<tr>' + cols.map(c => {
+    if(!c.col) return `<th${c.cls?' class="'+c.cls+'"':''}>${c.label}</th>`;
+    const on = st.col === c.col;
+    const arrow = on ? (st.dir==='asc' ? ' ▲' : ' ▼') : '<span style="opacity:.25"> ⇅</span>';
+    return `<th${c.cls?' class="'+c.cls+'"':''} style="cursor:pointer;user-select:none${on?';color:var(--red)':''}"
+      onclick="sortBy('${tab}','${c.col}')" title="눌러서 정렬">${c.label}${arrow}</th>`;
+  }).join('') + '</tr>';
+}
+
+function sortBy(tab, col){
+  const st = SORTST[tab];
+  // 같은 열을 다시 누르면 방향만 뒤집는다. 처음 누르면 큰 값부터.
+  if(st.col === col) st.dir = (st.dir === 'desc' ? 'asc' : 'desc');
+  else { st.col = col; st.dir = 'desc'; }
+  ({opp:loadOpp, cat:loadCat, prod:loadProd, kw:loadKw})[tab](true);
+}
 
 // ── 탭 전환
 document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
@@ -334,10 +380,11 @@ async function loadOpp(reset){
   const mode = $('#o-mode').value;
   const d = await api('/market/api/opportunity', {
     top: $('#o-top').value, mode,
+    col: SORTST.opp.col, dir: SORTST.opp.dir,
     max_review: $('#o-review').value, since: $('#o-since').value,
     min_gv: $('#o-gv').value,
     min_price: ($('#o-price').value.split(',')[0] || ''),
-    max_price: ($('#o-price').value.split(',')[1] || ''),
+    max_price: (($('#o-price').value.split(',')[1] || '') === '0' ? '' : ($('#o-price').value.split(',')[1] || '')),
     limit: 60, offset: cur.offset
   });
   cur.offset += d.items.length;
@@ -353,6 +400,9 @@ async function loadCat(reset){
   if(reset) cur.offset = 0;
   const d = await api('/market/api/categories', {
     top: $('#c-top').value, q: $('#c-q').value, sort: $('#c-sort').value,
+    col: SORTST.cat.col, dir: SORTST.cat.dir,
+    min_price: ($('#c-price').value.split(',')[0] || ''),
+    max_price: ($('#c-price').value.split(',')[1] || ''),
     limit: 100, offset: cur.offset
   });
   cur.offset += d.items.length;
@@ -367,6 +417,7 @@ async function loadProd(reset){
   if(reset) cur.offset = 0;
   const d = await api('/market/api/products', {
     q: $('#p-q').value, top: $('#p-top').value, sort: $('#p-sort').value,
+    col: SORTST.prod.col, dir: SORTST.prod.dir,
     min_price: $('#p-min').value, max_price: $('#p-max').value,
     limit: 60, offset: cur.offset
   });
@@ -382,6 +433,7 @@ async function loadKw(reset){
   if(reset) cur.offset = 0;
   const d = await api('/market/api/keywords', {
     q: $('#k-q').value, top: $('#k-top').value, sort: $('#k-sort').value,
+    col: SORTST.kw.col, dir: SORTST.kw.dir,
     group: $('#k-split').checked ? '0' : '1', limit: 60, offset: cur.offset
   });
   cur.offset += d.items.length;
@@ -392,10 +444,19 @@ async function loadKw(reset){
 
 // ── 표 그리기
 function renderProdTable(sel, items, reset, opp){
-  const head = `<tr><th>상품</th><th class="num">28일 판매</th><th class="num">전환율</th>
-    <th class="num">조회수</th><th class="num">증감</th>
-    <th class="num">검색클릭</th><th class="num">CTR</th><th class="num">가격</th>
-    <th class="num">리뷰</th><th class="num">출시</th><th>카테고리</th><th></th></tr>`;
+  const head = sortableHead([
+    {label:'상품'},
+    {label:'28일 판매', col:'sales',  cls:'num'},
+    {label:'전환율',    col:'conv',   cls:'num'},
+    {label:'조회수',    col:'gv',     cls:'num'},
+    {label:'증감',      col:'growth', cls:'num'},
+    {label:'검색클릭',  col:'clicks', cls:'num'},
+    {label:'CTR',      col:'ctr',    cls:'num'},
+    {label:'가격',      col:'price',  cls:'num'},
+    {label:'리뷰',      col:'review', cls:'num'},
+    {label:'출시',      col:'launch', cls:'num'},
+    {label:'카테고리'}, {label:''},
+  ], opp ? 'opp' : 'prod');
   const body = items.map(p => `<tr>
     <td class="clickable" onclick="openItem(${p.item_id})">
       <div class="prow">
@@ -426,9 +487,17 @@ function renderProdTable(sel, items, reset, opp){
 }
 
 function renderCatTable(sel, items, reset, opp){
-  const head = `<tr><th>카테고리</th><th class="num">28일 판매</th><th class="num">조회수</th>
-    <th class="num">증감</th><th class="num">광고비중</th><th class="num">리뷰중앙값</th>
-    <th class="num">신상비율</th><th class="num">평균가</th><th class="num">상위10 집중</th></tr>`;
+  const head = sortableHead([
+    {label:'카테고리',   col:'name',   cls:''},
+    {label:'28일 판매',  col:'sales',  cls:'num'},
+    {label:'조회수',     col:'gv',     cls:'num'},
+    {label:'증감',       col:'growth', cls:'num'},
+    {label:'광고비중',   col:'ads',    cls:'num'},
+    {label:'리뷰중앙값', col:'review', cls:'num'},
+    {label:'신상비율',   col:'new',    cls:'num'},
+    {label:'평균가',     col:'price',  cls:'num'},
+    {label:'상위10 집중',col:'conc',   cls:'num'},
+  ], opp ? 'opp' : 'cat');
   const body = items.map(c => {
     const conc = c.gv_top100 ? Math.round(c.gv_top10*100/c.gv_top100) : 0;
     return `<tr class="clickable" onclick="openCat(${c.code})">
@@ -452,9 +521,16 @@ function renderCatTable(sel, items, reset, opp){
 
 function renderKwTable(sel, items, reset){
   const grouped = items.length && items[0].n_cats != null;
-  const head = `<tr><th>검색어</th><th class="num">검색량</th><th class="num">증감</th>
-    <th class="num">클릭</th><th class="num">${grouped?'걸린 곳':'클릭점유'}</th><th class="num">평균가</th>
-    <th class="num">가격대</th><th>${grouped?'클릭 1위 카테고리':'카테고리'}</th><th></th></tr>`;
+  const head = sortableHead([
+    {label:'검색어',  col:'name',   cls:''},
+    {label:'검색량',  col:'volume', cls:'num'},
+    {label:'증감',    col:'growth', cls:'num'},
+    {label:'클릭',    col:'clicks', cls:'num'},
+    {label: grouped?'걸린 곳':'클릭점유', col: grouped?'cats':'', cls:'num'},
+    {label:'평균가',  col:'price',  cls:'num'},
+    {label:'가격대',  cls:'num'},
+    {label: grouped?'클릭 1위 카테고리':'카테고리'}, {label:''},
+  ], 'kw');
   const body = items.map(k => `<tr>
     <td><b>${esc(k.keyword)}</b></td>
     <td class="num"><b>${n(k.search_volume)}</b></td>
