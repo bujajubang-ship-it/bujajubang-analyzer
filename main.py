@@ -1310,6 +1310,104 @@ async def sales_files_delete(request: Request):
     return JSONResponse({"ok": True})
 
 
+# ===== 월결산 파일 보관함 (경리·사장님) =====
+# 경리가 매달 마감한 결산 엑셀을 올려두고 언제든 열어보는 곳.
+# DATA_DIR 은 Render 영구디스크라 재배포해도 파일이 남는다.
+CLOSE_FILES_DIR = data_path("close_files")
+CLOSE_FIRST_MONTH = "2025-01"          # 이 달부터 올릴 수 있다
+
+
+@app.get("/jageum/api/close_files")
+def close_files_list(request: Request):
+    if not _jageum_auth(request):      # 사장님·경리만
+        return _AUTH401
+    import datetime as _dt
+    out = []
+    if CLOSE_FILES_DIR.exists():
+        for m_dir in sorted(CLOSE_FILES_DIR.iterdir(), reverse=True):
+            if not m_dir.is_dir() or not _month_ok(m_dir.name):
+                continue
+            for f in sorted(m_dir.iterdir()):
+                if not f.is_file():
+                    continue
+                st = f.stat()
+                out.append({"월": m_dir.name, "파일명": f.name, "크기": st.st_size,
+                            "올린시각": _dt.datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M")})
+    return JSONResponse({"files": out, "first_month": CLOSE_FIRST_MONTH})
+
+
+@app.post("/jageum/api/close_files")
+async def close_files_upload(request: Request):
+    if not _jageum_auth(request):
+        return _AUTH401
+    form = await request.form()
+    month = (form.get("month") or "").strip()
+    if not _month_ok(month) or month < CLOSE_FIRST_MONTH:
+        return JSONResponse({"ok": False,
+                             "error": f"{CLOSE_FIRST_MONTH} 이후의 월을 골라주세요"}, status_code=400)
+    saved, skipped = [], []
+    for up in form.getlist("files"):
+        if not hasattr(up, "filename"):
+            continue
+        name = _safe_seg(up.filename)
+        if not name:
+            continue
+        if os.path.splitext(name)[1].lower() not in _FILE_OK_EXT:
+            skipped.append(f"{name} (지원 안 하는 형식)")
+            continue
+        raw = await up.read()
+        if len(raw) > _MAX_FILE_MB * 1024 * 1024:
+            skipped.append(f"{name} ({_MAX_FILE_MB}MB 초과)")
+            continue
+        d = CLOSE_FILES_DIR / month
+        d.mkdir(parents=True, exist_ok=True)
+        target = d / name
+        if target.exists():            # 같은 이름이면 덮어쓰지 않고 (2), (3) 을 붙인다
+            stem, e = os.path.splitext(name)
+            i = 2
+            while (d / f"{stem} ({i}){e}").exists():
+                i += 1
+            target = d / f"{stem} ({i}){e}"
+        target.write_bytes(raw)
+        saved.append(target.name)
+    return JSONResponse({"ok": True, "saved": saved, "skipped": skipped, "월": month})
+
+
+def _close_resolve(month: str, name: str):
+    """요청한 파일의 실제 경로. 경로를 벗어나면 None."""
+    month, name = (month or "").strip(), _safe_seg(name)
+    if not _month_ok(month) or not name:
+        return None
+    p = (CLOSE_FILES_DIR / month / name).resolve()
+    try:
+        p.relative_to(CLOSE_FILES_DIR.resolve())
+    except ValueError:
+        return None
+    return p if p.is_file() else None
+
+
+@app.get("/jageum/api/close_files/download")
+def close_files_download(request: Request, month: str = "", name: str = ""):
+    if not _jageum_auth(request):
+        return _AUTH401
+    p = _close_resolve(month, name)
+    if not p:
+        return JSONResponse({"ok": False, "error": "파일을 찾을 수 없습니다"}, status_code=404)
+    return FileResponse(str(p), filename=p.name)
+
+
+@app.post("/jageum/api/close_files/delete")
+async def close_files_delete(request: Request):
+    if not _jageum_auth(request):
+        return _AUTH401
+    body = await request.json()
+    p = _close_resolve(body.get("월", ""), body.get("파일명", ""))
+    if not p:
+        return JSONResponse({"ok": False, "error": "파일을 찾을 수 없습니다"}, status_code=404)
+    p.unlink()
+    return JSONResponse({"ok": True})
+
+
 @app.post("/jageum/api/sales_refresh")
 async def sales_refresh(request: Request):
     """영업직원이 이카운트 판매조회로 넘긴 뒤 눌러 판매 데이터를 즉시 재수집(온디맨드).

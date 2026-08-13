@@ -354,6 +354,27 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    <div style="margin-top:8px"><canvas id="snapChart" height="90"></canvas></div>
    <div style="overflow-x:auto;margin-top:12px"><table id="snap_table" style="width:100%;font-size:12.5px;border-collapse:collapse"></table></div>
  </div>
+
+ <!-- 월결산 파일 보관함 -->
+ <div class="card" id="close_card" style="border-top:3px solid #0369a1">
+   <h2>📒 월별 결산 파일 <span class="muted big">— 경리가 마감한 결산 엑셀을 올려두는 곳</span></h2>
+   <div class="note">한 번 올리면 계속 보관됩니다. 언제든 눌러서 열어보세요. 사장님·경리만 보입니다.</div>
+   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0">
+     <select id="clf_month" style="padding:8px 10px;border:2px solid #e5e7eb;border-radius:9px;font-size:13px"></select>
+     <input type="file" id="clf_input" multiple
+            style="flex:1;min-width:200px;padding:7px;border:2px dashed #d1d5db;border-radius:9px;font-size:13px">
+     <button id="clf_btn" onclick="clfUpload()"
+             style="border:none;background:#0369a1;color:#fff;border-radius:9px;padding:9px 16px;font-size:14px;font-weight:700;cursor:pointer">올리기</button>
+   </div>
+   <div id="clf_msg" style="font-size:13px;margin-bottom:6px"></div>
+   <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+     <select id="clf_filter" onchange="clfRender()" style="padding:7px 10px;border:2px solid #e5e7eb;border-radius:9px;font-size:13px">
+       <option value="">전체 월</option>
+     </select>
+     <span class="muted" style="font-size:12px">엑셀·PDF·한글·이미지·zip · 한 개 25MB까지</span>
+   </div>
+   <div style="max-height:46vh;overflow:auto"><table id="clf_table" style="font-size:13px;width:100%"></table></div>
+ </div>
  </div><!--/view-biz-->
 
  <div id="view_personal" style="display:none">
@@ -1033,6 +1054,7 @@ function showTab(v,btn){
   const vl=document.getElementById('view_life'); if(vl)vl.style.display=(v==='life')?'':'none';
   const vs=document.getElementById('view_sales'); if(vs)vs.style.display=(v==='sales')?'':'none';
   const pb=document.getElementById('period_bar'); if(pb)pb.style.display=(v==='biz')?'':'none';
+  if(v==='biz')loadCloseFiles();
   if(v==='total')renderTotal();
   if(v==='personal')loadInvest();   // 투자노트가 이 탭에 통합됨
   if(v==='life')loadLife();
@@ -2629,6 +2651,81 @@ function renderBoard(rows){
 let SLFILES=[], SLF_ROLE='';
 function slfSize(n){ return n>=1048576 ? (n/1048576).toFixed(1)+'MB' : Math.max(1,Math.round(n/1024))+'KB'; }
 function slfEsc(s){ const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+
+// ===== 월별 결산 파일 보관함 (사업 탭) =====
+let CLFILES=[], CLF_FIRST='2025-01';
+
+function clfMonths(){
+  // 2025-01 부터 이번 달까지, 최신이 위로
+  const out=[]; const t=new Date();
+  let y=+CLF_FIRST.slice(0,4), m=+CLF_FIRST.slice(5,7);
+  const ey=t.getFullYear(), em=t.getMonth()+1;
+  while(y<ey || (y===ey && m<=em)){
+    out.push(y+'-'+String(m).padStart(2,'0'));
+    m++; if(m>12){m=1;y++;}
+  }
+  return out.reverse();
+}
+
+function loadCloseFiles(){
+  fetch('/jageum/api/close_files').then(r=>r.json()).then(d=>{
+    if(d.error){ return; }                 // 영업사원 계정 등 권한 없음
+    CLFILES=d.files||[]; CLF_FIRST=d.first_month||'2025-01';
+    const months=clfMonths();
+    const sel=document.getElementById('clf_month');
+    if(sel&&!sel.options.length){
+      sel.innerHTML=months.map(m=>`<option value="${m}">${m.replace('-','년 ')}월</option>`).join('');
+    }
+    const f=document.getElementById('clf_filter');
+    if(f){ const cur=f.value;
+      const have=[...new Set(CLFILES.map(x=>x.월))];
+      f.innerHTML='<option value="">전체 월</option>'+have.map(m=>`<option value="${m}">${m}</option>`).join('');
+      f.value=cur; }
+    clfRender();
+  }).catch(()=>{});
+}
+
+function clfRender(){
+  const t=document.getElementById('clf_table'); if(!t)return;
+  const f=(document.getElementById('clf_filter')||{}).value||'';
+  const rows=CLFILES.filter(x=>!f||x.월===f);
+  if(!rows.length){ t.innerHTML='<tr><td style="padding:14px;color:#6b7280">아직 올린 결산 파일이 없어요. 위에서 월을 고르고 파일을 올려주세요.</td></tr>'; return; }
+  t.innerHTML='<tr style="background:#f9fafb;text-align:left">'+
+    '<th style="padding:7px 8px">월</th><th style="padding:7px 8px">파일</th>'+
+    '<th style="padding:7px 8px">크기</th><th style="padding:7px 8px">올린시각</th><th></th></tr>'+
+    rows.map(x=>{
+      const q=`month=${encodeURIComponent(x.월)}&name=${encodeURIComponent(x.파일명)}`;
+      return `<tr style="border-top:1px solid #f1f5f9">
+        <td style="padding:7px 8px;font-weight:700;color:#0369a1">${slfEsc(x.월)}</td>
+        <td style="padding:7px 8px"><a href="/jageum/api/close_files/download?${q}" style="color:#0369a1;font-weight:600;text-decoration:none">${slfEsc(x.파일명)}</a></td>
+        <td style="padding:7px 8px;color:#6b7280">${slfSize(x.크기)}</td>
+        <td style="padding:7px 8px;color:#6b7280">${slfEsc(x.올린시각)}</td>
+        <td style="padding:7px 8px"><button onclick="clfDel('${x.월}','${encodeURIComponent(x.파일명)}')" style="border:none;background:#fef2f2;color:#dc2626;border-radius:7px;padding:5px 10px;cursor:pointer;font-size:12px">삭제</button></td>
+      </tr>`;
+    }).join('');
+}
+
+function clfUpload(){
+  const mi=document.getElementById('clf_month'), fi=document.getElementById('clf_input');
+  const msg=document.getElementById('clf_msg'), btn=document.getElementById('clf_btn');
+  if(!fi.files.length){ msg.style.color='#dc2626'; msg.textContent='올릴 파일을 골라주세요.'; return; }
+  const fd=new FormData(); fd.append('month', mi.value);
+  for(const f of fi.files) fd.append('files', f);
+  btn.disabled=true; msg.style.color='#6b7280'; msg.textContent='올리는 중…';
+  fetch('/jageum/api/close_files',{method:'POST',body:fd}).then(r=>r.json()).then(d=>{
+    btn.disabled=false;
+    if(!d.ok){ msg.style.color='#dc2626'; msg.textContent=d.error||'올리지 못했어요.'; return; }
+    msg.style.color='#0369a1';
+    msg.textContent=`${d.saved.length}개 올렸어요.`+(d.skipped.length?` (건너뜀: ${d.skipped.join(', ')})`:'');
+    fi.value=''; loadCloseFiles();
+  }).catch(()=>{ btn.disabled=false; msg.style.color='#dc2626'; msg.textContent='올리지 못했어요.'; });
+}
+
+function clfDel(month,name){
+  if(!confirm('이 결산 파일을 삭제할까요?'))return;
+  fetch('/jageum/api/close_files/delete',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({월:month,파일명:decodeURIComponent(name)})}).then(()=>loadCloseFiles());
+}
 
 function loadSalesFiles(){
   const mi=document.getElementById('slf_month');
