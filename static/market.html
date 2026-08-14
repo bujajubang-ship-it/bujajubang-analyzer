@@ -270,14 +270,14 @@ tbody tr:hover{background:#fcfcfe}
   <!-- 경쟁사 분석 -->
   <section id="v-comp" hidden>
     <div class="bar">
-      <label>업체</label><select id="c-who"></select>
-      <label>분야</label><select id="c-cat"><option value="">전체</option></select>
-      <input type="search" id="c-q" placeholder="상품명에서 찾기 (예: 미니냉동고, 온장고)">
-      <span class="dim" id="c-info"></span>
+      <label>업체</label><select id="cp-who"></select>
+      <label>분야</label><select id="cp-cat"><option value="">전체</option></select>
+      <input type="search" id="cp-q" placeholder="상품명에서 찾기 (예: 미니냉동고, 온장고)">
+      <span class="dim" id="cp-info"></span>
     </div>
-    <div class="hint" id="c-src"></div>
-    <div id="c-sum"></div>
-    <div id="c-body"></div>
+    <div class="hint" id="cp-src"></div>
+    <div id="cp-sum"></div>
+    <div id="cp-body"></div>
   </section>
 </main>
 
@@ -380,8 +380,19 @@ document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
   $('#d-go').onclick = () => loadDoc();
   $('#d-q').onkeydown = e => e.key==='Enter' && loadDoc();
   $('#more').onclick = () => cur.load(false);
-  loadOpp(true);
+  // 소싱 사이트 메뉴에서 '경쟁사 분석'을 바로 누르면 /market#comp 로 들어온다
+  openByHash() || loadOpp(true);
+  window.addEventListener('hashchange', openByHash);
 })();
+
+// 주소 뒤 #탭이름 이 있으면 그 탭을 연다. 없으면 false.
+function openByHash(){
+  const want = (location.hash || '').replace('#','');
+  const t = want && document.querySelector(`.tab[data-tab="${want}"]`);
+  if (!t || t.classList.contains('on')) return !!t;
+  t.click();
+  return true;
+}
 
 function paginate(reset, total, shown){
   $('#more').hidden = shown >= total;
@@ -751,22 +762,22 @@ async function loadComp(reset){
   if (!COMPS){
     const r = await api('/market/api/competitors');
     COMPS = r.items || [];
-    $('#c-who').innerHTML = COMPS.map(c =>
+    $('#cp-who').innerHTML = COMPS.map(c =>
       `<option value="${esc(c.slug)}">${esc(c.업체)}${c.분야?' · '+esc(c.분야):''}</option>`).join('');
-    $('#c-who').onchange = () => { COMP = null; loadComp(true); };
-    $('#c-cat').onchange = drawComp;
-    $('#c-q').oninput = drawComp;
+    $('#cp-who').onchange = () => { COMP = null; loadComp(true); };
+    $('#cp-cat').onchange = drawComp;
+    $('#cp-q').oninput = drawComp;
   }
   if (!COMPS.length){
-    $('#c-body').innerHTML = `<div class="hint">아직 올라온 경쟁사 자료가 없습니다.</div>`;
+    $('#cp-body').innerHTML = `<div class="hint">아직 올라온 경쟁사 자료가 없습니다.</div>`;
     return;
   }
   if (!COMP || reset){
-    COMP = await api('/market/api/competitor/' + encodeURIComponent($('#c-who').value));
-    $('#c-cat').innerHTML = '<option value="">전체 분야</option>' +
+    COMP = await api('/market/api/competitor/' + encodeURIComponent($('#cp-who').value));
+    $('#cp-cat').innerHTML = '<option value="">전체 분야</option>' +
       (COMP.카테고리||[]).map(c => `<option value="${esc(c.이름)}">${esc(c.이름)}</option>`).join('');
-    $('#c-q').value = '';
-    $('#c-src').innerHTML =
+    $('#cp-q').value = '';
+    $('#cp-src').innerHTML =
       `<b>${esc(COMP.한줄||'')}</b><br>${esc(COMP.출처||'')}` +
       ((COMP.정확도||[]).length ? '<br>' + COMP.정확도.map(esc).join('<br>') : '');
     drawSum();
@@ -776,7 +787,7 @@ async function loadComp(reset){
 
 function drawSum(){
   const tot = COMP.총매출 || 0;
-  $('#c-sum').innerHTML = `
+  $('#cp-sum').innerHTML = `
     <table><thead><tr><th>분야</th><th class="num">매출</th><th class="num">비중</th>
       <th class="num">품목수</th><th></th></tr></thead><tbody>
     ${(COMP.카테고리||[]).map(c => `<tr>
@@ -796,12 +807,12 @@ function drawSum(){
 }
 
 function drawComp(){
-  const cat = $('#c-cat').value, q = ($('#c-q').value||'').trim();
+  const cat = $('#cp-cat').value, q = ($('#cp-q').value||'').trim();
   let list = (COMP.상품||[]).filter(p =>
     (!cat || p.카테고리 === cat) && (!q || (p.상품명||'').includes(q)));
   const sum = list.reduce((a,p) => a + p.매출, 0);
-  $('#c-info').textContent = `${list.length}개 · ${eok(sum)}`;
-  $('#c-body').innerHTML = `
+  $('#cp-info').textContent = `${list.length}개 · ${eok(sum)}`;
+  $('#cp-body').innerHTML = `
     <table><thead><tr><th style="width:52px">순위</th><th>상품명</th>
       <th style="width:150px">분야</th><th class="num" style="width:130px">매출</th></tr></thead><tbody>
     ${list.map((p,i) => `<tr>
