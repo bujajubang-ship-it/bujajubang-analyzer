@@ -3232,6 +3232,10 @@ from name_doctor import router as doctor_router, upload_router as doctor_upload_
 app.include_router(doctor_router)
 app.include_router(doctor_upload_router)
 
+from competitor_api import router as comp_router, upload_router as comp_upload_router
+app.include_router(comp_router)
+app.include_router(comp_upload_router)
+
 
 @app.get("/market")
 async def market_page(request: Request):
