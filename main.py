@@ -35,6 +35,43 @@ def _coupang_client() -> CoupangPartnersAPI | None:
     sk = os.getenv("COUPANG_SECRET_KEY", "").strip()
     return CoupangPartnersAPI(ak, sk) if ak and sk else None
 
+# ===== AI 호출 공통 =====
+# AI 서버가 붐비면(529 overloaded) 요청이 그냥 실패한다. 우리 잘못이 아니고 잠깐 뒤엔 되므로
+# 조용히 몇 번 다시 보내고, 그래도 안 되면 장사하는 사람이 읽을 수 있는 말로 알려준다.
+AI_URL = "https://api.anthropic.com/v1/messages"
+
+
+async def _ai_post(client, body, headers, tries: int = 4):
+    """AI에 요청을 보낸다. 붐빔(529)·속도제한(429)·서버오류(5xx)면 쉬었다 다시 보낸다."""
+    wait = 1.5
+    for i in range(tries):
+        last_try = (i == tries - 1)
+        try:
+            r = await client.post(AI_URL, json=body, headers=headers)
+        except Exception:
+            if last_try:
+                raise            # 부르는 쪽 try/except 가 받아서 메시지를 만든다
+        else:
+            if r.status_code < 500 and r.status_code != 429:
+                return r         # 성공했거나, 다시 보내도 똑같이 실패할 오류
+            if last_try:
+                return r
+        await asyncio.sleep(wait)
+        wait *= 2                # 1.5초 → 3초 → 6초
+    return r
+
+
+def _ai_err(r) -> str:
+    """실패 응답을 사람이 읽을 수 있는 한 줄로."""
+    if r.status_code in (429, 529):
+        return "AI가 지금 많이 붐빕니다. 잠시 뒤(30초쯤) 다시 보내주세요."
+    if r.status_code >= 500:
+        return "AI 서버에 문제가 있습니다. 잠시 뒤 다시 시도해 주세요."
+    if r.status_code in (401, 403):
+        return "AI 키가 만료되었거나 권한이 없습니다. (사장님 확인 필요)"
+    return "AI가 응답하지 못했습니다: %s" % r.text[:160]
+
+
 app = FastAPI(title="쿠팡 상품 분석기")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
@@ -2016,7 +2053,7 @@ async def jageum_life_compare(request: Request):
     headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
     try:
         async with httpx.AsyncClient(timeout=120) as c:
-            r = await c.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
+            r = await _ai_post(c, body, headers)
             r.raise_for_status()
             d = r.json()
             txt = "".join(b.get("text", "") for b in d.get("content", []) if b.get("type") == "text")
@@ -2075,9 +2112,9 @@ async def jageum_life_chat(request: Request):
     headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
     try:
         async with httpx.AsyncClient(timeout=240) as c:
-            r = await c.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
+            r = await _ai_post(c, body, headers)
             if r.status_code != 200:
-                return JSONResponse({"error": f"AI 오류: {r.text[:200]}"}, status_code=500)
+                return JSONResponse({"error": _ai_err(r)}, status_code=500)
             rd = r.json()
         text = "".join(b.get("text", "") for b in rd.get("content", []) if b.get("type") == "text")
         return JSONResponse({"reply": text})
@@ -2104,7 +2141,7 @@ async def jageum_life_title(request: Request):
     headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
     try:
         async with httpx.AsyncClient(timeout=90) as c:
-            r = await c.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
+            r = await _ai_post(c, body, headers)
             if r.status_code != 200:
                 return JSONResponse({"title": ""})
             rd = r.json()
@@ -2221,9 +2258,9 @@ async def jageum_invest_gurudata(request: Request):
     try:
         async with httpx.AsyncClient(timeout=600) as c:
             for _ in range(6):                      # 검색이 길어지면 pause_turn → 이어받기
-                r = await c.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
+                r = await _ai_post(c, body, headers)
                 if r.status_code != 200:
-                    return JSONResponse({"error": f"AI 오류: {r.text[:200]}"}, status_code=500)
+                    return JSONResponse({"error": _ai_err(r)}, status_code=500)
                 rd = r.json()
                 if rd.get("stop_reason") != "pause_turn":
                     break
@@ -2329,7 +2366,7 @@ async def jageum_invest_extract(request: Request):
     headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
     try:
         async with httpx.AsyncClient(timeout=120) as c:
-            r = await c.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
+            r = await _ai_post(c, body, headers)
             r.raise_for_status()
             d = r.json()
             txt = "".join(b.get("text", "") for b in d.get("content", []) if b.get("type") == "text")
@@ -2495,9 +2532,9 @@ async def jageum_invest_chat(request: Request):
         searched = 0
         async with httpx.AsyncClient(timeout=420) as c:
             for _ in range(7):    # 웹검색이 길어지면 pause_turn → 이어서 재요청
-                r = await c.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
+                r = await _ai_post(c, body, headers)
                 if r.status_code != 200:
-                    return JSONResponse({"error": f"AI 오류: {r.text[:200]}"}, status_code=500)
+                    return JSONResponse({"error": _ai_err(r)}, status_code=500)
                 rd = r.json()
                 searched += sum(1 for b in rd.get("content", [])
                                 if b.get("type") == "server_tool_use" and b.get("name") == "web_search")
@@ -2740,9 +2777,9 @@ async def jageum_chat(request: Request):
     }
     headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
     async with httpx.AsyncClient(timeout=90) as client:
-        r = await client.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
+        r = await _ai_post(client, body, headers)
         if r.status_code != 200:
-            return JSONResponse({"error": f"AI 오류: {r.text[:200]}"}, status_code=500)
+            return JSONResponse({"error": _ai_err(r)}, status_code=500)
         rd = r.json()
     text = "".join(b.get("text","") for b in rd.get("content",[]) if b.get("type")=="text")
     # 결재요청 추출 (세부사항 확정 스펙 + 담당자 대화 함께 저장)
@@ -2815,9 +2852,9 @@ async def jageum_approval_chat(aid: int, request: Request):
             "messages": conv[-16:]}
     headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
     async with httpx.AsyncClient(timeout=90) as client:
-        r = await client.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
+        r = await _ai_post(client, body, headers)
         if r.status_code != 200:
-            return JSONResponse({"error": f"AI 오류: {r.text[:200]}"}, status_code=500)
+            return JSONResponse({"error": _ai_err(r)}, status_code=500)
         rd = r.json()
     reply = "".join(b.get("text", "") for b in rd.get("content", []) if b.get("type") == "text")
     thread.append({"role": "user", "text": msg})
@@ -2900,9 +2937,9 @@ async def jageum_sales_chat(request: Request):
     }
     headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
     async with httpx.AsyncClient(timeout=90) as client:
-        r = await client.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
+        r = await _ai_post(client, body, headers)
         if r.status_code != 200:
-            return JSONResponse({"error": f"AI 오류: {r.text[:200]}"}, status_code=500)
+            return JSONResponse({"error": _ai_err(r)}, status_code=500)
         rd = r.json()
     text = "".join(b.get("text", "") for b in rd.get("content", []) if b.get("type") == "text")
     approval = None
@@ -2970,9 +3007,9 @@ async def site_chat(request: Request):
     }
     headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
     async with httpx.AsyncClient(timeout=90) as client:
-        r = await client.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
+        r = await _ai_post(client, body, headers)
         if r.status_code != 200:
-            return JSONResponse({"error": f"AI 오류: {r.text[:200]}"}, status_code=500)
+            return JSONResponse({"error": _ai_err(r)}, status_code=500)
         rd = r.json()
     text = "".join(b.get("text","") for b in rd.get("content",[]) if b.get("type")=="text")
     approval = None
@@ -3073,9 +3110,9 @@ async def category_recommend(request: Request):
             "messages": [{"role": "user", "content": f"상품명: {name}\n판매가: {price}원\n사이즈: {size}"}]}
     headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
     async with httpx.AsyncClient(timeout=90) as client:
-        r = await client.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
+        r = await _ai_post(client, body, headers)
         if r.status_code != 200:
-            return JSONResponse({"error": f"AI 오류: {r.text[:200]}"}, status_code=500)
+            return JSONResponse({"error": _ai_err(r)}, status_code=500)
         rd = r.json()
     text = "".join(b.get("text", "") for b in rd.get("content", []) if b.get("type") == "text")
     mt = re.search(r"\{.*\}", text, re.S)
@@ -3176,9 +3213,9 @@ async def category_recommend_bulk(request: Request):
             "messages": [{"role": "user", "content": plist}]}
     headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
     async with httpx.AsyncClient(timeout=180) as client:
-        r = await client.post("https://api.anthropic.com/v1/messages", json=body, headers=headers)
+        r = await _ai_post(client, body, headers)
         if r.status_code != 200:
-            return JSONResponse({"error": f"AI 오류: {r.text[:200]}"}, status_code=500)
+            return JSONResponse({"error": _ai_err(r)}, status_code=500)
         rd = r.json()
     text = "".join(b.get("text", "") for b in rd.get("content", []) if b.get("type") == "text")
     mt = re.search(r"\{.*\}", text, re.S)
