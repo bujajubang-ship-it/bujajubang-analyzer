@@ -31,7 +31,9 @@ function switchPage(page) {
   const isDanga     = page === 'danga';
   const isMargin    = page === 'margin';
   const isCatrec    = page === 'catrec';
-  const isMarket    = page === 'market';
+  // 경쟁사 분석은 시장조사와 같은 화면을 쓴다 — 탭만 바로 열어 준다(한 번에 들어가게)
+  const isComp      = page === 'comp';
+  const isMarket    = page === 'market' || isComp;
 
   const navTracker = document.getElementById('nav-tracker');
   if (navTracker) navTracker.classList.toggle('active', isTracker);
@@ -44,7 +46,9 @@ function switchPage(page) {
   const navDg = document.getElementById('nav-danga');
   if (navDg) navDg.classList.toggle('active', isDanga);
   const navMk = document.getElementById('nav-market');
-  if (navMk) navMk.classList.toggle('active', isMarket);
+  if (navMk) navMk.classList.toggle('active', isMarket && !isComp);
+  const navCp = document.getElementById('nav-comp');
+  if (navCp) navCp.classList.toggle('active', isComp);
   const navMz = document.getElementById('nav-margin');
   if (navMz) navMz.classList.toggle('active', isMargin);
   const navCr = document.getElementById('nav-catrec');
@@ -70,7 +74,12 @@ function switchPage(page) {
     _mk.classList.toggle('hidden', !isMarket);
     if (isMarket) {                       // iframe 지연 로딩 (처음 열 때만)
       const fr = document.getElementById('market-frame');
-      if (fr && !fr.src) fr.src = '/market';
+      const want = isComp ? '/market#comp' : '/market#opp';
+      if (fr && !fr.src) fr.src = want;
+      else if (fr) {  // 이미 떠 있으면 주소의 # 만 바꿔서 탭을 옮긴다
+        try { fr.contentWindow.location.hash = isComp ? '#comp' : '#opp'; }
+        catch (e) { fr.src = want; }
+      }
     }
   }
   const _dg = document.getElementById('danga-page');

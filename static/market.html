@@ -99,6 +99,7 @@ tbody tr:hover{background:#fcfcfe}
       <div class="tab" data-tab="prod">🔍 상품 검색</div>
       <div class="tab" data-tab="kw">💬 키워드</div>
       <div class="tab" data-tab="doc">📝 상품명 처방</div>
+      <div class="tab" data-tab="comp">🏢 경쟁사 분석</div>
     </div>
   </div>
 </header>
@@ -265,6 +266,19 @@ tbody tr:hover{background:#fcfcfe}
     <div id="d-list"></div>
     <div id="d-result"></div>
   </section>
+
+  <!-- 경쟁사 분석 -->
+  <section id="v-comp" hidden>
+    <div class="bar">
+      <label>업체</label><select id="cp-who"></select>
+      <label>분야</label><select id="cp-cat"><option value="">전체</option></select>
+      <input type="search" id="cp-q" placeholder="상품명에서 찾기 (예: 미니냉동고, 온장고)">
+      <span class="dim" id="cp-info"></span>
+    </div>
+    <div class="hint" id="cp-src"></div>
+    <div id="cp-sum"></div>
+    <div id="cp-body"></div>
+  </section>
 </main>
 
 <button class="btn ghost" id="more" hidden>더 보기</button>
@@ -327,9 +341,9 @@ function sortBy(tab, col){
 document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
   document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on', x===t));
   cur.tab = t.dataset.tab;
-  ['opp','cat','prod','kw','doc'].forEach(v => $('#v-'+v).hidden = (v!==cur.tab));
+  ['opp','cat','prod','kw','doc','comp'].forEach(v => $('#v-'+v).hidden = (v!==cur.tab));
   $('#more').hidden = true;
-  ({opp:loadOpp, cat:loadCat, prod:loadProd, kw:loadKw, doc:loadDoc})[cur.tab](true);
+  ({opp:loadOpp, cat:loadCat, prod:loadProd, kw:loadKw, doc:loadDoc, comp:loadComp})[cur.tab](true);
 });
 
 // ── 초기화
@@ -366,8 +380,19 @@ document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
   $('#d-go').onclick = () => loadDoc();
   $('#d-q').onkeydown = e => e.key==='Enter' && loadDoc();
   $('#more').onclick = () => cur.load(false);
-  loadOpp(true);
+  // 소싱 사이트 메뉴에서 '경쟁사 분석'을 바로 누르면 /market#comp 로 들어온다
+  openByHash() || loadOpp(true);
+  window.addEventListener('hashchange', openByHash);
 })();
+
+// 주소 뒤 #탭이름 이 있으면 그 탭을 연다. 없으면 false.
+function openByHash(){
+  const want = (location.hash || '').replace('#','');
+  const t = want && document.querySelector(`.tab[data-tab="${want}"]`);
+  if (!t || t.classList.contains('on')) return !!t;
+  t.click();
+  return true;
+}
 
 function paginate(reset, total, shown){
   $('#more').hidden = shown >= total;
@@ -726,6 +751,79 @@ async function openItem(itemId){
     </div>`;
   $('#panel').classList.add('show');
   $('#sheet').scrollTop = 0;
+}
+
+// ── 🏢 경쟁사 분석
+// 자동 수집이 아니라 사람이 확인해서 올린 자료라, 어디서 온 값인지 화면에 같이 적어 둔다.
+let COMPS = null, COMP = null;
+const eok = v => (v/100000000).toFixed(2) + '억';
+
+async function loadComp(reset){
+  if (!COMPS){
+    const r = await api('/market/api/competitors');
+    COMPS = r.items || [];
+    $('#cp-who').innerHTML = COMPS.map(c =>
+      `<option value="${esc(c.slug)}">${esc(c.업체)}${c.분야?' · '+esc(c.분야):''}</option>`).join('');
+    $('#cp-who').onchange = () => { COMP = null; loadComp(true); };
+    $('#cp-cat').onchange = drawComp;
+    $('#cp-q').oninput = drawComp;
+  }
+  if (!COMPS.length){
+    $('#cp-body').innerHTML = `<div class="hint">아직 올라온 경쟁사 자료가 없습니다.</div>`;
+    return;
+  }
+  if (!COMP || reset){
+    COMP = await api('/market/api/competitor/' + encodeURIComponent($('#cp-who').value));
+    $('#cp-cat').innerHTML = '<option value="">전체 분야</option>' +
+      (COMP.카테고리||[]).map(c => `<option value="${esc(c.이름)}">${esc(c.이름)}</option>`).join('');
+    $('#cp-q').value = '';
+    $('#cp-src').innerHTML =
+      `<b>${esc(COMP.한줄||'')}</b><br>${esc(COMP.출처||'')}` +
+      ((COMP.정확도||[]).length ? '<br>' + COMP.정확도.map(esc).join('<br>') : '');
+    drawSum();
+  }
+  drawComp();
+}
+
+function drawSum(){
+  const tot = COMP.총매출 || 0;
+  $('#cp-sum').innerHTML = `
+    <table><thead><tr><th>분야</th><th class="num">매출</th><th class="num">비중</th>
+      <th class="num">품목수</th><th></th></tr></thead><tbody>
+    ${(COMP.카테고리||[]).map(c => `<tr>
+      <td><b>${esc(c.이름)}</b>${c.비고?`<div class="path">${esc(c.비고)}</div>`:''}</td>
+      <td class="num"><b>${won(c.매출)}</b></td>
+      <td class="num">${(c.매출/tot*100).toFixed(1)}%</td>
+      <td class="num dim">${c.항목수}</td>
+      <td style="width:38%"><div style="background:#f2f2f5;border-radius:4px;height:9px">
+        <div style="background:var(--red);height:9px;border-radius:4px;
+             width:${Math.max(1, c.매출/tot*100).toFixed(1)}%"></div></div></td>
+    </tr>`).join('')}
+    <tr><td><b>합계</b><div class="path">이름까지 확인한 상품 ${(COMP.상품||[]).length}개</div></td>
+        <td class="num"><b>${won(tot)}</b></td>
+        <td class="num">100%</td>
+        <td class="num dim">${(COMP.카테고리||[]).reduce((a,c)=>a+(c.항목수||0),0)}</td><td></td></tr>
+    </tbody></table><div style="height:16px"></div>`;
+}
+
+function drawComp(){
+  const cat = $('#cp-cat').value, q = ($('#cp-q').value||'').trim();
+  let list = (COMP.상품||[]).filter(p =>
+    (!cat || p.카테고리 === cat) && (!q || (p.상품명||'').includes(q)));
+  const sum = list.reduce((a,p) => a + p.매출, 0);
+  $('#cp-info').textContent = `${list.length}개 · ${eok(sum)}`;
+  $('#cp-body').innerHTML = `
+    <table><thead><tr><th style="width:52px">순위</th><th>상품명</th>
+      <th style="width:150px">분야</th><th class="num" style="width:130px">매출</th></tr></thead><tbody>
+    ${list.map((p,i) => `<tr>
+      <td class="num dim">${i+1}</td>
+      <td><div class="name">${esc(p.상품명)}</div>
+          <div class="links"><a href="https://www.coupang.com/np/search?q=${
+            encodeURIComponent((p.상품명||'').slice(0,40))}" target="_blank">쿠팡에서 보기</a></div></td>
+      <td class="dim">${esc(p.카테고리)}</td>
+      <td class="num"><b>${won(p.매출)}</b></td>
+    </tr>`).join('') || '<tr><td colspan="4" class="dim" style="padding:20px">찾는 상품이 없습니다.</td></tr>'}
+    </tbody></table>`;
 }
 </script>
 </body>
