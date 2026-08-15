@@ -2272,7 +2272,9 @@ function renderDeptAccrualProj(ml){
  if(!names.length){dept_extra.innerHTML='<div class="muted" style="padding:10px 0">이 기간에는 프로젝트 손익 자료가 없어요.</div>';if(ch3){ch3.destroy();ch3=null;}return;}
  const rows=names.map(n=>'<tr><td style="white-space:normal">'+n+'</td><td class="num">'+man(g[n].매출)+
    '</td><td class="num">'+man(g[n].비용)+'</td><td class="num" style="color:'+(g[n].순익<0?'#dc2626':'#1f2937')+'">'+man(g[n].순익)+'</td></tr>').join('');
+ // 영업외·법인세는 프로젝트가 안 달려 있어 여기엔 못 들어간다. 부서별과 합계가 다른 이유를 적어둔다.
  dept_extra.innerHTML='<div class="note">프로젝트별 ('+names.length+'개 · 매출 큰 순서)</div>'+
+   '<div class="muted" style="font-size:12px;padding:2px 0 7px">여기 합계는 <b>영업손익</b>까지입니다 — 영업외수익·영업외비용·법인세는 프로젝트가 달려 있지 않아 <b>부서별</b> 화면(🏢 본사·공통)에서만 반영됩니다.</div>'+
    '<div class="scroll" style="max-height:460px"><table><thead><tr><th>프로젝트</th><th class="num">매출</th><th class="num">비용</th><th class="num">순익</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
  const trend=ml.map(k=>{const mm=pj[k]||{};return Object.keys(mm).reduce((s,n)=>s+(mm[n].영업손익||0),0);});
  if(ch3)ch3.destroy();
