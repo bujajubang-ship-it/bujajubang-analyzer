@@ -2180,7 +2180,8 @@ function renderDept(){
    if(note)note.innerHTML='<b style="color:#059669">발생주의</b> — 이카운트 프로젝트별 손익 기준(실제 번/쓴 것). 순익 = 매출 − 매출원가 − 판관비(그 팀 프로젝트로 직접 걸린 것만) · '+
      (hasNonOp()? '영업외수익·영업외비용·법인세는 🏢 본사·공통에 넣음'
                 : '<b style="color:#dc2626">영업외·법인세는 아직 못 읽어 빠져 있음(영업손익 기준)</b>');
-   if(dim)dim.style.display='none';
+   // 프로젝트별은 수집기가 프로젝트 하나하나까지 넘겨줄 때만 고를 수 있다
+   if(dim)dim.style.display=((D.plProj||{}).proj)?'':'none';
    return renderDeptAccrual();
  }
  if(note)note.innerHTML='<b>현금주의</b> — 통장에 실제로 들어오고 나간 돈 기준 · 부서: 쇼핑몰=프로젝트"쇼핑몰"/영업=그 외/태양광=종보전기·한국전력';
@@ -2230,6 +2231,7 @@ function renderDeptAccrual(){
  // 위 기간 선택과 맞추되, 이카운트에 아직 없는 달은 뺀다
  const sel=((P&&P.keys)||pp.months).filter(k=>pp.months.indexOf(k)>=0);
  const ml=sel.length?sel:pp.months;
+ if(deptDim==='프로젝트'&&pp.proj) return renderDeptAccrualProj(ml);
  const g={};
  ATEAMS.forEach(([t])=>{g[t]={매출:0,비용:0,순익:0};
    ml.forEach(k=>{const v=accrualTeam(t,k);g[t].매출+=v.매출;g[t].비용+=v.비용;g[t].순익+=v.순익;});});
@@ -2246,8 +2248,33 @@ function renderDeptAccrual(){
    return '<tr><td>'+k+'</td><td class="num">'+man(v.매출)+'</td><td class="num">'+man(v.비용)+
      '</td><td class="num" style="color:'+(v.순익<0?'#dc2626':'#1f2937')+'">'+man(v.순익)+'</td></tr>';}).join('');
  dept_extra.innerHTML='<div class="note">월별</div><table><thead><tr><th>월</th><th class="num">매출</th><th class="num">비용</th><th class="num">순익</th></tr></thead><tbody>'+rows+'</tbody></table>'+
-   '<div class="muted" style="font-size:12px;padding:7px 0">프로젝트 하나하나로 쪼개 보려면 위에서 <b>💵 현금주의</b>로 바꿔 주세요. 이카운트 발생주의 손익은 팀 단위로만 넘어옵니다.</div>';
+   (pp.proj? '' : '<div class="muted" style="font-size:12px;padding:7px 0">프로젝트 하나하나로 쪼개 보려면 위에서 <b>💵 현금주의</b>로 바꿔 주세요. 지금 들어온 이카운트 손익은 팀 단위까지만입니다.</div>');
  const trend=ml.map(k=>accrualTeam(deptSelA,k).순익);
+ if(ch3)ch3.destroy();
+ ch3=new Chart(deptTrend,{type:'bar',data:{labels:ml.map(k=>k.slice(2)),datasets:[{label:'순익',data:trend,backgroundColor:trend.map(v=>v<0?'#ef4444':'#5b21b6')}]},options:{plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>(v/1e6)+'백만'}}}}});
+}
+// 발생주의 · 프로젝트별 — 이카운트 프로젝트 하나하나의 손익.
+// 프로젝트가 200개가 넘어서 탭으로 만들면 못 쓴다. 한 표에 다 넣고 큰 것부터 보여준다.
+function renderDeptAccrualProj(ml){
+ const pj=D.plProj.proj||{};
+ const g={};
+ ml.forEach(k=>{const mm=pj[k]||{};
+   Object.keys(mm).forEach(name=>{const v=mm[name]||{};
+     const 매출=v.매출||0, 순익=v.영업손익||0;
+     const c=g[name]=g[name]||{매출:0,비용:0,순익:0};
+     c.매출+=매출; c.순익+=순익; c.비용+=매출-순익;});});
+ const names=Object.keys(g).sort((a,b)=>(g[b].매출-g[a].매출)||(g[b].순익-g[a].순익));
+ document.getElementById('depttabs').innerHTML='';
+ const tot=names.reduce((s,n)=>({매출:s.매출+g[n].매출,비용:s.비용+g[n].비용,순익:s.순익+g[n].순익}),{매출:0,비용:0,순익:0});
+ dept_kpis.innerHTML='<div class="kpi in"><div class="l">매출 (전체 프로젝트)</div><div class="v">'+won(tot.매출)+'</div></div>'+
+   '<div class="kpi out"><div class="l">비용 (매출원가+판관비)</div><div class="v">'+won(tot.비용)+'</div></div>'+
+   '<div class="kpi net"><div class="l">순익</div><div class="v" style="color:'+(tot.순익<0?'#dc2626':'#2563eb')+'">'+won(tot.순익)+'</div></div>';
+ if(!names.length){dept_extra.innerHTML='<div class="muted" style="padding:10px 0">이 기간에는 프로젝트 손익 자료가 없어요.</div>';if(ch3){ch3.destroy();ch3=null;}return;}
+ const rows=names.map(n=>'<tr><td style="white-space:normal">'+n+'</td><td class="num">'+man(g[n].매출)+
+   '</td><td class="num">'+man(g[n].비용)+'</td><td class="num" style="color:'+(g[n].순익<0?'#dc2626':'#1f2937')+'">'+man(g[n].순익)+'</td></tr>').join('');
+ dept_extra.innerHTML='<div class="note">프로젝트별 ('+names.length+'개 · 매출 큰 순서)</div>'+
+   '<div class="scroll" style="max-height:460px"><table><thead><tr><th>프로젝트</th><th class="num">매출</th><th class="num">비용</th><th class="num">순익</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+ const trend=ml.map(k=>{const mm=pj[k]||{};return Object.keys(mm).reduce((s,n)=>s+(mm[n].영업손익||0),0);});
  if(ch3)ch3.destroy();
  ch3=new Chart(deptTrend,{type:'bar',data:{labels:ml.map(k=>k.slice(2)),datasets:[{label:'순익',data:trend,backgroundColor:trend.map(v=>v<0?'#ef4444':'#5b21b6')}]},options:{plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>(v/1e6)+'백만'}}}}});
 }
