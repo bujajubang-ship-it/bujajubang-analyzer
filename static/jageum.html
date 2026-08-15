@@ -39,6 +39,8 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
 #period_bar button{border:1px solid #d1d5db;background:#fff;padding:5px 11px;border-radius:7px;cursor:pointer;font-size:13px}
 #period_bar button.on{background:#5b21b6;color:#fff;border-color:#5b21b6}
 #period_bar select{padding:5px 8px;border:1px solid #d1d5db;border-radius:7px;font-size:13px}
+/* 🔍 판매 원가 검수 카드 가리기 (경리 요청·결재 16번). 이 한 줄만 지우면 다시 보인다. */
+#review_card{display:none !important}
 .tabbtn{border:1px solid #d1d5db;background:#fff;padding:8px 16px;border-radius:9px;cursor:pointer;font-size:14px;font-weight:600;color:#374151;white-space:nowrap;flex-shrink:0}
 .tabbtn.on{background:#5b21b6;color:#fff;border-color:#5b21b6}
 @media(max-width:640px){
@@ -485,6 +487,9 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    <div id="acct_box"></div>
  </div>
 
+ <!-- 🔍 판매 원가 검수 — 경리 요청(결재 16번)으로 숨김. 손익 계산과 연결이 없어 가려도 다른 숫자는 그대로다.
+      지운 게 아니라 가린 것이다. 위 <style> 의 #review_card 규칙 한 줄만 지우면 그대로 다시 보인다.
+      (탭을 바꿀 때 showTab 이 .view-biz 를 다시 보이게 하므로 style 규칙으로 가린다) -->
  <div class="card view-biz" id="review_card" style="border-top:3px solid #dc2626">
    <h2>🔍 판매 원가 검수 <span class="muted big">— 마감 전표 중 원가 미입력·고마진(35%↑) = 원가 확인 필요 (수정은 이카운트에서)</span></h2>
    <div class="note" style="margin-bottom:8px">우리 평균 마진 20~30%예요. 마진이 35% 넘으면 원가를 잘못(적게) 넣었을 가능성이 커요. 확인하고 이카운트에서 원가 고치면 자동 반영됩니다.</div>
@@ -507,7 +512,8 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
 
  <div class="card" id="dept_card">
    <h2>🏢 부서·프로젝트별 손익 <span class="muted big" id="dept_period"></span></h2>
-   <div class="note">선택 기간 기준 (현금흐름) · 부서: 쇼핑몰=프로젝트"쇼핑몰"/영업=그 외/태양광=종보전기·한국전력</div>
+   <div class="tabs" id="deptbasis"><button class="on" data-db="발생">📗 발생주의 (이카운트 손익)</button><button data-db="현금">💵 현금주의 (통장 흐름)</button></div>
+   <div class="note" id="dept_note"></div>
    <div class="tabs" id="deptdim"><button class="on" data-dim="부서">부서별</button><button data-dim="프로젝트">프로젝트별</button></div>
    <div class="tabs" id="depttabs"></div>
    <div class="kpis" id="dept_kpis" style="margin-bottom:12px"></div>
@@ -757,7 +763,9 @@ function load(){fetch('/jageum/api/data').then(r=>{if(r.status===401){location.h
   document.getElementById('whoami').textContent = MYROLE==='boss'?'👑 대표님':(MYROLE==='staff'?'🧑‍💼 경리':'');
   {const _wl=document.getElementById('chat_who_label'); if(_wl)_wl.textContent=MYROLE==='boss'?'👑 사장님':(MYROLE==='staff'?'🧑‍💼 경리':'게스트');}
   window._who=d._who||'';
-  fetch('/jageum/api/pl_proj').then(r=>r.ok?r.json():null).then(p=>{if(p&&p.months){D.plProj=p;if(typeof renderClose==='function')renderClose();}}).catch(()=>{});
+  fetch('/jageum/api/pl_proj').then(r=>r.ok?r.json():null).then(p=>{if(p&&p.months){D.plProj=p;
+    if(typeof renderClose==='function')renderClose();
+    if(typeof renderDept==='function')renderDept();}}).catch(()=>{});   // 부서별 손익도 발생주의라 같이 다시 그린다
   slInit();
   if(MYROLE==='boss'){document.getElementById('approval_card').style.display='';loadApprovals();loadPersonal();
     document.getElementById('tabbar').style.display='flex';showTab('biz');}
@@ -2063,7 +2071,9 @@ function renderClose(){
  document.querySelectorAll('#closedim button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#closedim button').forEach(x=>x.classList.remove('on'));b.classList.add('on');closeDim=b.dataset.cd;renderClose();});
  const note=document.getElementById('close_note');
  if(closeBasis==='발생'){
-   if(note)note.innerHTML='<b style="color:#059669">발생주의</b> — 이카운트 프로젝트별 손익계산서 기준(실제 번/쓴 것). 순익=매출−매출원가−판관비(그 팀에 직접 태그된 것만, 본사 간접비 배분 안 함) · 프로젝트명으로 팀 자동분류 · <b>무인 자동수집</b>';
+   if(note)note.innerHTML='<b style="color:#059669">발생주의</b> — 이카운트 프로젝트별 손익계산서 기준(실제 번/쓴 것). 순익=매출−매출원가−판관비(그 팀에 직접 태그된 것만, 본사 간접비 배분 안 함) · 프로젝트명으로 팀 자동분류 · <b>무인 자동수집</b><br>'+
+     (hasNonOp()? '영업외수익·영업외비용·법인세는 🏢 본사·공통에 넣었습니다 → <b>전체 합계 = 당기순이익</b>'
+                : '<b style="color:#dc2626">영업외수익·영업외비용·법인세를 아직 못 읽었습니다 — 전체 합계는 영업손익까지만입니다.</b> (자금일보 새로고침 후 다시 보세요)');
    return renderCloseAccrual();
  }
  if(note)note.innerHTML='매월 팀별 <b>현금흐름</b> 결산 · 담당자=본인매출−직접비용(기여이익) · 매입·본사운영비·인건비는 본사·공통 · ☀️전력매출(태양광)은 별도 행';
@@ -2098,9 +2108,10 @@ function renderCloseAccrual(){
  const pp=D.plProj, box=document.getElementById('t_close');
  if(!pp||!pp.months||!pp.months.length){box.innerHTML='<tbody><tr><td class="muted" style="padding:14px">이카운트 프로젝트별 손익 수집 중… (곧 표시됩니다)</td></tr></tbody>';return;}
  const ml=pp.months;
- const teams=[['쇼핑몰','🛒 쇼핑몰'],['성기민','🧑‍💼 성기민'],['김성주','🧑‍💼 김성주'],['대표','👑 대표'],['본사공통','🏢 본사·공통'],['미분류','📁 기타/미분류']];
- const field=closeDim==='매출'?['매출']:closeDim==='비용'?['매출원가','판관비']:['영업손익'];
- const val=(t,k)=>{const c=(pp.data[k]||{})[t]||{}; return field.reduce((s,f)=>s+(c[f]||0),0);};
+ const teams=ATEAMS;
+ // 순익은 '당기순이익' 기준 — 영업외수익·영업외비용·법인세까지 반영한다(경리 요청·결재 15번).
+ // 그래서 전체 합계가 이카운트 손익계산서의 당기순이익과 그대로 맞는다.
+ const val=(t,k)=>{const v=accrualTeam(t,k); return closeDim==='매출'?v.매출:closeDim==='비용'?v.비용:v.순익;};
  const stick='position:sticky;left:0;z-index:1;';
  let head='<tr><th style="'+stick+'background:#fafafe">팀/담당</th>'+ml.map(k=>'<th class="num">'+k.slice(2)+'</th>').join('')+'<th class="num">합계</th></tr>';
  let rows=teams.map(([t,lb])=>{
@@ -2139,10 +2150,43 @@ function renderBalTrend(){
  let totrow='<tr style="font-weight:700;background:#f3e8ff"><td style="'+stick+'background:#f3e8ff">합계</td>'+totals.map(t=>'<td class="num">'+t.toLocaleString()+'</td>').join('')+'</tr>';
  document.getElementById('t_baltrend').innerHTML='<thead>'+head+'</thead><tbody>'+totrow+rows+'</tbody>';
 }
+// ── 발생주의(이카운트 손익) 공통 ─────────────────────────────
+// 경리 요청(결재 12~15번): 팀 순익 = 매출 − 매출원가 − 판관비(그 팀 프로젝트로 직접 걸린 것만).
+// 영업외수익·영업외비용·법인세는 팀에 나누지 않고 전부 본사·공통에 붙인다.
+const ATEAMS=[['쇼핑몰','🛒 쇼핑몰'],['성기민','🧑‍💼 성기민'],['김성주','🧑‍💼 김성주'],
+              ['대표','👑 대표'],['본사공통','🏢 본사·공통'],['미분류','📁 기타/미분류']];
+function plRowM(prefix,k){   // 이카운트 손익계산서 월별에서 과목 한 줄 꺼내기
+ const mb=D.손익월별; if(!mb||!mb.rows) return 0;
+ const r=mb.rows.find(x=>(x.과목||'').replace(/\s/g,'').indexOf(prefix)===0);
+ return (r&&r.월별&&r.월별[k])||0;
+}
+function nonOp(k){ return {수익:plRowM('6.영업외수익',k), 비용:plRowM('7.영업외비용',k)+plRowM('9.법인세비용',k)}; }
+// 손익계산서 월별이 아직 안 들어온 상태에서 0을 더하면, 이름만 '당기순이익'인 틀린 숫자가 된다.
+function hasNonOp(){ const mb=D.손익월별; return !!(mb&&mb.rows&&mb.rows.some(x=>(x.과목||'').replace(/\s/g,'').indexOf('6.영업외수익')===0)); }
+// 팀 한 달치. 판관비가 따로 안 넘어와서 비용은 '매출−영업손익'으로 역산한다
+// (영업손익 = 매출−매출원가−판관비 이므로 역산값이 곧 매출원가+판관비다).
+function accrualTeam(t,k){
+ const v=(((D.plProj||{}).data||{})[k]||{})[t]||{};
+ let 매출=v.매출||0, 순익=v.영업손익||0, 비용=매출-순익;
+ if(t==='본사공통'){ const o=nonOp(k); 매출+=o.수익; 비용+=o.비용; 순익+=o.수익-o.비용; }
+ return {매출:매출,비용:비용,순익:순익};
+}
+let deptBasis='발생', deptSelA=null;
 function renderDept(){
+ document.querySelectorAll('#deptbasis button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#deptbasis button').forEach(x=>x.classList.remove('on'));b.classList.add('on');deptBasis=b.dataset.db;renderDept();});
+ dept_period.textContent = P ? '· '+P.label : '';
+ const note=document.getElementById('dept_note'), dim=document.getElementById('deptdim');
+ if(deptBasis==='발생'){
+   if(note)note.innerHTML='<b style="color:#059669">발생주의</b> — 이카운트 프로젝트별 손익 기준(실제 번/쓴 것). 순익 = 매출 − 매출원가 − 판관비(그 팀 프로젝트로 직접 걸린 것만) · '+
+     (hasNonOp()? '영업외수익·영업외비용·법인세는 🏢 본사·공통에 넣음'
+                : '<b style="color:#dc2626">영업외·법인세는 아직 못 읽어 빠져 있음(영업손익 기준)</b>');
+   if(dim)dim.style.display='none';
+   return renderDeptAccrual();
+ }
+ if(note)note.innerHTML='<b>현금주의</b> — 통장에 실제로 들어오고 나간 돈 기준 · 부서: 쇼핑몰=프로젝트"쇼핑몰"/영업=그 외/태양광=종보전기·한국전력';
+ if(dim)dim.style.display='';
  const inc=((P&&P.증가)||D.자금의증가||[]).filter(real);
  const dec=((P&&P.감소)||D.자금의감소||[]).filter(opexReal);
- dept_period.textContent = P ? '· '+P.label : '';
  const g={}; const add=(r,w)=>{const k=deptKey(r);(g[k]=g[k]||{매출:0,비용:0})[w]+=r.금액;};
  inc.forEach(r=>add(r,'매출')); dec.forEach(r=>add(r,'비용'));
  let names = deptDim==='부서' ? ['쇼핑몰','영업·성기민','영업·김성주','영업·대표','본사·공통','태양광'].filter(n=>g[n]) : Object.keys(g).sort((a,b)=>((g[b].매출+g[b].비용)-(g[a].매출+g[a].비용)));
@@ -2171,6 +2215,39 @@ function renderDept(){
  dept_extra.innerHTML=ex;
  const ml=D.months_list||[];
  const trend=ml.map(k=>{const m=D.months[k]||{};let mi=0,mc=0;(m.자금의증가||[]).filter(real).forEach(r=>{if(deptKey(r)===deptSel)mi+=r.금액;});(m.자금의감소||[]).filter(opexReal).forEach(r=>{if(deptKey(r)===deptSel)mc+=r.금액;});return mi-mc;});
+ if(ch3)ch3.destroy();
+ ch3=new Chart(deptTrend,{type:'bar',data:{labels:ml.map(k=>k.slice(2)),datasets:[{label:'순익',data:trend,backgroundColor:trend.map(v=>v<0?'#ef4444':'#5b21b6')}]},options:{plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>(v/1e6)+'백만'}}}}});
+}
+function renderDeptAccrual(){
+ const pp=D.plProj;
+ const tabs=document.getElementById('depttabs');
+ if(!pp||!pp.months||!pp.months.length){
+   tabs.innerHTML=''; dept_kpis.innerHTML='';
+   dept_extra.innerHTML='<div class="muted" style="padding:10px 0">이카운트 프로젝트별 손익을 불러오는 중이에요. 잠시 뒤에 다시 보시면 나옵니다.</div>';
+   if(ch3){ch3.destroy();ch3=null;}
+   return;
+ }
+ // 위 기간 선택과 맞추되, 이카운트에 아직 없는 달은 뺀다
+ const sel=((P&&P.keys)||pp.months).filter(k=>pp.months.indexOf(k)>=0);
+ const ml=sel.length?sel:pp.months;
+ const g={};
+ ATEAMS.forEach(([t])=>{g[t]={매출:0,비용:0,순익:0};
+   ml.forEach(k=>{const v=accrualTeam(t,k);g[t].매출+=v.매출;g[t].비용+=v.비용;g[t].순익+=v.순익;});});
+ const names=ATEAMS.filter(([t])=>g[t].매출||g[t].비용||g[t].순익);
+ if(!names.length){tabs.innerHTML='';dept_kpis.innerHTML='';dept_extra.innerHTML='<div class="muted" style="padding:10px 0">이 기간에는 손익 자료가 없어요.</div>';return;}
+ if(!deptSelA||!names.some(x=>x[0]===deptSelA)) deptSelA=names[0][0];
+ tabs.innerHTML=names.map(([t,lb])=>'<button class="'+(t===deptSelA?'on':'')+'" data-g="'+t+'">'+lb+'</button>').join('');
+ document.querySelectorAll('#depttabs button').forEach(b=>b.onclick=()=>{deptSelA=b.dataset.g;renderDept();});
+ const cur=g[deptSelA];
+ dept_kpis.innerHTML='<div class="kpi in"><div class="l">매출</div><div class="v">'+won(cur.매출)+'</div></div>'+
+   '<div class="kpi out"><div class="l">비용 (매출원가+판관비)</div><div class="v">'+won(cur.비용)+'</div></div>'+
+   '<div class="kpi net"><div class="l">순익</div><div class="v" style="color:'+(cur.순익<0?'#dc2626':'#2563eb')+'">'+won(cur.순익)+'</div></div>';
+ const rows=ml.map(k=>{const v=accrualTeam(deptSelA,k);
+   return '<tr><td>'+k+'</td><td class="num">'+man(v.매출)+'</td><td class="num">'+man(v.비용)+
+     '</td><td class="num" style="color:'+(v.순익<0?'#dc2626':'#1f2937')+'">'+man(v.순익)+'</td></tr>';}).join('');
+ dept_extra.innerHTML='<div class="note">월별</div><table><thead><tr><th>월</th><th class="num">매출</th><th class="num">비용</th><th class="num">순익</th></tr></thead><tbody>'+rows+'</tbody></table>'+
+   '<div class="muted" style="font-size:12px;padding:7px 0">프로젝트 하나하나로 쪼개 보려면 위에서 <b>💵 현금주의</b>로 바꿔 주세요. 이카운트 발생주의 손익은 팀 단위로만 넘어옵니다.</div>';
+ const trend=ml.map(k=>accrualTeam(deptSelA,k).순익);
  if(ch3)ch3.destroy();
  ch3=new Chart(deptTrend,{type:'bar',data:{labels:ml.map(k=>k.slice(2)),datasets:[{label:'순익',data:trend,backgroundColor:trend.map(v=>v<0?'#ef4444':'#5b21b6')}]},options:{plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>(v/1e6)+'백만'}}}}});
 }
