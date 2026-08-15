@@ -1532,6 +1532,12 @@ async def jageum_ingest(request: Request):
     if not _jageum_has_content(incoming):
         # 들어온 데이터가 비었으면 기존 유효본 유지(로컬·KV 둘 다 보존)
         return JSONResponse({"ok": False, "error": "empty payload rejected", "kept": True})
+    # '오늘치'만 담긴 반쪽 데이터(latest.json)가 18개월치 전체(dashboard.json)를 덮어쓰면
+    # 월별 카드·손익월별이 통째로 사라진다. 있던 달력 데이터를 없애는 쪽으로는 덮지 않는다.
+    if not incoming.get("months"):
+        old = _load_jageum()
+        if old.get("months"):
+            return JSONResponse({"ok": False, "error": "partial payload rejected (months 없음)", "kept": True})
     JAGEUM_FILE.write_text(text, encoding="utf-8")
     _JAGEUM_CACHE["data"] = incoming
     # 재배포에도 살아남게 Lightsail KV에 백업 (다음 재배포 후 첫 로드에서 자동 복원)
@@ -2659,6 +2665,48 @@ def _new_approval_item(items, title, desc, spec, who, conv, source=None):
     items.append(item)
     return item
 
+def _jageum_team_pl(d) -> str:
+    """팀별 손익을 이카운트 발생주의로 뽑는다 — 경리와 확정한 기준(결재 12~15번).
+
+    팀 순익 = 매출 − 매출원가 − 판관비(그 팀 프로젝트로 직접 걸린 것만, 본사 간접비 배분 없음).
+    영업외수익·영업외비용·법인세는 팀에 나누지 않고 전부 본사·공통에 붙인다.
+    그래서 팀 합계가 손익계산서의 당기순이익과 그대로 맞는다.
+    통장 입출금(현금흐름)과 섞으면 이중집계가 되므로 손익 질문은 이 숫자로만 답해야 한다.
+    """
+    pp = _kv_restore("pl_proj", timeout=8) or {}
+    mons = pp.get("months") or []
+    if not mons:
+        return "[팀별 손익] (이카운트 프로젝트별 손익 수집 전 — 손익 숫자는 모른다고 답할 것)"
+    # 손익계산서 월별에서 영업외·법인세 꺼내기
+    rows = ((d.get("손익월별") or {}).get("rows")) or []
+    def row(prefix, k):
+        for r in rows:
+            if (r.get("과목") or "").replace(" ", "").startswith(prefix):
+                return (r.get("월별") or {}).get(k, 0)
+        return 0
+    # 영업외 자료가 없는데 그냥 0으로 더하면 '당기순이익'이라 이름만 붙은 틀린 숫자가 된다.
+    has_nonop = any((r.get("과목") or "").replace(" ", "").startswith("6.영업외수익") for r in rows)
+    tot_label = "당기순이익" if has_nonop else "영업손익 합계(영업외·법인세 아직 못 읽음)"
+    TEAMS = [("쇼핑몰", "쇼핑몰"), ("성기민", "영업·성기민"), ("김성주", "영업·김성주"),
+             ("대표", "영업·대표"), ("본사공통", "본사·공통"), ("미분류", "기타/미분류")]
+    out = ["[팀별 손익 — 이카운트 발생주의 (경리와 확정한 공식 기준. 손익 질문은 반드시 이 숫자로 답할 것)]",
+           "  · 쇼핑몰 = 쇼핑몰+용달(쇼핑몰)+편집(쇼핑몰)+수리점검(쇼핑몰) 프로젝트 / 영업 3팀 = 담당자 이름 프로젝트 / 본사·공통 = 본사(사무실)+기타",
+           "  · 팀 순익 = 매출 − 매출원가 − 판관비(직접 걸린 것만) · 영업외수익·비용·법인세는 본사·공통 · 팀 합계 = 당기순이익"]
+    for k in mons[-8:]:
+        parts, tot = [], 0
+        for key, label in TEAMS:
+            v = (pp.get("data", {}).get(k) or {}).get(key) or {}
+            sales, net = v.get("매출", 0), v.get("영업손익", 0)
+            if key == "본사공통":
+                sales += row("6.영업외수익", k)
+                net += row("6.영업외수익", k) - row("7.영업외비용", k) - row("9.법인세비용", k)
+            tot += net
+            if sales or net:
+                parts.append(f"{label} 매출{sales//10000}만·순익{net//10000}만")
+        out.append(f"{k}: " + " / ".join(parts) + f" || {tot_label} {tot//10000}만")
+    return "\n".join(out)
+
+
 def _jageum_summary() -> str:
     """대시보드 데이터를 AI가 보기 좋게 요약(토큰 절약)."""
     d = _load_jageum()
@@ -2688,7 +2736,10 @@ def _jageum_summary() -> str:
         for r in m.get("자금의감소",[]):
             if real(r): teams.setdefault(dept(r),[0,0])[1]+=r["금액"]
         ts = " / ".join(f"{t}:순익{(v[0]-v[1])//10000}만" for t,v in teams.items())
-        lines.append(f"{k}: 영업입금 {inc//10000}만, 지출 {dec//10000}만 | 팀별 {ts}")
+        lines.append(f"{k}: 영업입금 {inc//10000}만, 지출 {dec//10000}만 | (참고)통장기준 팀별 {ts}")
+    lines.append("※ 위 팀별 숫자는 '통장에 들어오고 나간 돈'이라 손익이 아니다. 손익을 물으면 아래 발생주의를 써라.")
+    # 팀별 손익 — 이카운트 발생주의(경리와 확정한 기준). 손익 질문은 반드시 이 숫자로 답한다.
+    lines.append(_jageum_team_pl(d))
     # 손익
     pl = d.get("손익",{})
     if pl.get("rows"):
