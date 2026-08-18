@@ -1075,6 +1075,24 @@ def _seed_or_load_dataset_states(payload: dict | None = None, project_payload: d
     with _JAGEUM_DATASET_STATE_LOCK:
         stored = _load_dataset_state_envelope()
         if stored.get("datasets"):
+            source_kinds = {
+                "bank_balances": "legacy_batch_basis", "receivables": "legacy_batch_basis",
+                "monthly_pl": "period_derived", "project_pl": "period_derived",
+                "settlement_coupang": "explicit_dataset_field",
+                "settlement_naver": "explicit_dataset_field",
+            }
+            if any((value.get("served_snapshot") or {}).get("source_as_of_kind") is None
+                   for value in stored["datasets"].values()):
+                updated = dict(stored)
+                updated["datasets"] = {key: dict(value) for key, value in stored["datasets"].items()}
+                for key, value in updated["datasets"].items():
+                    snapshot = dict(value.get("served_snapshot") or {})
+                    if snapshot and snapshot.get("source_as_of_kind") is None:
+                        snapshot["source_as_of_kind"] = source_kinds.get(key, "unknown")
+                    value["served_snapshot"] = snapshot or None
+                updated["updated_at"] = _utc_now_iso()
+                _publish_dataset_state_envelope(updated)
+                stored = updated
             if not stored.get("initialization"):
                 # Phase 2 최초 버전이 KV 복원본 관찰을 실제 collector 성공처럼 기록한 메타만 바로잡는다.
                 global_state = (_read_jageum_status() or {}).get("state")

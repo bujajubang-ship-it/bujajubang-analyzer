@@ -209,6 +209,20 @@ class StateStorageTests(unittest.TestCase):
         finally:
             main._JAGEUM_DATASET_STATE_CACHE["data"] = old_cache
 
+    def test_existing_phase2_state_adds_source_basis_without_changing_snapshot_id(self):
+        envelope = evaluate_all(payload(), project_payload(), now=NOW)
+        envelope["initialization"] = "legacy_lkg_observation"
+        original_ids = {}
+        for key, state in envelope["datasets"].items():
+            original_ids[key] = state["served_snapshot"]["snapshot_id"]
+            state["served_snapshot"].pop("source_as_of_kind", None)
+        with patch.object(main, "_load_dataset_state_envelope", return_value=envelope), \
+             patch.object(main, "_publish_dataset_state_envelope", return_value={"local": {"ok": True}, "kv": {"ok": True}}):
+            migrated = main._seed_or_load_dataset_states(payload=payload(), project_payload=project_payload())
+        for key, state in migrated["datasets"].items():
+            self.assertEqual(state["served_snapshot"]["snapshot_id"], original_ids[key])
+            self.assertTrue(state["served_snapshot"]["source_as_of_kind"])
+
 
 class ShadowAndBriefingTests(unittest.TestCase):
     def test_cashflow_shadow_separates_non_operating_inflows(self):
