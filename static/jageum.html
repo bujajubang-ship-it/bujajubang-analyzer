@@ -77,6 +77,9 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
 }
 .rangebtn{border:1px solid #d1d5db;background:#fff;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;color:#374151}
 .rangebtn.on{background:#7c3aed;color:#fff;border-color:#7c3aed}
+.trust-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:7px;margin-top:11px}
+.trust-row{display:flex;justify-content:space-between;gap:10px;align-items:center;background:#f8fafc;border:1px solid #eef0f4;border-radius:8px;padding:8px 10px;font-size:12.5px}
+.trust-state{font-weight:750;white-space:nowrap}.trust-badge{display:inline-block;font-size:10.5px;font-weight:700;border-radius:12px;padding:2px 7px;margin-left:5px;vertical-align:1px;background:#f3f4f6;color:#6b7280}
   .gl{display:inline}
   .gl-t{cursor:pointer;border-bottom:1.5px dotted #b45309;color:#b45309;font-weight:600}
   .gl-a{font-size:10px;margin-left:1px}
@@ -339,8 +342,14 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    </div>
  </div>
  <div class="view-biz">
+ <div class="card" id="dataset_status_card" style="border-top:3px solid #0f766e">
+   <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+     <h2 style="margin:0">전체 데이터 상태</h2><div id="dataset_status_overall" style="font-size:13px;font-weight:800;color:#d97706">⚠️ 상태 확인 중…</div>
+   </div>
+   <div id="dataset_status_list" class="trust-grid"></div>
+ </div>
  <div class="card" id="asset_panel">
-   <div class="muted" style="font-size:13px">💎 실질 총자산 <span style="font-size:11px">(오늘 기준 · 통장+곧 들어올 돈+받을 돈+선급+투자)</span></div>
+   <div class="muted" style="font-size:13px">💎 실질 총자산 <span style="font-size:11px">(오늘 기준 · 통장+곧 들어올 돈+받을 돈+선급+투자)</span><span class="trust-badge" data-dataset-badge="bank_balances"></span><span class="trust-badge" data-dataset-badge="receivables"></span></div>
    <div id="asset_total" style="font-size:34px;font-weight:800;color:#5b21b6;line-height:1.2">-</div>
    <div id="asset_net" style="font-size:14px;color:#374151;margin-top:2px"></div>
    <div class="asset-items" id="asset_items"></div>
@@ -498,7 +507,7 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
  </div>
 
  <details class="card" id="pl_card" style="border-top:3px solid #5b21b6">
-   <summary style="cursor:pointer;list-style:none;font-size:15px;font-weight:600;color:#1f2937">📊 손익계산서 (이카운트 발생주의) <span class="muted" style="font-weight:400;font-size:12px" id="pl_label">— 펼치기</span></summary>
+   <summary style="cursor:pointer;list-style:none;font-size:15px;font-weight:600;color:#1f2937">📊 손익계산서 (이카운트 발생주의) <span class="muted" style="font-weight:400;font-size:12px" id="pl_label">— 펼치기</span><span class="trust-badge" data-dataset-badge="monthly_pl"></span></summary>
    <div class="note" style="margin-top:8px">실제 번/쓴 것 기준 손익 (발생주의 — 현금흐름과 다른 개념). 월별로 나눠 볼 수 있어요.</div>
    <div style="margin:10px 0"><label style="font-size:13px;color:#374151;font-weight:600">📅 조회 월 </label><select id="pl_month" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px"><option value="전체">전체 누계</option></select></div>
    <div class="kpis" style="margin-bottom:12px">
@@ -512,7 +521,7 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
  </details>
 
  <div class="card" id="dept_card">
-   <h2>🏢 부서·프로젝트별 손익 <span class="muted big" id="dept_period"></span></h2>
+   <h2>🏢 부서·프로젝트별 손익 <span class="muted big" id="dept_period"></span><span class="trust-badge" data-dataset-badge="project_pl"></span></h2>
    <div class="tabs" id="deptbasis"><button class="on" data-db="발생">📗 발생주의 (이카운트 손익)</button><button data-db="현금">💵 현금주의 (통장 흐름)</button></div>
    <div class="note" id="dept_note"></div>
    <div class="tabs" id="deptdim"><button class="on" data-dim="부서">부서별</button><button data-dim="프로젝트">프로젝트별</button></div>
@@ -572,7 +581,7 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    <div class="scroll"><table id="t_seonyz"><thead><tr><th>거래처</th><th class="num">선금 잔액</th><th>비고</th><th>지급일</th></tr></thead><tbody></tbody></table></div>
  </div>
 
- <div class="card"><h2>📦 정산예정 — 플랫폼에 묶인 돈 <span class="muted big" id="settle_sum"></span></h2>
+ <div class="card"><h2>📦 정산예정 — 플랫폼에 묶인 돈 <span class="muted big" id="settle_sum"></span><span class="trust-badge" data-dataset-badge="settlement_coupang"></span><span class="trust-badge" data-dataset-badge="settlement_naver"></span></h2>
    <div class="note">결제됐지만 아직 안 들어온 돈 (쿠팡: 구매확정→지급예정 / 네이버: 수동)</div>
    <div class="scroll"><table id="t_settle"><thead><tr><th>채널 · 지급일</th><th>구분</th><th class="num">금액</th></tr></thead><tbody></tbody></table></div>
  </div>
@@ -580,7 +589,7 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
  <div class="card"><h2>📈 일자별 입금 vs 지출 (영업)</h2><canvas id="chartDaily" height="80"></canvas></div>
 
  <div class="grid2">
-  <div class="card"><h2>🏦 은행/계정별 잔액</h2><div class="scroll"><table id="t_bal"><thead><tr><th>계정</th><th>거래처(계좌)</th><th class="num">금일잔액</th></tr></thead><tbody></tbody></table></div></div>
+  <div class="card"><h2>🏦 은행/계정별 잔액 <span class="trust-badge" data-dataset-badge="bank_balances"></span></h2><div class="scroll"><table id="t_bal"><thead><tr><th>계정</th><th>거래처(계좌)</th><th class="num">금일잔액</th></tr></thead><tbody></tbody></table></div></div>
   <div class="card"><h2>🧾 부서·프로젝트별</h2>
     <div class="tabs" id="aggtabs"><button class="on" data-k="부서명">부서별</button><button data-k="프로젝트명">프로젝트별</button></div>
     <div class="scroll"><table id="t_agg"><thead><tr><th>구분</th><th class="num">입금</th><th class="num">지출</th><th class="num">순액</th></tr></thead><tbody></tbody></table></div></div>
@@ -851,11 +860,50 @@ function loadDataFreshness(){
    return d;
  }).then(renderDataFreshness).catch(()=>renderDataFreshness({state:'unknown',has_data:true}));
 }
+const DATASET_LABELS={bank_balances:'통장',monthly_pl:'손익계산서',project_pl:'프로젝트 손익',receivables:'미수금',settlement_coupang:'쿠팡 정산',settlement_naver:'네이버 정산'};
+function datasetStateUi(state){
+ state=(state&&typeof state==='object')?state:{};
+ const attempt=state.latest_attempt||{}, valid=state.validation||{}, fresh=state.freshness||{};
+ if(state.fallback)return{text:'이전 정상본',icon:'⚠️',color:'#b45309',bg:'#fffbeb'};
+ if(attempt.status==='failed'&&!state.served_snapshot)return{text:'수집 실패',icon:'❌',color:'#dc2626',bg:'#fef2f2'};
+ if(valid.status==='failed')return{text:'확인 필요',icon:'❌',color:'#dc2626',bg:'#fef2f2'};
+ if(fresh.status==='stale')return{text:'오래된 값',icon:'⚠️',color:'#b45309',bg:'#fffbeb'};
+ if(valid.status==='warning')return{text:'확인 필요',icon:'⚠️',color:'#b45309',bg:'#fffbeb'};
+ if(attempt.status==='success'&&state.served_snapshot)return{text:'정상',icon:'✅',color:'#047857',bg:'#ecfdf5'};
+ return{text:'확인 필요',icon:'⚠️',color:'#b45309',bg:'#fffbeb'};
+}
+function datasetSourceLabel(state){
+ const value=((state.served_snapshot||{}).source_as_of||'').slice(0,10);if(!value)return'기준일 확인 필요';
+ const today=_todayStr();return value===today?'오늘 기준':(+value.slice(5,7))+'/'+(+value.slice(8,10))+' 기준';
+}
+function recentManualCheckCount(){
+ const keys=['선급금','카페24','대출'], now=new Date();
+ return keys.filter(key=>{const meta=manualMeta(key),d=new Date(meta.last_confirmed_at||'');return meta.status==='confirmed'&&!isNaN(d.getTime())&&Math.floor((now-d)/86400000)<=7;}).length;
+}
+function renderDatasetStates(envelope){
+ const states=(envelope&&envelope.datasets)||{}, list=document.getElementById('dataset_status_list'), overall=document.getElementById('dataset_status_overall');
+ if(!list||!overall)return;
+ const keys=Object.keys(DATASET_LABELS), rows=[];let fallback=0,failed=0,attention=0;
+ keys.forEach(key=>{const state=states[key]||{},ui=datasetStateUi(state);if(state.fallback)fallback++;if(ui.text==='수집 실패')failed++;else if(ui.text!=='정상')attention++;
+   rows.push(`<div class="trust-row"><span>${DATASET_LABELS[key]}</span><span class="trust-state" style="color:${ui.color}">${ui.icon} ${ui.text} <span style="font-weight:500;color:#6b7280">${datasetSourceLabel(state)}</span></span></div>`);
+   document.querySelectorAll(`[data-dataset-badge="${key}"]`).forEach(el=>{el.textContent=DATASET_LABELS[key]+' '+ui.text;el.style.color=ui.color;el.style.background=ui.bg;});
+ });
+ const manualDone=recentManualCheckCount();rows.push(`<div class="trust-row"><span>경리 수동확인</span><span class="trust-state" style="color:${manualDone===3?'#047857':'#b45309'}">${manualDone===3?'✅ 수동 확인':'⚠️ 확인 필요'} <span style="font-weight:500;color:#6b7280">${manualDone}/3</span></span></div>`);
+ list.innerHTML=rows.join('');
+ if(failed){overall.textContent='❌ 일부 수집 실패';overall.style.color='#dc2626';}
+ else if(fallback){overall.textContent='⚠️ 일부 이전 정상본 사용 중';overall.style.color='#b45309';}
+ else if(attention||manualDone<3){overall.textContent='⚠️ 일부 확인 필요';overall.style.color='#b45309';}
+ else{overall.textContent='✅ 전체 정상';overall.style.color='#047857';}
+}
+function loadDatasetStates(){
+ fetch('/jageum/api/dataset_states',{cache:'no-store'}).then(async r=>{let d={};try{d=await r.json();}catch(e){}if(!r.ok)throw new Error('unavailable');return d;})
+  .then(renderDatasetStates).catch(()=>{const overall=document.getElementById('dataset_status_overall');if(overall){overall.textContent='❌ 데이터 상태를 확인하지 못했습니다';overall.style.color='#dc2626';}});
+}
 function load(){fetch('/jageum/api/data').then(r=>{if(r.status===401){location.href='/jageum/login';return null;}return r.json();}).then(d=>{if(!d)return;D=d;M=d.수동입력||{};MYROLE=d._role||'';
   document.getElementById('whoami').textContent = MYROLE==='boss'?'👑 대표님':(MYROLE==='staff'?'🧑‍💼 경리':'');
   {const _wl=document.getElementById('chat_who_label'); if(_wl)_wl.textContent=MYROLE==='boss'?'👑 사장님':(MYROLE==='staff'?'🧑‍💼 경리':'게스트');}
   window._who=d._who||'';
-  if(MYROLE==='boss'||MYROLE==='staff')loadDataFreshness();
+  if(MYROLE==='boss'||MYROLE==='staff'){loadDataFreshness();loadDatasetStates();}
   fetch('/jageum/api/pl_proj').then(r=>r.ok?r.json():null).then(p=>{if(p&&p.months){D.plProj=p;
     if(typeof renderClose==='function')renderClose();
     if(typeof renderDept==='function')renderDept();}}).catch(()=>{});   // 부서별 손익도 발생주의라 같이 다시 그린다
