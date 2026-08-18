@@ -6,6 +6,7 @@ import re
 import random
 import math
 import smtplib
+import threading
 import urllib.parse
 from datetime import datetime, timezone, timedelta
 from email.mime.text import MIMEText
@@ -28,6 +29,15 @@ from coupang_api import CoupangPartnersAPI
 from coupang_analysis import analyze as coupang_analyze, get_recommendations as coupang_reco
 from coupang_opportunities import scan_opportunities
 from page_maker import scrape_images, build_processed_zip, analyze_product_image, stream_ai_sections, scrape_and_analyze_url
+from jageum_state import (
+    atomic_write_json as _dataset_atomic_write,
+    briefing_contract as _build_briefing_contract,
+    cashflow_shadow as _build_cashflow_shadow,
+    evaluate_all as _evaluate_dataset_states,
+    evaluate_dataset as _evaluate_dataset_state,
+    load_state_file as _load_dataset_state_file,
+    migrate_state as _migrate_dataset_state,
+)
 
 load_dotenv()
 
@@ -870,6 +880,7 @@ async def pm_ai_stream(request: Request):
 # ===== 이카운트 자금일보 대시보드 =====
 JAGEUM_FILE = data_path("jageum_data.json")
 JAGEUM_STATUS_FILE = data_path("jageum_status.json")
+JAGEUM_DATASET_STATE_FILE = data_path("jageum_dataset_states.json")
 JAGEUM_USER = os.getenv("JAGEUM_USER", "buja")
 JAGEUM_PASS = os.getenv("JAGEUM_PASS", "1234")
 JAGEUM_INGEST_SECRET = os.getenv("JAGEUM_INGEST_SECRET", "bj-ecount-2026-ingest")
@@ -1023,7 +1034,96 @@ def _kv_restore(key, timeout=6):
 # 마지막 유효 자금데이터(메모리 캐시) — 로컬·KV 둘 다 순간 실패해도 0/빈화면으로 안 떨어지게 보존
 _JAGEUM_CACHE = {"data": None, "serving_fallback": False}
 _JAGEUM_STATUS_CACHE = {"data": None}
+_JAGEUM_DATASET_STATE_CACHE = {"data": None}
+_JAGEUM_DATASET_STATE_LOCK = threading.RLock()
 _COLLECTION_STATES = {"running", "success", "failed", "unknown"}
+
+def _load_dataset_state_envelope() -> dict:
+    """로컬 → KV 순으로 shadow 상태를 복원한다. 원본 자금 파일과는 완전히 분리된다."""
+    cached = _JAGEUM_DATASET_STATE_CACHE.get("data")
+    if isinstance(cached, dict):
+        return _migrate_dataset_state(cached)
+    local = _load_dataset_state_file(JAGEUM_DATASET_STATE_FILE)
+    if local.get("datasets"):
+        _JAGEUM_DATASET_STATE_CACHE["data"] = local
+        return local
+    restored = _kv_restore("jageum_dataset_states", timeout=8)
+    restored = _migrate_dataset_state(restored)
+    if restored.get("datasets"):
+        try:
+            _dataset_atomic_write(JAGEUM_DATASET_STATE_FILE, restored)
+        except Exception:
+            pass
+        _JAGEUM_DATASET_STATE_CACHE["data"] = restored
+        return restored
+    return local
+
+def _publish_dataset_state_envelope(envelope: dict) -> dict:
+    """검증된 shadow 상태만 원자 발행하고 KV에 별도 백업한다."""
+    with _JAGEUM_DATASET_STATE_LOCK:
+        try:
+            _dataset_atomic_write(JAGEUM_DATASET_STATE_FILE, envelope)
+            local = {"ok": True, "error": None}
+            _JAGEUM_DATASET_STATE_CACHE["data"] = envelope
+        except Exception as exc:
+            local = {"ok": False, "error": str(exc)[:200]}
+        kv = _kv_backup_checked("jageum_dataset_states", envelope, timeout=10)
+        return {"local": local, "kv": kv}
+
+def _seed_or_load_dataset_states(payload: dict | None = None, project_payload: dict | None = None) -> dict:
+    """첫 배포만 기존 정상본에서 shadow contract를 만들고 이후에는 발행본을 그대로 쓴다."""
+    with _JAGEUM_DATASET_STATE_LOCK:
+        stored = _load_dataset_state_envelope()
+        if stored.get("datasets"):
+            project_state = stored["datasets"].get("project_pl") or {}
+            if not project_state.get("served_snapshot"):
+                project = project_payload if isinstance(project_payload, dict) else _kv_restore("pl_proj", timeout=15)
+                if isinstance(project, dict) and project.get("months"):
+                    source = payload if isinstance(payload, dict) else (_load_jageum() or {})
+                    updated = dict(stored)
+                    updated["datasets"] = dict(stored["datasets"])
+                    updated["datasets"]["project_pl"] = _evaluate_dataset_state(
+                        "project_pl", source, project, previous=project_state,
+                    )
+                    updated["updated_at"] = _utc_now_iso()
+                    _publish_dataset_state_envelope(updated)
+                    return updated
+            return stored
+        source = payload if isinstance(payload, dict) else (_load_jageum() or {})
+        project = project_payload if isinstance(project_payload, dict) else _kv_restore("pl_proj", timeout=15)
+        seeded = _evaluate_dataset_states(source, project, previous_states={})
+        _publish_dataset_state_envelope(seeded)
+        return seeded
+
+def _observe_project_dataset_state(project_payload) -> None:
+    """별도 KV collector의 새 project_pl snapshot을 발견했을 때만 shadow 발행한다."""
+    with _JAGEUM_DATASET_STATE_LOCK:
+        cached = _JAGEUM_DATASET_STATE_CACHE.get("data")
+        stored = _migrate_dataset_state(cached) if isinstance(cached, dict) else _load_dataset_state_file(JAGEUM_DATASET_STATE_FILE)
+        if not (stored.get("datasets") or {}).get("bank_balances"):
+            # 첫 페이지의 dataset_states seed와 동시에 부분 envelope를 발행하지 않는다.
+            return
+        _JAGEUM_DATASET_STATE_CACHE["data"] = stored
+        previous = (stored.get("datasets") or {}).get("project_pl")
+        source = _load_jageum() or {}
+        if isinstance(project_payload, dict) and project_payload.get("months"):
+            candidate = _evaluate_dataset_state(
+                "project_pl", source, project_payload, previous=previous,
+            )
+        else:
+            candidate = _evaluate_dataset_state(
+                "project_pl", source, None, previous=previous,
+                attempt_status="failed", attempt_error="프로젝트 손익을 불러오지 못했습니다",
+            )
+        old_id = ((previous or {}).get("served_snapshot") or {}).get("snapshot_id")
+        new_id = (candidate.get("served_snapshot") or {}).get("snapshot_id")
+        if old_id == new_id and candidate.get("latest_attempt", {}).get("status") == "success":
+            return
+        updated = dict(stored)
+        updated["datasets"] = dict(stored.get("datasets") or {})
+        updated["datasets"]["project_pl"] = candidate
+        updated["updated_at"] = _utc_now_iso()
+        _publish_dataset_state_envelope(updated)
 
 def _utc_now_iso() -> str:
     """관찰용 시각은 서버 지역과 무관하게 UTC ISO-8601로 기록한다."""
@@ -1466,6 +1566,33 @@ def jageum_data_status(request: Request):
         return _AUTH401
     return JSONResponse(_jageum_status_payload(), headers={"Cache-Control": "no-store"})
 
+@app.get("/jageum/api/dataset_states")
+def jageum_dataset_states(request: Request):
+    """사업 탭용 데이터셋별 신뢰 상태. 회사 자금을 볼 수 있는 대표·경리만 허용한다."""
+    if not _jageum_auth(request):
+        return _AUTH401
+    envelope = _seed_or_load_dataset_states()
+    return JSONResponse(envelope, headers={"Cache-Control": "no-store"})
+
+@app.get("/jageum/api/cashflow_shadow")
+def jageum_cashflow_shadow(request: Request):
+    """기존 KPI를 바꾸지 않고 새 현금흐름 분류와 차이만 보여준다."""
+    if not _jageum_auth(request):
+        return _AUTH401
+    return JSONResponse(_build_cashflow_shadow(_load_jageum() or {}),
+                        headers={"Cache-Control": "no-store"})
+
+@app.get("/jageum/api/briefing_contract")
+def jageum_briefing_contract(request: Request):
+    """GPT에 원본 JSON 대신 전달할 검증·계산 완료 입력 계약."""
+    if not _jageum_auth(request):
+        return _AUTH401
+    payload = _load_jageum() or {}
+    states = _seed_or_load_dataset_states(payload=payload)
+    classification = _build_cashflow_shadow(payload)
+    return JSONResponse(_build_briefing_contract(payload, states, classification),
+                        headers={"Cache-Control": "no-store"})
+
 # ===== 영업 결산 (딜 관리) =====
 SALES_DEALS_FILE = data_path("sales_deals.json")
 
@@ -1886,6 +2013,11 @@ def jageum_pl_proj(request: Request):
     if _jageum_role(request) not in ("boss", "staff", "sales"):
         return _AUTH401
     data = _kv_restore("pl_proj", timeout=15)
+    # 영업사원 응답 권한은 유지하되, 회사 데이터 상태 메타 발행은 값만 관찰하고 응답에는 섞지 않는다.
+    try:
+        _observe_project_dataset_state(data)
+    except Exception:
+        pass
     return JSONResponse(data or {"months": [], "data": {}, "chk": {}})
 
 @app.post("/jageum/api/pl_proj_refresh")
@@ -1948,6 +2080,24 @@ async def jageum_ingest(request: Request):
     try:
         _kv_backup("jageum_data", incoming, timeout=25)
     except Exception:
+        pass
+    # Phase 2 shadow: 기존 화면의 source는 그대로 두고, 데이터셋별 후보 상태만 원자 발행한다.
+    # 프로젝트 손익은 별도 수집기라 이 ingest에 없으면 이전 정상 snapshot을 유지한다.
+    try:
+        with _JAGEUM_DATASET_STATE_LOCK:
+            previous = _load_dataset_state_envelope()
+            envelope = _evaluate_dataset_states(
+                incoming, None, previous_states=previous.get("datasets") or {},
+            )
+            previous_project = (previous.get("datasets") or {}).get("project_pl")
+            if isinstance(previous_project, dict) and previous_project.get("served_snapshot"):
+                # 프로젝트 손익은 별도 collector다. 자금일보 ingest가 그 최신 시도를 실패로 만들면 안 된다.
+                envelope["datasets"]["project_pl"] = previous_project
+            _dataset_atomic_write(JAGEUM_DATASET_STATE_FILE, envelope)
+            _JAGEUM_DATASET_STATE_CACHE["data"] = envelope
+            _kv_backup("jageum_dataset_states", envelope, timeout=10)
+    except Exception:
+        # shadow 상태 기록 실패가 검증된 기존 ingest의 성공 여부나 화면 숫자를 바꾸면 안 된다.
         pass
     _record_jageum_status("success")
     return JSONResponse({"ok": True})
