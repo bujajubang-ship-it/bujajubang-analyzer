@@ -7,6 +7,7 @@ import random
 import math
 import smtplib
 import urllib.parse
+from datetime import datetime, timezone, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from urllib.parse import quote as urlquote
@@ -868,6 +869,7 @@ async def pm_ai_stream(request: Request):
 
 # ===== 이카운트 자금일보 대시보드 =====
 JAGEUM_FILE = data_path("jageum_data.json")
+JAGEUM_STATUS_FILE = data_path("jageum_status.json")
 JAGEUM_USER = os.getenv("JAGEUM_USER", "buja")
 JAGEUM_PASS = os.getenv("JAGEUM_PASS", "1234")
 JAGEUM_INGEST_SECRET = os.getenv("JAGEUM_INGEST_SECRET", "bj-ecount-2026-ingest")
@@ -988,6 +990,27 @@ def _kv_backup(key, obj, timeout=6):
         httpx.post(f"{_KV_BASE}/kv/{key}", json=obj, headers={"x-secret": _KV_SECRET}, timeout=timeout)
     except Exception:
         pass
+
+def _kv_backup_checked(key, obj, timeout=6):
+    """수동 데이터처럼 저장 결과를 사용자에게 알려야 할 때 쓰는 checked KV 저장."""
+    try:
+        r = httpx.post(
+            f"{_KV_BASE}/kv/{key}", json=obj,
+            headers={"x-secret": _KV_SECRET}, timeout=timeout,
+        )
+        if 200 <= r.status_code < 300:
+            try:
+                payload = r.json()
+                if isinstance(payload, dict) and payload.get("ok") is False:
+                    return {"ok": False, "error": str(payload.get("error") or "KV rejected save")[:200]}
+            except Exception:
+                # 일부 단순 KV 서버는 성공 시 JSON body가 없을 수 있어 2xx 자체를 성공으로 본다.
+                pass
+            return {"ok": True, "error": None}
+        return {"ok": False, "error": f"KV HTTP {r.status_code}"}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)[:200]}
+
 def _kv_restore(key, timeout=6):
     try:
         r = httpx.get(f"{_KV_BASE}/kv/{key}", headers={"x-secret": _KV_SECRET}, timeout=timeout)
@@ -998,7 +1021,176 @@ def _kv_restore(key, timeout=6):
     return None
 
 # 마지막 유효 자금데이터(메모리 캐시) — 로컬·KV 둘 다 순간 실패해도 0/빈화면으로 안 떨어지게 보존
-_JAGEUM_CACHE = {"data": None}
+_JAGEUM_CACHE = {"data": None, "serving_fallback": False}
+_JAGEUM_STATUS_CACHE = {"data": None}
+_COLLECTION_STATES = {"running", "success", "failed", "unknown"}
+
+def _utc_now_iso() -> str:
+    """관찰용 시각은 서버 지역과 무관하게 UTC ISO-8601로 기록한다."""
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+def _read_jageum_status() -> dict:
+    cached = _JAGEUM_STATUS_CACHE.get("data")
+    if isinstance(cached, dict):
+        return dict(cached)
+    if JAGEUM_STATUS_FILE.exists():
+        try:
+            data = json.loads(JAGEUM_STATUS_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                _JAGEUM_STATUS_CACHE["data"] = data
+                return dict(data)
+        except Exception:
+            pass
+    return {}
+
+def _write_jageum_status(data: dict) -> None:
+    """상태 기록 실패가 기존 ingest 성공/실패 동작을 바꾸지 않게 best-effort로 저장한다."""
+    clean = dict(data)
+    _JAGEUM_STATUS_CACHE["data"] = clean
+    try:
+        JAGEUM_STATUS_FILE.write_text(
+            json.dumps(clean, ensure_ascii=False), encoding="utf-8"
+        )
+    except Exception:
+        pass
+
+def _record_jageum_status(state: str, *, error: str | None = None,
+                           received_at: str | None = None,
+                           published_at: str | None = None,
+                           snapshot_id: str | None = None,
+                           source_as_of: str | None = None) -> dict:
+    """현재 데이터 내용과 분리된 관찰 메타데이터만 갱신한다."""
+    now = _utc_now_iso()
+    current = _read_jageum_status()
+    current["state"] = state if state in _COLLECTION_STATES else "unknown"
+    current["last_attempt_at"] = now
+    current["error"] = (str(error)[:300] if error else None)
+    if received_at is not None:
+        current["last_received_at"] = received_at
+    if published_at is not None:
+        current["last_published_at"] = published_at
+    if snapshot_id is not None:
+        current["snapshot_id"] = snapshot_id
+    if published_at is not None:
+        # source_as_of는 명시적으로 받은 경우만 저장한다. period/수신시각으로 추정하지 않는다.
+        current["source_as_of"] = source_as_of or None
+    _write_jageum_status(current)
+    return current
+
+def _explicit_source_as_of(payload: dict) -> str | None:
+    """Lightsail이 명시한 원본 수집 시각만 사용하고 다른 날짜 필드로 추정하지 않는다."""
+    candidates = []
+    meta = payload.get("_meta")
+    if isinstance(meta, dict):
+        candidates.append(meta.get("source_as_of"))
+    candidates.append(payload.get("source_as_of"))
+    for value in candidates:
+        if isinstance(value, str) and value.strip():
+            return value.strip()[:100]
+    return None
+
+def _has_local_jageum_data() -> bool:
+    if _jageum_has_content(_JAGEUM_CACHE.get("data")):
+        return True
+    if JAGEUM_FILE.exists():
+        try:
+            return _jageum_has_content(json.loads(JAGEUM_FILE.read_text(encoding="utf-8")))
+        except Exception:
+            return False
+    return False
+
+def _jageum_status_payload() -> dict:
+    status = _read_jageum_status()
+    state = status.get("state")
+    if state not in _COLLECTION_STATES:
+        state = "unknown"
+    fallback = bool(_JAGEUM_CACHE.get("serving_fallback"))
+    # KV/메모리 fallback은 최신 수집 성공을 확인한 것이 아니므로 success만 unknown으로 낮춘다.
+    # 명시적으로 확인된 running/failed 상태는 그대로 보존한다.
+    if fallback and state == "success":
+        state = "unknown"
+    return {
+        "state": state,
+        "has_data": _has_local_jageum_data(),
+        "serving_fallback": fallback,
+        "last_attempt_at": status.get("last_attempt_at"),
+        "last_received_at": status.get("last_received_at"),
+        "last_published_at": status.get("last_published_at"),
+        "source_as_of": status.get("source_as_of"),
+        "source_as_of_known": bool(status.get("source_as_of")),
+        "snapshot_id": status.get("snapshot_id"),
+        "error": status.get("error"),
+    }
+
+def _normalize_scrape_status(data) -> str:
+    """신·구 Lightsail 응답을 보수적으로 4개 상태로 정규화한다."""
+    if not isinstance(data, dict):
+        return "unknown"
+    raw = data.get("state")
+    if not isinstance(raw, str) or not raw.strip():
+        raw = data.get("status")
+    raw = raw.strip().lower() if isinstance(raw, str) else ""
+    if raw in {"running", "started", "busy", "processing", "in_progress"}:
+        return "running"
+    if raw in {"success", "succeeded", "completed", "complete", "done"}:
+        return "success"
+    if raw in {"failed", "failure", "error"}:
+        return "failed"
+    if raw == "unknown":
+        return "unknown"
+    if data.get("running") is True:
+        return "running"
+    if data.get("success") is True:
+        return "success"
+    if data.get("success") is False or data.get("error"):
+        return "failed"
+    # legacy의 running:false만으로는 완료인지 실패인지 알 수 없다.
+    return "unknown"
+
+_COLLECTION_STATE_MESSAGES = {
+    "running": "⏳ 데이터 수집 중입니다",
+    "success": "✅ 데이터 수집이 완료되었습니다",
+    "failed": "❌ 데이터 수집에 실패했습니다",
+    "unknown": "⚠️ 수집 상태를 확인할 수 없습니다",
+}
+
+def _scrape_status_response(path: str) -> JSONResponse:
+    try:
+        response = httpx.get(
+            f"{_KV_BASE}{path}", headers={"x-secret": _KV_SECRET}, timeout=10
+        )
+    except Exception as exc:
+        return JSONResponse({
+            "state": "unknown", "running": False,
+            "msg": _COLLECTION_STATE_MESSAGES["unknown"],
+            "detail": str(exc)[:150],
+        }, status_code=502)
+    if response.status_code != 200:
+        return JSONResponse({
+            "state": "unknown", "running": False,
+            "msg": _COLLECTION_STATE_MESSAGES["unknown"],
+            "upstream_status": response.status_code,
+        }, status_code=502)
+    try:
+        upstream = response.json()
+    except Exception:
+        return JSONResponse({
+            "state": "unknown", "running": False,
+            "msg": _COLLECTION_STATE_MESSAGES["unknown"],
+            "detail": "malformed status response",
+        }, status_code=502)
+    if not isinstance(upstream, dict):
+        return JSONResponse({
+            "state": "unknown", "running": False,
+            "msg": _COLLECTION_STATE_MESSAGES["unknown"],
+            "detail": "malformed status response",
+        }, status_code=502)
+    state = _normalize_scrape_status(upstream)
+    result = dict(upstream)
+    result["state"] = state
+    result["running"] = state == "running"
+    result["msg"] = _COLLECTION_STATE_MESSAGES[state]
+    return JSONResponse(result)
 
 def _jageum_has_content(d) -> bool:
     """실제 자금 데이터가 들어있는지 판정(빈 껍데기·0 방지). 통장거래내역=자금의증가/감소."""
@@ -1033,25 +1225,225 @@ def _load_jageum():
         except Exception:
             pass
         _JAGEUM_CACHE["data"] = data
+        _JAGEUM_CACHE["serving_fallback"] = True
         return data
     # 3) 로컬·KV 모두 실패 → 마지막 유효본으로 버팀
     if _jageum_has_content(_JAGEUM_CACHE["data"]):
+        _JAGEUM_CACHE["serving_fallback"] = True
         return _JAGEUM_CACHE["data"]
     return {}
-def _load_manual():
-    if JAGEUM_MANUAL_FILE.exists():
+_MANUAL_DATASETS = {
+    "선급금": ("manual_prepaids", "items"),
+    "카페24": ("settlement_cafe24", "value"),
+    "대출": ("manual_loans", "items"),
+}
+_MANUAL_DATASET_KEYS = {v[0]: k for k, v in _MANUAL_DATASETS.items()}
+_LOAN_LEGACY_REFERENCE = {
+    "value": 450_000_000,
+    "source": "frontend_hardcoded_default",
+}
+
+def _manual_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+def _manual_kst_today(now: datetime | None = None):
+    base = now or datetime.now(timezone.utc)
+    if base.tzinfo is None:
+        base = base.replace(tzinfo=timezone.utc)
+    return (base.astimezone(timezone(timedelta(hours=9)))).date()
+
+def _manual_parse_date(value):
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+        if parsed.tzinfo is not None:
+            parsed = parsed.astimezone(timezone(timedelta(hours=9)))
+        return parsed.date()
+    except Exception:
         try:
-            return json.loads(JAGEUM_MANUAL_FILE.read_text(encoding="utf-8"))
+            return datetime.strptime(value.strip()[:10], "%Y-%m-%d").date()
         except Exception:
-            return {}
-    data = _kv_restore("jageum_manual")   # 로컬 없음(재배포 초기화) → Lightsail 백업 복원
-    if isinstance(data, dict):
+            return None
+
+def _manual_snapshot_id(dataset: str, record: dict) -> str:
+    material = {
+        "dataset": dataset,
+        "value": record.get("value"),
+        "items": record.get("items"),
+        "last_confirmed_at": record.get("last_confirmed_at"),
+        "updated_at": record.get("updated_at"),
+    }
+    raw = json.dumps(material, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return "sha256:" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:20]
+
+def _manual_record_status(record: dict, *, today=None) -> str:
+    """0은 값 존재로 취급하며, 확인일로부터 7일 초과 시 stale이다."""
+    if record.get("status") == "error":
+        return "error"
+    field = "items" if "items" in record else "value"
+    if field not in record or record.get(field) is None:
+        return "unknown"
+    confirmed = _manual_parse_date(record.get("last_confirmed_at"))
+    if not confirmed:
+        return "stale"
+    age = ((today or _manual_kst_today()) - confirmed).days
+    return "confirmed" if age <= 7 else "stale"
+
+def _normalize_manual_payload(data, *, confirmed_by=None, confirm_keys=None,
+                              changed_keys=None, now=None, storage_error=None):
+    """기존 한글 키는 유지하고 재사용 가능한 수동 데이터 계약만 additive하게 붙인다."""
+    source = dict(data) if isinstance(data, dict) else {}
+    meta_in = source.get("_manual_meta") if isinstance(source.get("_manual_meta"), dict) else {}
+    records_in = meta_in.get("datasets") if isinstance(meta_in.get("datasets"), dict) else {}
+    confirm_keys = set(confirm_keys or [])
+    changed_keys = set(changed_keys or [])
+    now_dt = now or datetime.now(timezone.utc)
+    if now_dt.tzinfo is None:
+        now_dt = now_dt.replace(tzinfo=timezone.utc)
+    now_iso = now_dt.isoformat(timespec="seconds")
+    today = _manual_kst_today(now_dt)
+    legacy_dates = dict(source.get("수정일")) if isinstance(source.get("수정일"), dict) else {}
+    legacy_conf = dict(source.get("경리확인")) if isinstance(source.get("경리확인"), dict) else {}
+    source["수정일"] = legacy_dates
+    source["경리확인"] = legacy_conf
+    records = {}
+
+    for legacy_key, (dataset, field) in _MANUAL_DATASETS.items():
+        old = records_in.get(dataset) if isinstance(records_in.get(dataset), dict) else {}
+        record = dict(old)
+        record["dataset"] = dataset
+        has_actual = legacy_key in source
+        actual = source.get(legacy_key)
+        old_actual = old.get(field) if field in old else None
+        content_changed = has_actual and field in old and actual != old_actual
+        explicit_change = legacy_key in changed_keys or dataset in changed_keys or content_changed
+        explicit_confirm = legacy_key in confirm_keys or dataset in confirm_keys
+
+        if has_actual:
+            record[field] = actual
+            record.pop("legacy_reference", None)
+            if explicit_change:
+                record["updated_at"] = now_iso
+                record["source"] = "manual_entry"
+            elif not record.get("updated_at"):
+                record["updated_at"] = legacy_dates.get(legacy_key) or None
+                record["source"] = record.get("source") or "legacy_manual_storage"
+        else:
+            record.pop(field, None)
+            record["source"] = record.get("source") or "missing"
+            record["updated_at"] = record.get("updated_at") or None
+            if dataset == "manual_loans":
+                record["legacy_reference"] = dict(_LOAN_LEGACY_REFERENCE)
+                if legacy_conf.get(legacy_key):
+                    record["legacy_reference"]["checklist_confirmed_at"] = legacy_conf[legacy_key]
+
+        if has_actual and (explicit_change or explicit_confirm):
+            record["last_confirmed_at"] = now_iso
+            record["confirmed_by"] = confirmed_by or None
+            legacy_conf[legacy_key] = today.isoformat()
+            if explicit_change:
+                legacy_dates[legacy_key] = today.isoformat()
+        elif has_actual and not record.get("last_confirmed_at"):
+            legacy_date = legacy_conf.get(legacy_key) or legacy_dates.get(legacy_key)
+            record["last_confirmed_at"] = legacy_date or None
+            record["confirmed_by"] = record.get("confirmed_by") or None
+        elif not has_actual:
+            # 과거 체크리스트 날짜만으로 기본금액을 확인된 실제값으로 승격하지 않는다.
+            record["last_confirmed_at"] = None
+            record["confirmed_by"] = None
+
+        if storage_error:
+            if record.get("status") == "error":
+                previous = record.get("status_before_error") or "unknown"
+            else:
+                previous = _manual_record_status(record, today=today)
+            record["status"] = "error"
+            record["status_before_error"] = previous
+            record["error"] = str(storage_error)[:300]
+        else:
+            record.pop("status_before_error", None)
+            record.pop("error", None)
+            if old.get("status") == "error" and not (explicit_change or explicit_confirm):
+                record["status"] = "error"
+                record["status_before_error"] = old.get("status_before_error")
+                record["error"] = old.get("error")
+            else:
+                record["status"] = _manual_record_status(record, today=today)
+        record["snapshot_id"] = _manual_snapshot_id(dataset, record)
+        records[dataset] = record
+
+    result = dict(source)
+    result["_manual_meta"] = {
+        "version": 1,
+        "stale_after_days": 7,
+        "datasets": records,
+        "storage": meta_in.get("storage") if isinstance(meta_in.get("storage"), dict) else {
+            "local": {"ok": None, "error": None},
+            "kv": {"ok": None, "error": None},
+        },
+    }
+    return result
+
+def _manual_atomic_write(data: dict):
+    tmp = JAGEUM_MANUAL_FILE.with_name(
+        f".{JAGEUM_MANUAL_FILE.name}.{os.getpid()}.{time.time_ns()}.tmp"
+    )
+    try:
+        JAGEUM_MANUAL_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, JAGEUM_MANUAL_FILE)
+        return {"ok": True, "error": None}
+    except Exception as exc:
         try:
-            JAGEUM_MANUAL_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            if tmp.exists():
+                tmp.unlink()
         except Exception:
             pass
-        return data
-    return {}
+        return {"ok": False, "error": str(exc)[:200]}
+
+def _manual_storage_error(local_result: dict, kv_result: dict) -> str | None:
+    errors = []
+    if not local_result.get("ok"):
+        errors.append("local: " + (local_result.get("error") or "저장 실패"))
+    if not kv_result.get("ok"):
+        errors.append("KV: " + (kv_result.get("error") or "백업 실패"))
+    return "; ".join(errors) or None
+
+def _load_manual():
+    local_error = None
+    if JAGEUM_MANUAL_FILE.exists():
+        try:
+            data = json.loads(JAGEUM_MANUAL_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return _normalize_manual_payload(data)
+            local_error = "local manual data is not an object"
+        except Exception as exc:
+            local_error = f"local restore failed: {exc}"
+    try:
+        r = httpx.get(
+            f"{_KV_BASE}/kv/jageum_manual", headers={"x-secret": _KV_SECRET}, timeout=6
+        )
+        if r.status_code == 200:
+            data = r.json().get("data")
+            if isinstance(data, dict):
+                normalized = _normalize_manual_payload(data)
+                restored = _manual_atomic_write(normalized)
+                if restored["ok"]:
+                    return normalized
+                return _normalize_manual_payload(
+                    normalized, storage_error="local restore save failed: " + (restored["error"] or "")
+                )
+            if data is None and not local_error:
+                return _normalize_manual_payload({})
+            local_error = local_error or "KV manual data is not an object"
+        elif r.status_code == 404 and not local_error:
+            return _normalize_manual_payload({})
+        else:
+            local_error = local_error or f"KV restore HTTP {r.status_code}"
+    except Exception as exc:
+        local_error = local_error or f"KV restore failed: {exc}"
+    return _normalize_manual_payload({}, storage_error=local_error or "manual restore failed")
 
 @app.get("/jageum/api/data")
 def jageum_data(request: Request):
@@ -1066,6 +1458,13 @@ def jageum_data(request: Request):
     d["_role"] = role
     d["_who"] = _jageum_who(request)
     return JSONResponse(d)
+
+@app.get("/jageum/api/data_status")
+def jageum_data_status(request: Request):
+    """현재 표시 데이터의 Render 관찰 정보. 원본 수집 시각은 명시값이 없으면 추정하지 않는다."""
+    if _jageum_role(request) not in ("boss", "staff", "sales"):
+        return _AUTH401
+    return JSONResponse(_jageum_status_payload(), headers={"Cache-Control": "no-store"})
 
 # ===== 영업 결산 (딜 관리) =====
 SALES_DEALS_FILE = data_path("sales_deals.json")
@@ -1461,11 +1860,7 @@ async def sales_refresh(request: Request):
 async def sales_refresh_status(request: Request):
     if not _sales_auth(request):
         return _AUTH401
-    try:
-        r = httpx.get(f"{_KV_BASE}/scrape_sales_status", headers={"x-secret": _KV_SECRET}, timeout=10)
-        return JSONResponse(r.json())
-    except Exception:
-        return JSONResponse({"running": False, "msg": "상태 확인 실패"})
+    return _scrape_status_response("/scrape_sales_status")
 
 @app.post("/jageum/api/data_refresh")
 async def data_refresh(request: Request):
@@ -1483,11 +1878,7 @@ async def data_refresh(request: Request):
 async def data_refresh_status(request: Request):
     if not _jageum_auth(request):
         return _AUTH401
-    try:
-        r = httpx.get(f"{_KV_BASE}/scrape_jageum_status", headers={"x-secret": _KV_SECRET}, timeout=10)
-        return JSONResponse(r.json())
-    except Exception:
-        return JSONResponse({"running": False, "msg": "상태 확인 실패"})
+    return _scrape_status_response("/scrape_jageum_status")
 
 @app.get("/jageum/api/pl_proj")
 def jageum_pl_proj(request: Request):
@@ -1512,11 +1903,7 @@ async def pl_proj_refresh(request: Request):
 async def pl_proj_refresh_status(request: Request):
     if not _jageum_auth(request):
         return _AUTH401
-    try:
-        r = httpx.get(f"{_KV_BASE}/scrape_pl_proj_status", headers={"x-secret": _KV_SECRET}, timeout=10)
-        return JSONResponse(r.json())
-    except Exception:
-        return JSONResponse({"running": False, "msg": "상태 확인 실패"})
+    return _scrape_status_response("/scrape_pl_proj_status")
 
 @app.post("/jageum/api/ingest")
 async def jageum_ingest(request: Request):
@@ -1528,23 +1915,41 @@ async def jageum_ingest(request: Request):
     try:
         incoming = json.loads(text)
     except Exception:
+        _record_jageum_status("failed", error="bad json")
         return JSONResponse({"ok": False, "error": "bad json"}, status_code=400)
     if not _jageum_has_content(incoming):
         # 들어온 데이터가 비었으면 기존 유효본 유지(로컬·KV 둘 다 보존)
+        _record_jageum_status("failed", error="empty payload rejected")
         return JSONResponse({"ok": False, "error": "empty payload rejected", "kept": True})
     # '오늘치'만 담긴 반쪽 데이터(latest.json)가 18개월치 전체(dashboard.json)를 덮어쓰면
     # 월별 카드·손익월별이 통째로 사라진다. 있던 달력 데이터를 없애는 쪽으로는 덮지 않는다.
     if not incoming.get("months"):
         old = _load_jageum()
         if old.get("months"):
+            _record_jageum_status("failed", error="partial payload rejected (months 없음)")
             return JSONResponse({"ok": False, "error": "partial payload rejected (months 없음)", "kept": True})
-    JAGEUM_FILE.write_text(text, encoding="utf-8")
+    received_at = _utc_now_iso()
+    snapshot_id = "sha256:" + hashlib.sha256(body).hexdigest()[:20]
+    source_as_of = _explicit_source_as_of(incoming)
+    _record_jageum_status("running", received_at=received_at)
+    try:
+        JAGEUM_FILE.write_text(text, encoding="utf-8")
+    except Exception as exc:
+        _record_jageum_status("failed", error=f"publish failed: {exc}", received_at=received_at)
+        raise
     _JAGEUM_CACHE["data"] = incoming
+    _JAGEUM_CACHE["serving_fallback"] = False
+    published_at = _utc_now_iso()
+    _record_jageum_status(
+        "running", received_at=received_at, published_at=published_at,
+        snapshot_id=snapshot_id, source_as_of=source_as_of,
+    )
     # 재배포에도 살아남게 Lightsail KV에 백업 (다음 재배포 후 첫 로드에서 자동 복원)
     try:
         _kv_backup("jageum_data", incoming, timeout=25)
     except Exception:
         pass
+    _record_jageum_status("success")
     return JSONResponse({"ok": True})
 
 # ===== 자산 스냅샷 (현금·자산 흐름 시계열 추적 — 화면에 표시되는 값 그대로 하루 1줄 적재) =====
@@ -1615,13 +2020,69 @@ async def asset_snapshot_reset(request: Request):
 async def jageum_manual(request: Request):
     if not _jageum_auth(request):
         return _AUTH401
-    body = await request.body()
-    JAGEUM_MANUAL_FILE.write_text(body.decode("utf-8"), encoding="utf-8")
     try:
-        _kv_backup("jageum_manual", json.loads(body.decode("utf-8")))
+        incoming = await request.json()
     except Exception:
-        pass
-    return JSONResponse({"ok": True})
+        return JSONResponse({"ok": False, "saved": False, "error": "bad json"}, status_code=400)
+    if not isinstance(incoming, dict):
+        return JSONResponse({"ok": False, "saved": False, "error": "object required"}, status_code=400)
+
+    # 새 UI는 envelope를 쓰고, 예전 UI가 보내는 기존 flat JSON도 그대로 허용한다.
+    if isinstance(incoming.get("data"), dict):
+        raw = incoming["data"]
+        confirm_keys = incoming.get("confirm_keys") or []
+        changed_keys = incoming.get("changed_keys") or []
+    else:
+        raw = incoming
+        confirm_keys = []
+        changed_keys = []
+    prepared = _normalize_manual_payload(
+        raw, confirmed_by=_jageum_who(request),
+        confirm_keys=confirm_keys, changed_keys=changed_keys,
+    )
+
+    local_result = _manual_atomic_write(prepared)
+    kv_payload = prepared
+    if not local_result["ok"]:
+        kv_payload = _normalize_manual_payload(
+            prepared, storage_error="local: " + (local_result["error"] or "저장 실패")
+        )
+    kv_result = _kv_backup_checked("jageum_manual", kv_payload)
+    storage_error = _manual_storage_error(local_result, kv_result)
+    final = _normalize_manual_payload(prepared, storage_error=storage_error) if storage_error else prepared
+    final["_manual_meta"]["storage"] = {
+        "attempted_at": _manual_now_iso(),
+        "local": local_result,
+        "kv": kv_result,
+    }
+    if local_result["ok"]:
+        final_local = _manual_atomic_write(final)
+        if not final_local["ok"]:
+            local_result = final_local
+            storage_error = _manual_storage_error(local_result, kv_result)
+            final = _normalize_manual_payload(prepared, storage_error=storage_error)
+            final["_manual_meta"]["storage"] = {
+                "attempted_at": _manual_now_iso(),
+                "local": local_result,
+                "kv": kv_result,
+            }
+
+    complete = bool(local_result["ok"] and kv_result["ok"])
+    saved = bool(local_result["ok"] or kv_result["ok"])
+    if complete:
+        state, code = "success", 200
+    elif saved:
+        state, code = "partial", 207
+    else:
+        state, code = "failed", 503
+    return JSONResponse({
+        "ok": complete,
+        "saved": saved,
+        "state": state,
+        "manual": final if saved else None,
+        "storage": final["_manual_meta"]["storage"],
+        "error": storage_error,
+    }, status_code=code)
 
 
 # ===== 경리 체크리스트 미확인 → 문자 알림 =====
