@@ -1075,6 +1075,22 @@ def _seed_or_load_dataset_states(payload: dict | None = None, project_payload: d
     with _JAGEUM_DATASET_STATE_LOCK:
         stored = _load_dataset_state_envelope()
         if stored.get("datasets"):
+            if not stored.get("initialization"):
+                # Phase 2 최초 버전이 KV 복원본 관찰을 실제 collector 성공처럼 기록한 메타만 바로잡는다.
+                global_state = (_read_jageum_status() or {}).get("state")
+                updated = dict(stored)
+                if global_state == "success":
+                    updated["initialization"] = "collector_ingest"
+                else:
+                    updated["initialization"] = "legacy_lkg_observation"
+                    updated["datasets"] = {key: dict(value) for key, value in stored["datasets"].items()}
+                    for value in updated["datasets"].values():
+                        latest = dict(value.get("latest_attempt") or {})
+                        if latest.get("status") == "success": latest["status"] = "unknown"
+                        value["latest_attempt"] = latest
+                updated["updated_at"] = _utc_now_iso()
+                _publish_dataset_state_envelope(updated)
+                stored = updated
             project_state = stored["datasets"].get("project_pl") or {}
             if not project_state.get("served_snapshot"):
                 project = project_payload if isinstance(project_payload, dict) else _kv_restore("pl_proj", timeout=15)
@@ -1091,7 +1107,8 @@ def _seed_or_load_dataset_states(payload: dict | None = None, project_payload: d
             return stored
         source = payload if isinstance(payload, dict) else (_load_jageum() or {})
         project = project_payload if isinstance(project_payload, dict) else _kv_restore("pl_proj", timeout=15)
-        seeded = _evaluate_dataset_states(source, project, previous_states={})
+        seeded = _evaluate_dataset_states(source, project, previous_states={}, attempt_status="observed")
+        seeded["initialization"] = "legacy_lkg_observation"
         _publish_dataset_state_envelope(seeded)
         return seeded
 
@@ -2089,6 +2106,7 @@ async def jageum_ingest(request: Request):
             envelope = _evaluate_dataset_states(
                 incoming, None, previous_states=previous.get("datasets") or {},
             )
+            envelope["initialization"] = "collector_ingest"
             previous_project = (previous.get("datasets") or {}).get("project_pl")
             if isinstance(previous_project, dict) and previous_project.get("served_snapshot"):
                 # 프로젝트 손익은 별도 collector다. 자금일보 ingest가 그 최신 시도를 실패로 만들면 안 된다.

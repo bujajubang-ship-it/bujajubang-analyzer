@@ -100,6 +100,12 @@ class DatasetStateContractTests(unittest.TestCase):
         self.assertIsNone(failed["served_snapshot"])
         self.assertFalse(failed["fallback"])
 
+    def test_restored_lkg_is_validated_without_claiming_collection_success(self):
+        observed = evaluate_dataset("receivables", payload(), now=NOW, attempt_status="observed")
+        self.assertEqual(observed["latest_attempt"]["status"], "unknown")
+        self.assertIsNotNone(observed["served_snapshot"])
+        self.assertFalse(observed["fallback"])
+
     def test_empty_bank_candidate_is_rejected(self):
         state = evaluate_dataset("bank_balances", payload(bank_rows=0), now=NOW)
         self.assertEqual(state["latest_attempt"]["status"], "failed")

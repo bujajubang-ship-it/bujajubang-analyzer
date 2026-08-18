@@ -116,23 +116,23 @@ def _freshness(dataset: str, source_as_of: str | None, now: datetime | None) -> 
     }
 
 
-def _global_source(payload: dict) -> str | None:
+def _global_source_info(payload: dict) -> tuple[str | None, str]:
     meta = payload.get("_meta")
     for value in ((meta or {}).get("source_as_of") if isinstance(meta, dict) else None,
                   payload.get("source_as_of")):
         if _parse_date(value):
-            return str(value)[:10]
+            return str(value)[:10], "explicit"
     # 현재 Lightsail은 하나의 실행에서 이카운트·정산 데이터를 묶어 dashboard.json을 만든다.
     # 명시 메타가 없는 legacy payload에서는 같은 실행의 정산 기준일을 관찰 기준일로 쓴다.
     settlement = payload.get("정산예정")
     if isinstance(settlement, dict) and _parse_date(settlement.get("기준")):
-        return str(settlement["기준"])[:10]
+        return str(settlement["기준"])[:10], "legacy_batch_basis"
     dates = []
     for key in ("자금의증가", "자금의감소"):
         for row in payload.get(key) or []:
             if isinstance(row, dict) and _parse_date(row.get("일자")):
                 dates.append(str(row["일자"])[:10].replace("/", "-"))
-    return max(dates) if dates else None
+    return (max(dates), "last_transaction_date") if dates else (None, "unknown")
 
 
 def _extract_bank(payload: dict, now: datetime | None) -> dict:
@@ -145,8 +145,10 @@ def _extract_bank(payload: dict, now: datetime | None) -> dict:
         rows = source_rows
     period = payload.get("current_month") or payload.get("period")
     start, end, month_source = _month_bounds(period, now)
+    global_source, source_kind = _global_source_info(payload)
     return {"raw": rows, "rows": rows, "period_start": start, "period_end": end,
-            "source_as_of": _global_source(payload) or month_source}
+            "source_as_of": global_source or month_source,
+            "source_as_of_kind": source_kind if global_source else "period_derived"}
 
 
 def _extract_monthly_pl(payload: dict, now: datetime | None) -> dict:
@@ -158,7 +160,7 @@ def _extract_monthly_pl(payload: dict, now: datetime | None) -> dict:
     _, latest_end, source = _month_bounds(latest, now)
     return {"raw": raw, "rows": raw.get("rows") if isinstance(raw, dict) else None,
             "period_start": first_start, "period_end": latest_end, "source_as_of": source,
-            "months": months or [], "latest_month": latest}
+            "source_as_of_kind": "period_derived", "months": months or [], "latest_month": latest}
 
 
 def _extract_project(project: dict | None, now: datetime | None) -> dict:
@@ -172,16 +174,19 @@ def _extract_project(project: dict | None, now: datetime | None) -> dict:
     rows = [{"project": key, **(value if isinstance(value, dict) else {})}
             for key, value in latest_projects.items()]
     return {"raw": raw, "rows": rows, "period_start": first_start, "period_end": latest_end,
-            "source_as_of": source, "months": months or [], "latest_month": latest}
+            "source_as_of": source, "source_as_of_kind": "period_derived",
+            "months": months or [], "latest_month": latest}
 
 
 def _extract_receivables(payload: dict, now: datetime | None) -> dict:
     raw = payload.get("미수금")
     period = payload.get("current_month") or payload.get("period")
     start, end, month_source = _month_bounds(period, now)
+    global_source, source_kind = _global_source_info(payload)
     return {"raw": raw, "rows": raw.get("items") if isinstance(raw, dict) else None,
             "period_start": start, "period_end": end,
-            "source_as_of": _global_source(payload) or month_source}
+            "source_as_of": global_source or month_source,
+            "source_as_of_kind": source_kind if global_source else "period_derived"}
 
 
 def _extract_settlement(payload: dict, channel: str, now: datetime | None) -> dict:
@@ -203,7 +208,8 @@ def _extract_settlement(payload: dict, channel: str, now: datetime | None) -> di
         rows = None
     return {"raw": raw, "rows": rows,
             "period_start": start, "period_end": source_date.isoformat() if source_date else None,
-            "source_as_of": source_date.isoformat() if source_date else None}
+            "source_as_of": source_date.isoformat() if source_date else None,
+            "source_as_of_kind": "explicit_dataset_field" if source_date else "unknown"}
 
 
 def _base_validation(dataset: str, ext: dict, previous: dict | None) -> tuple[list[str], list[str], dict, dict]:
@@ -227,6 +233,7 @@ def _base_validation(dataset: str, ext: dict, previous: dict | None) -> tuple[li
     metrics["rows"] = row_count
     checks["rows_present"] = rows is not None
     checks["empty"] = row_count == 0
+    checks["source_as_of_kind"] = ext.get("source_as_of_kind", "unknown")
     if dataset in ("bank_balances", "monthly_pl", "project_pl") and isinstance(rows, list) and not rows:
         errors.append("비정상 empty")
     source_date = _parse_date(ext.get("source_as_of"))
@@ -451,7 +458,7 @@ def evaluate_dataset(dataset: str, payload: dict, project_payload: dict | None =
         if validation["status"] == "passed": validation["status"] = "warning"
     old_snapshot = (previous or {}).get("served_snapshot")
     history = list((previous or {}).get("previous_snapshots") or [])
-    collection_failed = attempt_status not in ("success", "completed")
+    collection_failed = attempt_status in ("failed", "failure", "error")
     rejected = collection_failed or validation["status"] == "failed"
     if rejected:
         err = attempt_error or ("; ".join(validation["errors"][:3]) if validation["errors"] else "수집 실패")
@@ -461,6 +468,7 @@ def evaluate_dataset(dataset: str, payload: dict, project_payload: dict | None =
     else:
         raw_hash = _canonical_hash(ext.get("raw"))
         served = {"snapshot_id": raw_hash, "source_as_of": ext.get("source_as_of"),
+                  "source_as_of_kind": ext.get("source_as_of_kind", "unknown"),
                   "last_success_at": utc_iso(now), "received_at": started, "published_at": utc_iso(now),
                   "period_start": ext.get("period_start"), "period_end": ext.get("period_end"),
                   "rows": validation["metrics"].get("rows", 0),
@@ -470,7 +478,8 @@ def evaluate_dataset(dataset: str, payload: dict, project_payload: dict | None =
             archived["metrics"] = (((previous or {}).get("validation") or {}).get("metrics") or {})
             history = ([archived] + history)[:3]
         fallback = False
-        latest = {"status": "success", "attempted_at": started, "completed_at": utc_iso(now), "error": None}
+        latest_status = "success" if attempt_status in ("success", "completed") else "unknown"
+        latest = {"status": latest_status, "attempted_at": started, "completed_at": utc_iso(now), "error": None}
     return {"dataset": dataset, "mode": "shadow", "latest_attempt": latest,
             "served_snapshot": served, "fallback": fallback, "validation": validation,
             "freshness": freshness, "previous_snapshots": history}
@@ -591,6 +600,8 @@ def briefing_contract(payload: dict, state_envelope: dict, classification: dict 
         if fresh.get("status") == "stale": anomalies.append({"type": "stale", "dataset": dataset, "message": f"{fresh.get('age_days')}일 전 기준"})
         for warning in validation.get("warnings") or []: anomalies.append({"type": "validation_warning", "dataset": dataset, "message": warning})
         if not state.get("served_snapshot"): limitations.append(f"{dataset}: 정상 snapshot 없음")
+        elif (state.get("served_snapshot") or {}).get("source_as_of_kind") in ("legacy_batch_basis", "period_derived", "last_transaction_date"):
+            limitations.append(f"{dataset}: source_as_of는 legacy payload에서 파생된 기준일입니다")
     # 같은 원본 안의 전월과 비교해 AI가 숫자를 다시 계산하거나 원인을 지어내지 않게 한다.
     pl = payload.get("손익월별") if isinstance(payload.get("손익월별"), dict) else {}
     months = pl.get("months") if isinstance(pl.get("months"), list) else []
@@ -646,6 +657,7 @@ def briefing_contract(payload: dict, state_envelope: dict, classification: dict 
                         "네이버 정산은 상세 지급예정일 없이 총액·건수만 제공됩니다"])
     return {"period": period, "datasets": {key: {"status": (value.get("latest_attempt") or {}).get("status", "unknown"),
             "fallback": bool(value.get("fallback")), "source_as_of": (value.get("served_snapshot") or {}).get("source_as_of"),
+            "source_as_of_kind": (value.get("served_snapshot") or {}).get("source_as_of_kind"),
             "snapshot_id": (value.get("served_snapshot") or {}).get("snapshot_id")} for key, value in states.items()},
             "metrics": metrics, "comparisons": {"cashflow_classification": classification["comparison"],
             "revenue": revenue_comparison, "bank_balance": cash_comparison, **historical_comparisons},
