@@ -634,7 +634,10 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    <div class="card" id="motto_card" style="border-top:3px solid #16a34a;background:linear-gradient(135deg,#f0fdf4,#ecfdf5)">
      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
        <h2 style="margin:0">📌 나의 좌우명 <span class="muted big">— 인생의 원칙 (매일 보는 공지)</span></h2>
-       <button id="motto_editbtn" onclick="mottoEdit()" style="border:none;background:#16a34a;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:13px;font-weight:600">✏️ 수정</button>
+       <div style="display:flex;gap:8px;flex-wrap:wrap">
+         <button id="life_copybtn" onclick="copyRecentNotes(30)" style="border:none;background:#0ea5e9;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:13px;font-weight:600">📋 최근 30일 메모 복사</button>
+         <button id="motto_editbtn" onclick="mottoEdit()" style="border:none;background:#16a34a;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:13px;font-weight:600">✏️ 수정</button>
+       </div>
      </div>
      <div id="motto_view" style="margin-top:10px"></div>
      <div id="motto_edit" style="display:none;margin-top:10px">
@@ -1637,6 +1640,37 @@ function saveLife(){
   // 과거 200편이 갑자기 비면 비정상 → 저장 차단
   if(_pastCount>0 && (!LIFE.과거 || LIFE.과거.length===0)){ console.warn('과거 데이터 유실 방지: 저장 취소'); return; }
   fetch('/jageum/api/life',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(LIFE)}).then(()=>{});
+}
+// ── 📋 최근 메모 한 번에 복사 ─────────────────────────────────────
+// 인생노트를 밖에 보여줄 일이 생겨도 서버에 문을 내지 않는다.
+// 이미 화면에 올라와 있는 내용을 글자로 만들어 클립보드에 담기만 한다.
+function copyRecentNotes(days){
+  const btn=document.getElementById('life_copybtn');
+  const notes=(LIFE&&LIFE.글)||[];
+  const cutoff=new Date(); cutoff.setDate(cutoff.getDate()-(days||30));
+  const picked=notes.filter(n=>{
+    const body=((n&&n.body)||'').trim(); if(!body)return false;
+    const d=new Date(String(n.date||'').slice(0,10));
+    return !isNaN(d) && d>=cutoff;
+  }).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+
+  if(!picked.length){ if(btn)btn.textContent='📋 최근 '+days+'일 메모 없음'; setTimeout(()=>{if(btn)btn.textContent='📋 최근 30일 메모 복사';},2000); return; }
+
+  const text=picked.map(n=>{
+    const title=((n.title||'').trim())||'(제목 없음)';
+    return '['+String(n.date).slice(0,10)+'] '+title+'\n'+(n.body||'').trim();
+  }).join('\n\n──────────\n\n');
+
+  const done=()=>{ if(btn)btn.textContent='✅ '+picked.length+'개 복사됨'; setTimeout(()=>{if(btn)btn.textContent='📋 최근 30일 메모 복사';},2500); };
+  const fallback=()=>{                       // 클립보드를 막는 브라우저가 있다
+    const ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); done(); }catch(e){ if(btn)btn.textContent='복사 실패'; }
+    document.body.removeChild(ta);
+  };
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done).catch(fallback);
+  } else { fallback(); }
 }
 function _ymd(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function bindVB(){

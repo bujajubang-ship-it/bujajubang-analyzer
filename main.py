@@ -2655,49 +2655,6 @@ async def jageum_projects_post(request: Request):
     return JSONResponse({"ok": True, "count": len(items)})
 
 
-@app.get("/jageum/api/life/export")
-def jageum_life_export(request: Request):
-    """인생노트 최근 메모만 내보낸다. 사장님이 정한 열쇠가 있어야 열린다.
-
-    개인 기록이라 문을 좁게 낸다.
-      · 환경변수 LIFE_EXPORT_SECRET 이 없으면 아예 없는 주소처럼 군다(꺼짐).
-      · 열쇠는 x-life-secret 헤더로만 받는다. 주소창에 남지 않게.
-      · 읽기만 된다. 최근 며칠 것만, 메모(글)만 — 상담 대화·블로그는 내보내지 않는다.
-    쓸 일이 끝나면 Render 에서 LIFE_EXPORT_SECRET 을 지우면 문이 닫힌다.
-    """
-    import hmac as _hmac
-
-    secret = os.getenv("LIFE_EXPORT_SECRET", "").strip()
-    if not secret:
-        return JSONResponse({"error": "not found"}, status_code=404)
-    supplied = (request.headers.get("x-life-secret") or "").strip()
-    if not supplied or not _hmac.compare_digest(supplied, secret):
-        # 열쇠가 틀리면 '틀렸다'고 알려주지 않는다. 있는지조차 모르게 둔다.
-        return JSONResponse({"error": "not found"}, status_code=404)
-
-    try:
-        days = max(1, min(int(request.query_params.get("days", 30)), 365))
-    except ValueError:
-        days = 30
-    cutoff = (datetime.now(timezone.utc) + timedelta(hours=9) - timedelta(days=days)).date()
-
-    notes = _load_life().get("글", []) or []
-    picked = []
-    for note in notes:
-        raw_date = str(note.get("date") or "")[:10]
-        try:
-            if datetime.strptime(raw_date, "%Y-%m-%d").date() < cutoff:
-                continue
-        except ValueError:
-            continue                      # 날짜를 못 읽는 것은 넣지 않는다
-        body = (note.get("body") or "").strip()
-        if not body:
-            continue
-        picked.append({"date": raw_date, "title": (note.get("title") or "").strip(), "body": body})
-    picked.sort(key=lambda item: item["date"])
-    return JSONResponse({"days": days, "count": len(picked), "notes": picked})
-
-
 @app.post("/jageum/api/life/compare")
 async def jageum_life_compare(request: Request):
     if not _boss_only(request):
