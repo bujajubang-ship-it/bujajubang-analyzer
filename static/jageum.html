@@ -879,9 +879,12 @@ function datasetSourceLabel(state){
  const value=((state.served_snapshot||{}).source_as_of||'').slice(0,10);if(!value)return'기준일 확인 필요';
  const today=_todayStr();return value===today?'오늘 기준':(+value.slice(5,7))+'/'+(+value.slice(8,10))+' 기준';
 }
-function recentManualCheckCount(){
- const keys=['선급금','카페24','대출'], now=new Date();
- return keys.filter(key=>{const meta=manualMeta(key),d=new Date(meta.last_confirmed_at||'');return meta.status==='confirmed'&&!isNaN(d.getTime())&&Math.floor((now-d)/86400000)<=7;}).length;
+function recentManualCheckSummary(){
+ const keys=['선급금','카페24','대출'];
+ const checked=keys.filter(key=>manualMeta(key).status==='confirmed');
+ const dates=checked.map(manualConfirmedDate).filter(Boolean).sort();
+ const dateLabel=!dates.length?'':(dates[0]===dates[dates.length-1]?dates[0].slice(5).replace('-','/')+' 기준':dates[0].slice(5).replace('-','/')+'~'+dates[dates.length-1].slice(5).replace('-','/'));
+ return{done:checked.length,dateLabel};
 }
 function renderDatasetStates(envelope){
  const states=(envelope&&envelope.datasets)||{}, list=document.getElementById('dataset_status_list'), overall=document.getElementById('dataset_status_overall');
@@ -891,7 +894,7 @@ function renderDatasetStates(envelope){
    rows.push(`<div class="trust-row"><span>${DATASET_LABELS[key]}</span><span class="trust-state" style="color:${ui.color}">${ui.icon} ${ui.text} <span style="font-weight:500;color:#6b7280">${datasetSourceLabel(state)}</span></span></div>`);
    document.querySelectorAll(`[data-dataset-badge="${key}"]`).forEach(el=>{el.textContent=DATASET_LABELS[key]+' '+ui.text;el.style.color=ui.color;el.style.background=ui.bg;});
  });
- const manualDone=recentManualCheckCount();rows.push(`<div class="trust-row"><span>경리 수동확인</span><span class="trust-state" style="color:${manualDone===3?'#047857':'#b45309'}">${manualDone===3?'✅ 수동 확인':'⚠️ 확인 필요'} <span style="font-weight:500;color:#6b7280">${manualDone}/3</span></span></div>`);
+ const manualCheck=recentManualCheckSummary(),manualDone=manualCheck.done;rows.push(`<div class="trust-row"><span>경리 수동확인</span><span class="trust-state" style="color:${manualDone===3?'#047857':'#b45309'}">${manualDone===3?'✅ 수동 확인':'⚠️ 확인 필요'} <span style="font-weight:500;color:#6b7280">${manualDone}/3${manualCheck.dateLabel?' · '+manualCheck.dateLabel:''}</span></span></div>`);
  list.innerHTML=rows.join('');
  if(failed){overall.textContent='❌ 일부 수집 실패';overall.style.color='#dc2626';}
  else if(fallback){overall.textContent='⚠️ 일부 이전 정상본 사용 중';overall.style.color='#b45309';}

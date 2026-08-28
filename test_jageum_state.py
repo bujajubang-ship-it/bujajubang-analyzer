@@ -131,6 +131,22 @@ class DatasetStateContractTests(unittest.TestCase):
         self.assertEqual(new["served_snapshot"], old["served_snapshot"])
         self.assertTrue(any("rows 급락" in error for error in new["validation"]["errors"]))
 
+    def test_naver_summary_row_uses_reported_item_count_for_change_check(self):
+        old_data = payload()
+        old_data["정산예정"]["네이버"]["건수"] = 258
+        old = evaluate_dataset("settlement_naver", old_data, now=NOW)
+        new_data = payload()
+        new_data["정산예정"]["네이버"]["건수"] = 260
+        new = evaluate_dataset("settlement_naver", new_data, previous=old, now=NOW)
+        self.assertEqual(new["latest_attempt"]["status"], "success")
+        self.assertFalse(new["fallback"])
+        self.assertEqual(new["validation"]["metrics"]["rows"], 260)
+
+    def test_period_derived_source_date_uses_korean_business_date(self):
+        before_midnight_utc = datetime(2026, 8, 27, 23, 5, tzinfo=timezone.utc)
+        state = evaluate_dataset("monthly_pl", payload(), now=before_midnight_utc)
+        self.assertEqual(state["served_snapshot"]["source_as_of"], "2026-08-28")
+
     def test_source_as_of_period_mismatch_is_rejected(self):
         data = payload(bank_date="2026-07-31")
         data["정산예정"]["기준"] = "2026-07-31"
@@ -305,6 +321,8 @@ class FrontendTrustUiTests(unittest.TestCase):
         self.assertIn("수집 실패", html)
         self.assertIn("수동 확인", html)
         self.assertIn("오래된 값", html)
+        self.assertIn("function recentManualCheckSummary()", html)
+        self.assertIn("manualCheck.dateLabel", html)
         for dataset in DATASETS:
             self.assertIn(dataset, html)
 
