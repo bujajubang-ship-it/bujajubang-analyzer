@@ -13,7 +13,7 @@ import os
 import re
 import time
 from calendar import monthrange
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -50,7 +50,9 @@ def _today(now: datetime | None = None) -> date:
     value = now or datetime.now(timezone.utc)
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
-    return value.date()
+    # 자금일보의 영업 기준일은 한국 날짜다. 오전 수집(UTC 전날)이
+    # 손익/프로젝트 손익을 하루 전 기준으로 표시하지 않게 한다.
+    return value.astimezone(timezone(timedelta(hours=9))).date()
 
 
 def _parse_date(value: Any) -> date | None:
@@ -206,7 +208,8 @@ def _extract_settlement(payload: dict, channel: str, now: datetime | None) -> di
         rows = [{"summary": True, "count": raw.get("건수"), "amount": raw.get("지급예정")}]
     else:
         rows = None
-    return {"raw": raw, "rows": rows,
+    row_count = raw.get("건수") if channel == "네이버" and isinstance(raw, dict) else None
+    return {"raw": raw, "rows": rows, "row_count": row_count,
             "period_start": start, "period_end": source_date.isoformat() if source_date else None,
             "source_as_of": source_date.isoformat() if source_date else None,
             "source_as_of_kind": "explicit_dataset_field" if source_date else "unknown"}
@@ -229,7 +232,11 @@ def _base_validation(dataset: str, ext: dict, previous: dict | None) -> tuple[li
         errors.append("rows 형식이 목록이 아닙니다")
         row_count = 0
     else:
-        row_count = len(rows)
+        candidate_count = ext.get("row_count")
+        row_count = candidate_count if (
+            isinstance(candidate_count, int) and not isinstance(candidate_count, bool)
+            and candidate_count >= 0
+        ) else len(rows)
     metrics["rows"] = row_count
     checks["rows_present"] = rows is not None
     checks["empty"] = row_count == 0
