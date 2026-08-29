@@ -603,7 +603,7 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
  </div>
  <div class="card" id="chat_card" style="border-top:3px solid #5b21b6">
    <h2>💬 자금 AI 비서 <span class="muted big">— 경리·사장님이 AI와 실무 협의</span></h2>
-   <div class="note">실제 자금 데이터를 보고 답합니다. 기능 수정이 필요하면 AI가 사장님께 결재 요청을 올립니다.</div>
+   <div class="note">실제 자금·입출금 근거를 보고 답합니다. <b id="chat_model_label">GPT-5.6 Sol · 빠른/정밀 분석 자동 선택</b> · 기능 수정이 필요하면 AI가 사장님께 결재 요청을 올립니다.</div>
    <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
      <span id="chat_who_label" style="background:#f5f3ff;color:#5b21b6;border-radius:7px;padding:6px 12px;font-size:13px;font-weight:700">…</span>
      <span class="muted" style="font-size:12px">계정으로 대화 중 <span style="font-size:11px">(로그인 계정 기준 자동)</span></span>
@@ -2690,18 +2690,51 @@ function chatRender(){
  }).join('');
  chat_log.scrollTop=chat_log.scrollHeight;
 }
-function chatSend(){
+function chatApprovalNotice(approval){
+ if(!approval)return;
+ chatMsgs.push({role:'assistant',content:'📋 결재 요청을 올렸습니다: "'+approval.title+'" → 사장님 확인 후 반영됩니다.'});
+ if(MYROLE==='boss')loadApprovals();
+}
+async function chatClaudeFallback(messages,answerIndex){
+ const label=document.getElementById('chat_model_label');if(label)label.textContent='Claude Opus 5 · 안전 fallback';
+ const r=await fetch('/jageum/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages})});
+ const d=await r.json();
+ chatMsgs[answerIndex].content=d.error?'⚠️ '+d.error:(d.reply||'(응답 없음)');
+ chatApprovalNotice(d.approval);chatRender();
+}
+async function chatSend(){
  const t=chat_in.value.trim(); if(!t)return;
  chat_in.value=''; chatMsgs.push({role:'user',content:t}); chatRender();
- chat_btn.disabled=true; chatMsgs.push({role:'assistant',content:'…'}); chatRender();
- fetch('/jageum/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:chatMsgs.filter(m=>m.content!=='…')})})
-  .then(r=>r.json()).then(d=>{
-    chatMsgs.pop();
-    if(d.error){chatMsgs.push({role:'assistant',content:'⚠️ '+d.error});}
-    else{chatMsgs.push({role:'assistant',content:d.reply||'(응답 없음)'});
-      if(d.approval){chatMsgs.push({role:'assistant',content:'📋 결재 요청을 올렸습니다: "'+d.approval.title+'" → 사장님 확인 후 반영됩니다.'});if(MYROLE==='boss')loadApprovals();}}
-    chatRender(); chat_btn.disabled=false;
-  }).catch(()=>{chatMsgs.pop();chatMsgs.push({role:'assistant',content:'⚠️ 연결 실패'});chatRender();chat_btn.disabled=false;});
+ const messages=chatMsgs.slice(),answerIndex=chatMsgs.length;
+ chat_btn.disabled=true;chatMsgs.push({role:'assistant',content:'정밀 분석을 시작하는 중…'});chatRender();
+ let received=false,finalized=false;
+ try{
+  const r=await fetch('/jageum/api/chat/stream',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages})});
+  if(!r.ok||!r.body){await chatClaudeFallback(messages,answerIndex);return;}
+  const reader=r.body.getReader(),decoder=new TextDecoder();let buffer='',fallback=false;
+  while(true){
+   const part=await reader.read();buffer+=decoder.decode(part.value||new Uint8Array(),{stream:!part.done});
+   const blocks=buffer.split('\n\n');buffer=blocks.pop()||'';
+   for(const block of blocks){
+    const line=block.split('\n').find(v=>v.startsWith('data:'));if(!line)continue;
+    let event={};try{event=JSON.parse(line.slice(5).trim());}catch(e){continue;}
+    if(event.type==='meta'){
+     const label=document.getElementById('chat_model_label');if(label)label.textContent='GPT-5.6 Sol · '+(event.reasoning_effort==='medium'?'정밀 분석':'빠른 대화');
+    }else if(event.type==='delta'){
+     if(!received)chatMsgs[answerIndex].content='';received=true;chatMsgs[answerIndex].content+=event.text||'';chatRender();
+    }else if(event.type==='final'){
+     chatMsgs[answerIndex].content=event.text||chatMsgs[answerIndex].content||'(응답 없음)';finalized=true;chatApprovalNotice(event.approval);chatRender();
+    }else if(event.type==='error'){
+     if(event.fallback&&!received)fallback=true;
+     else{chatMsgs[answerIndex].content+=(chatMsgs[answerIndex].content?'\n\n':'')+'⚠️ '+(event.message||'응답이 중단되었습니다.');chatRender();}
+    }
+   }
+   if(part.done)break;
+  }
+  if(fallback||(!received&&!finalized))await chatClaudeFallback(messages,answerIndex);
+ }catch(e){
+  try{await chatClaudeFallback(messages,answerIndex);}catch(e2){chatMsgs[answerIndex].content='⚠️ 연결 실패';chatRender();}
+ }finally{chat_btn.disabled=false;}
 }
 chat_in.addEventListener('keydown',e=>{if(e.key==='Enter')chatSend();});
 let APPRS=[];
