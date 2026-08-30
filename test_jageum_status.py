@@ -233,10 +233,14 @@ class ManualDataContractTests(unittest.TestCase):
         return {
             "선급금": [{"거래처": "거래처", "잔액": 153_421_926}],
             "카페24": 64_593_306,
-            "수정일": {"선급금": "2026-08-14", "카페24": "2026-08-14"},
+            "실물재고": 81_000_000,
+            "로켓그로스재고": 29_000_000,
+            "수정일": {"선급금": "2026-08-14", "카페24": "2026-08-14", "실물재고": "2026-08-14", "로켓그로스재고": "2026-08-14"},
             "경리확인": {
                 "선급금": "2026-08-14",
                 "카페24": "2026-08-14",
+                "실물재고": "2026-08-14",
+                "로켓그로스재고": "2026-08-14",
                 "대출": "2026-08-14",
             },
         }
@@ -246,10 +250,14 @@ class ManualDataContractTests(unittest.TestCase):
         datasets = result["_manual_meta"]["datasets"]
         prepaids = datasets["manual_prepaids"]
         cafe24 = datasets["settlement_cafe24"]
+        warehouse = datasets["manual_warehouse_inventory"]
+        rocket = datasets["manual_rocket_inventory"]
         loans = datasets["manual_loans"]
 
         self.assertEqual(sum(x["잔액"] for x in prepaids["items"]), 153_421_926)
         self.assertEqual(cafe24["value"], 64_593_306)
+        self.assertEqual(warehouse["value"], 81_000_000)
+        self.assertEqual(rocket["value"], 29_000_000)
         self.assertEqual(prepaids["status"], "confirmed")
         self.assertEqual(cafe24["status"], "confirmed")
         self.assertEqual(prepaids["last_confirmed_at"], "2026-08-14")
@@ -269,6 +277,8 @@ class ManualDataContractTests(unittest.TestCase):
         datasets = result["_manual_meta"]["datasets"]
         self.assertEqual(datasets["manual_prepaids"]["status"], "unknown")
         self.assertEqual(datasets["settlement_cafe24"]["status"], "unknown")
+        self.assertEqual(datasets["manual_warehouse_inventory"]["status"], "unknown")
+        self.assertEqual(datasets["manual_rocket_inventory"]["status"], "unknown")
         self.assertEqual(datasets["manual_loans"]["status"], "unknown")
 
     def test_explicit_zero_is_confirmed_not_unknown(self):
@@ -283,6 +293,20 @@ class ManualDataContractTests(unittest.TestCase):
         self.assertEqual(cafe24["value"], 0)
         self.assertEqual(cafe24["status"], "confirmed")
         self.assertEqual(cafe24["confirmed_by"], "경리")
+
+    def test_inventory_values_use_same_confirmed_manual_contract(self):
+        result = main._normalize_manual_payload(
+            {"실물재고": 0, "로켓그로스재고": 12_345_000},
+            confirmed_by="경리",
+            confirm_keys=["실물재고", "로켓그로스재고"],
+            changed_keys=["실물재고", "로켓그로스재고"],
+            now=self.NOW,
+        )
+        datasets = result["_manual_meta"]["datasets"]
+        self.assertEqual(datasets["manual_warehouse_inventory"]["value"], 0)
+        self.assertEqual(datasets["manual_warehouse_inventory"]["status"], "confirmed")
+        self.assertEqual(datasets["manual_rocket_inventory"]["value"], 12_345_000)
+        self.assertEqual(datasets["manual_rocket_inventory"]["status"], "confirmed")
 
     def test_value_becomes_stale_after_seven_days(self):
         result = main._normalize_manual_payload(
@@ -455,6 +479,11 @@ class ManualFrontendRegressionTests(unittest.TestCase):
         self.assertIn("legacy_reference", html)
         self.assertIn("local?'성공':'실패'", html)
         self.assertIn("KV 백업 ${kv?'성공':'실패'}", html)
+        self.assertIn("실물재고:'manual_warehouse_inventory'", html)
+        self.assertIn("로켓그로스재고:'manual_rocket_inventory'", html)
+        self.assertIn("warehouseInventory+rocketInventory", html)
+        self.assertIn("['실물재고','실물재고']", html)
+        self.assertIn("['로켓그로스','로켓그로스재고']", html)
 
 
 if __name__ == "__main__":

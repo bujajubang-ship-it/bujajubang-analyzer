@@ -349,7 +349,7 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    <div id="dataset_status_list" class="trust-grid"></div>
  </div>
  <div class="card" id="asset_panel">
-   <div class="muted" style="font-size:13px">💎 실질 총자산 <span style="font-size:11px">(오늘 기준 · 통장+곧 들어올 돈+받을 돈+선급+투자)</span><span class="trust-badge" data-dataset-badge="bank_balances"></span><span class="trust-badge" data-dataset-badge="receivables"></span></div>
+   <div class="muted" style="font-size:13px">💎 실질 총자산 <span style="font-size:11px">(오늘 기준 · 통장+곧 들어올 돈+받을 돈+선급+재고+투자)</span><span class="trust-badge" data-dataset-badge="bank_balances"></span><span class="trust-badge" data-dataset-badge="receivables"></span></div>
    <div id="asset_total" style="font-size:34px;font-weight:800;color:#5b21b6;line-height:1.2">-</div>
    <div id="asset_net" style="font-size:14px;color:#374151;margin-top:2px"></div>
    <div class="asset-items" id="asset_items"></div>
@@ -727,10 +727,10 @@ const SEONYZ_SEED=[
  {거래처:"새날인터내셔널",잔액:13912800,비고:"식깡 332개",일자:"2026-06-02"},
 ];
 const LOAN_SEED=[{거래처:"중소기업진흥공단 대출",잔액:250000000,비고:"",일자:""},{거래처:"신용보증기금(하나은행) 대출",잔액:200000000,비고:"",일자:""}];
-// 수동입력 저장소(서버). M.선급금 / M.미수금수동 / M.카페24 / M.대출
+// 수동입력 저장소(서버). M.선급금 / M.미수금 / M.카페24 / M.실물재고 / M.로켓그로스재고 / M.대출
 let M={};
 function manualGet(key,seed){ if(M[key]===undefined) return seed; return M[key]; }
-const MANUAL_DATASET={선급금:'manual_prepaids',카페24:'settlement_cafe24',대출:'manual_loans'};
+const MANUAL_DATASET={선급금:'manual_prepaids',카페24:'settlement_cafe24',실물재고:'manual_warehouse_inventory',로켓그로스재고:'manual_rocket_inventory',대출:'manual_loans'};
 function manualMeta(key){
  const ds=MANUAL_DATASET[key], meta=M._manual_meta||{}, all=meta.datasets||{};
  return (ds&&all[ds])||{dataset:ds,status:(Object.prototype.hasOwnProperty.call(M,key)?'stale':'unknown'),last_confirmed_at:null,confirmed_by:null,source:'legacy_unverified',snapshot_id:null,updated_at:null};
@@ -880,11 +880,11 @@ function datasetSourceLabel(state){
  const today=_todayStr();return value===today?'오늘 기준':(+value.slice(5,7))+'/'+(+value.slice(8,10))+' 기준';
 }
 function recentManualCheckSummary(){
- const keys=['선급금','카페24','대출'];
+ const keys=['선급금','카페24','실물재고','로켓그로스재고','대출'];
  const checked=keys.filter(key=>manualMeta(key).status==='confirmed');
  const dates=checked.map(manualConfirmedDate).filter(Boolean).sort();
  const dateLabel=!dates.length?'':(dates[0]===dates[dates.length-1]?dates[0].slice(5).replace('-','/')+' 기준':dates[0].slice(5).replace('-','/')+'~'+dates[dates.length-1].slice(5).replace('-','/'));
- return{done:checked.length,dateLabel};
+ return{done:checked.length,total:keys.length,dateLabel};
 }
 function renderDatasetStates(envelope){
  const states=(envelope&&envelope.datasets)||{}, list=document.getElementById('dataset_status_list'), overall=document.getElementById('dataset_status_overall');
@@ -894,11 +894,11 @@ function renderDatasetStates(envelope){
    rows.push(`<div class="trust-row"><span>${DATASET_LABELS[key]}</span><span class="trust-state" style="color:${ui.color}">${ui.icon} ${ui.text} <span style="font-weight:500;color:#6b7280">${datasetSourceLabel(state)}</span></span></div>`);
    document.querySelectorAll(`[data-dataset-badge="${key}"]`).forEach(el=>{el.textContent=DATASET_LABELS[key]+' '+ui.text;el.style.color=ui.color;el.style.background=ui.bg;});
  });
- const manualCheck=recentManualCheckSummary(),manualDone=manualCheck.done;rows.push(`<div class="trust-row"><span>경리 수동확인</span><span class="trust-state" style="color:${manualDone===3?'#047857':'#b45309'}">${manualDone===3?'✅ 수동 확인':'⚠️ 확인 필요'} <span style="font-weight:500;color:#6b7280">${manualDone}/3${manualCheck.dateLabel?' · '+manualCheck.dateLabel:''}</span></span></div>`);
+ const manualCheck=recentManualCheckSummary(),manualDone=manualCheck.done,manualTotal=manualCheck.total;rows.push(`<div class="trust-row"><span>경리 수동확인</span><span class="trust-state" style="color:${manualDone===manualTotal?'#047857':'#b45309'}">${manualDone===manualTotal?'✅ 수동 확인':'⚠️ 확인 필요'} <span style="font-weight:500;color:#6b7280">${manualDone}/${manualTotal}${manualCheck.dateLabel?' · '+manualCheck.dateLabel:''}</span></span></div>`);
  list.innerHTML=rows.join('');
  if(failed){overall.textContent='❌ 일부 수집 실패';overall.style.color='#dc2626';}
  else if(fallback){overall.textContent='⚠️ 일부 이전 정상본 사용 중';overall.style.color='#b45309';}
- else if(attention||manualDone<3){overall.textContent='⚠️ 일부 확인 필요';overall.style.color='#b45309';}
+ else if(attention||manualDone<manualTotal){overall.textContent='⚠️ 일부 확인 필요';overall.style.color='#b45309';}
  else{overall.textContent='✅ 전체 정상';overall.style.color='#047857';}
 }
 function loadDatasetStates(){
@@ -939,13 +939,15 @@ function chatWelcome(){
  ① 미수금 — 이카운트 자동값이 기본, 실제와 다르면 수정
  ② 선급금 — 입출금에 안 잡히는 거래처 선지급 잔액
  ③ 카페24 묶인돈 — 정산 API가 없어 직접 입력(필수)
- ④ 대출 — 갚은 만큼 잔액 줄이기
- ⑤ 선금·수량 체크 거래처/품목 등록
- ⑥ 💳 법인카드 미분류 분류${unc.건수?` — 지금 🔴${unc.건수}건(${won(unc.합||0)}) 분류 필요`:''}
+ ④ 실물재고 — 자사 창고에 있는 재고 금액
+ ⑤ 로켓그로스재고 — 쿠팡 물류센터에 입고된 재고 금액
+ ⑥ 대출 — 갚은 만큼 잔액 줄이기
+ ⑦ 선금·수량 체크 거래처/품목 등록
+ ⑧ 💳 법인카드 미분류 분류${unc.건수?` — 지금 🔴${unc.건수}건(${won(unc.합||0)}) 분류 필요`:''}
 
 🏷️ **이카운트 전표 작성 시**
- ⑦ 출금 전표 프로젝트명 = 현장(거래처)명
- ⑧ 입금 전표 프로젝트명 = '현장명-담당자'
+ ⑨ 출금 전표 프로젝트명 = 현장(거래처)명
+ ⑩ 입금 전표 프로젝트명 = '현장명-담당자'
 
 각 항목을 "어떻게 하는 거예요?" 하고 물어보시면 단계별로 알려드릴게요. 예: "법인카드 미분류 어떻게 분류해요?"`});
     chatRender();
@@ -960,6 +962,8 @@ const EM_CFG={
  '선급금':{title:'🤝 선급금 편집 (거래처 선지급)',note:'거래처·남은금액·지급일·비고(언제 나갔는지/내용).',cols:['거래처','잔액','일자','비고'],seedFn:()=>SEONYZ()},
  '대출':{title:'💳 대출(부채) 편집',note:'기관명·잔액. 갚으면 잔액 줄이세요.',cols:['거래처','잔액','일자','비고'],seedFn:()=>loanList()},
  '카페24':{title:'🛍️ 카페24 묶인돈 편집',note:'cafe24payments 정산예정금액. API 구매확정전 추정(참고): '+(()=>cafe24Auto().toLocaleString())()+'원',cols:['금액'],single:true,seedFn:()=>cafe24Amt()},
+ '실물재고':{title:'🏭 실물재고 편집 (자사 창고)',note:'자사 창고에 실제 보관 중인 재고의 현재 원가 금액을 입력하세요. 아직 선급금에 남아 있는 금액과 중복 입력하지 마세요.',cols:['금액'],single:true,seedFn:()=>warehouseInventoryAmt()},
+ '로켓그로스재고':{title:'🚀 로켓그로스재고 편집',note:'쿠팡 물류센터에 입고되어 있는 로켓그로스 재고의 현재 원가 금액을 입력하세요. 판매 후 정산예정 금액과 중복 입력하지 마세요.',cols:['금액'],single:true,seedFn:()=>rocketGrowthInventoryAmt()},
  '태양광수동':{title:'☀️ 태양광 수익 입력 (한전 입금)',note:'한전경산지사 전력판매 입금을 월별로 입력. 거래처칸에 월(예: 2026-07), 금액칸에 입금액. 하나은행 기업자유예금은 자동수집이 안 돼서 경리가 직접 입력해요.',cols:['거래처','잔액','일자','비고'],seedFn:()=>solarManualList()},
 };
 function solarManualList(){const m=M.태양광수동||{};return Object.entries(m).map(([ym,amt])=>({거래처:ym,잔액:amt,일자:'',비고:'태양광 수익'}));}
@@ -1395,6 +1399,8 @@ async function manualConfirmUnchanged(key){
 function manualAmount(key){
  if(key==='선급금')return sum(SEONYZ(),x=>x.잔액||0);
  if(key==='카페24')return cafe24Amt();
+ if(key==='실물재고')return warehouseInventoryAmt();
+ if(key==='로켓그로스재고')return rocketGrowthInventoryAmt();
  if(key==='대출')return sum(loanList(),x=>x.잔액||0);
  return 0;
 }
@@ -1402,6 +1408,8 @@ function weeklyManualSection(){
  const weekly=[
   {key:'선급금',icon:'🤝',name:'선급금',edit:"openEdit('선급금')"},
   {key:'카페24',icon:'🛍️',name:'카페24 정산예정',edit:"openEdit('카페24')"},
+  {key:'실물재고',icon:'🏭',name:'실물재고 (자사 창고)',edit:"openEdit('실물재고')"},
+  {key:'로켓그로스재고',icon:'🚀',name:'로켓그로스재고 (쿠팡 물류센터)',edit:"openEdit('로켓그로스재고')"},
   {key:'대출',icon:'💳',name:'대출',edit:"openEdit('대출')"},
  ];
  const done=weekly.filter(x=>manualMeta(x.key).status==='confirmed').length;
@@ -2506,6 +2514,8 @@ function misuList(){ const m=manualGet('미수금', null); if(m!==null) return m
 function misuIsManual(){ return manualGet('미수금',null)!==null; }
 function loanList(){ return manualGet('대출',LOAN_SEED); }
 function cafe24Amt(){ return manualGet('카페24', 70000000); }
+function warehouseInventoryAmt(){ return +manualGet('실물재고',0)||0; }
+function rocketGrowthInventoryAmt(){ return +manualGet('로켓그로스재고',0)||0; }
 function cafe24Auto(){return (D.정산예정&&D.정산예정.카페24&&D.정산예정.카페24.구매확정전)||0;}
 function naverAmt(){return (D.정산예정&&D.정산예정.네이버&&D.정산예정.네이버.지급예정)||0;}
 function renderAssets(){
@@ -2515,15 +2525,16 @@ function renderAssets(){
  const settle=(c.정산예정||0)+(c.미구매확정||0)+naverAmt()+cafe24Amt();
  const misuArr=misuList(), misu=sum(misuArr,x=>x.잔액||0);
  const seonyzArr=SEONYZ(), seonyz=sum(seonyzArr,x=>x.잔액||0);
+ const warehouseInventory=warehouseInventoryAmt(), rocketInventory=rocketGrowthInventoryAmt();
  let invest=0; const investBy={}; let gov=0; const govBy={};
  Object.values(D.months||{}).forEach(m=>{(m.자금의감소||[]).filter(real).forEach(r=>{
    if(isInvest(r)){invest+=r.금액; const k=r.거래처명||r.적요||'기타'; investBy[k]=(investBy[k]||0)+r.금액;}
    else if(isGovSupport(r)){gov+=r.금액; const k=r.적요||r.거래처명||'기타'; govBy[k]=(govBy[k]||0)+r.금액;}
  });});
  const loans=loanList(), loan=sum(loans,x=>x.잔액||0);
- const total=cash+settle+misu+seonyz+invest+gov;
+ const total=cash+settle+misu+seonyz+warehouseInventory+rocketInventory+invest+gov;
  const net=total-loan;
- const provisional=['선급금','카페24','대출'].filter(k=>manualMeta(k).status!=='confirmed');
+ const provisional=['선급금','카페24','실물재고','로켓그로스재고','대출'].filter(k=>manualMeta(k).status!=='confirmed');
  window._bizTotal=total; window._bizNet=net; window._bizLoan=loan;
  if(window.renderTotal)renderTotal();
  asset_total.textContent=won(total);
@@ -2536,6 +2547,8 @@ function renderAssets(){
   ['📦 정산예정 (결제됨·미입금)'+(manualMeta('카페24').status==='confirmed'?'':' ⚠️'),settle, editLink("openEdit('카페24')",'카페24 수정')+D2([['쿠팡 정산예정',c.정산예정||0],['쿠팡 미구매확정',c.미구매확정||0],['네이버(실시간)',naverAmt()],['카페24(수동·'+manualStatusUi('카페24').text+')',cafe24Amt()]])],
   ['🧾 미수금 (B2B 받을 돈)'+(misuIsManual()?' ✋':''),misu, editLink("openEdit('미수금')",'미수금 수정')+D3(misuArr)],
   ['🤝 선급금 (거래처 선지급)'+(manualMeta('선급금').status==='confirmed'?'':' ⚠️'),seonyz, editLink("openEdit('선급금')",'선급금 수정')+D3(seonyzArr)],
+  ['🏭 실물재고 (자사 창고)'+(manualMeta('실물재고').status==='confirmed'?'':' ⚠️'),warehouseInventory, editLink("openEdit('실물재고')",'실물재고 수정')+`<div style="color:${manualStatusUi('실물재고').color};font-weight:700"><span>${manualStatusUi('실물재고').text}</span></div>`],
+  ['🚀 로켓그로스재고 (쿠팡 물류센터)'+(manualMeta('로켓그로스재고').status==='confirmed'?'':' ⚠️'),rocketInventory, editLink("openEdit('로켓그로스재고')",'로켓그로스재고 수정')+`<div style="color:${manualStatusUi('로켓그로스재고').color};font-weight:700"><span>${manualStatusUi('로켓그로스재고').text}</span></div>`],
   ['☀️ 투자자산 (태양광·한전 설비)',invest, D2(Object.entries(investBy).sort((a,b)=>b[1]-a[1]))],
   ['🏛️ 정부지원사업 (자부담 선지급)',gov, gov?D2(Object.entries(govBy).sort((a,b)=>b[1]-a[1])):'<div><span>출금 적요에 \'정부지원\' 적으면 자동집계 (수출바우처 자부담 등)</span></div>'],
   ['💳 대출 (부채)'+(manualHasActual('대출')?'':' · 기존 참고금액'),-loan, editLink("openEdit('대출')",'대출 수정')+`<div style="color:${manualStatusUi('대출').color};font-weight:700"><span>${manualStatusUi('대출').text}${manualHasActual('대출')?'':' · 이번 주 금액 확인 필요'}</span></div>`+D3(loans)],
@@ -2553,6 +2566,8 @@ function renderAssets(){
    ['🛍️ 카페24 묶인돈','수동',manualMeta('카페24').status,cf24],
    ['🧾 미수금 (B2B)',misuIsManual()?'수동':'자동', misuIsManual()?'manual':autoStat(!!(D.미수금),misu), misu],
    ['🤝 선급금 (선지급)','수동',manualMeta('선급금').status,seonyz],
+   ['🏭 실물재고 (자사 창고)','수동',manualMeta('실물재고').status,warehouseInventory],
+   ['🚀 로켓그로스재고','수동',manualMeta('로켓그로스재고').status,rocketInventory],
    ['☀️ 투자자산','자동(파생)',autoStat(monOk,invest),invest],
    ['🏛️ 정부지원','자동(파생)',autoStat(monOk,gov),gov],
    ['💳 대출 (부채)'+(manualHasActual('대출')?'':' · 기존 참고금액'),'수동',manualMeta('대출').status,loan],
@@ -2569,7 +2584,7 @@ function renderAssets(){
  // ── 오늘 자산 스냅샷 저장 (하루 1회, 화면값 그대로) + 흐름 표시 ──
  if((MYROLE==='boss'||MYROLE==='staff') && !window._snapDone){
    window._snapDone=true;
-   const snap={date:_ymd(),통장:cash,정산예정:settle,쿠팡:cuVal,네이버:nvVal,카페24:cf24,미수금:misu,선급금:seonyz,투자:invest,정부지원:gov,대출:loan,실질총자산:total,순자산:net};
+   const snap={date:_ymd(),통장:cash,정산예정:settle,쿠팡:cuVal,네이버:nvVal,카페24:cf24,미수금:misu,선급금:seonyz,실물재고:warehouseInventory,로켓그로스재고:rocketInventory,투자:invest,정부지원:gov,대출:loan,실질총자산:total,순자산:net};
    fetch('/jageum/api/asset_snapshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({snap})}).then(()=>loadSnaps()).catch(()=>loadSnaps());
  }
 }
@@ -2599,7 +2614,7 @@ function renderSnaps(){
     {label:'실질총자산',data:SNAPS.map(s=>s.실질총자산||0),borderColor:'#5b21b6',backgroundColor:'rgba(91,33,182,.06)',fill:true,tension:.2,borderWidth:2,pointRadius:2},
     {label:'순자산',data:SNAPS.map(s=>s.순자산||0),borderColor:'#059669',borderWidth:2,pointRadius:2,fill:false,tension:.2}
   ]},options:{plugins:{legend:{position:'top'},tooltip:{callbacks:{label:c=>c.dataset.label+' '+won(c.parsed.y)}}},scales:{y:{ticks:{callback:v=>(v/1e8).toFixed(2)+'억'}}}}});
-  const cols=[['통장','통장'],['정산예정','정산예정'],['미수금','미수금'],['선급금','선급금'],['투자','투자'],['대출','대출'],['실질총자산','실질총자산'],['순자산','순자산']];
+  const cols=[['통장','통장'],['정산예정','정산예정'],['미수금','미수금'],['선급금','선급금'],['실물재고','실물재고'],['로켓그로스','로켓그로스재고'],['투자','투자'],['대출','대출'],['실질총자산','실질총자산'],['순자산','순자산']];
   const rev=SNAPS.slice().reverse().slice(0,14);
   const idxOf=d=>SNAPS.findIndex(s=>s.date===d);
   let th='<thead><tr style="color:#6b7280"><th style="text-align:left;padding:4px 6px">날짜</th>'+cols.map(c=>`<th class="num" style="padding:4px 6px">${c[0]}</th>`).join('')+'</tr></thead>';
