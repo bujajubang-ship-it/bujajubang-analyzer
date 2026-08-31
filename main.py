@@ -1,5 +1,6 @@
 from __future__ import annotations
 import asyncio
+import copy
 import json
 import os
 import re
@@ -1344,6 +1345,38 @@ def _jageum_has_content(d) -> bool:
             return True
     return False
 
+def _merge_partial_jageum_payload(previous: dict, incoming: dict) -> dict:
+    """당일분 수집 결과를 월별 이력이 있는 마지막 정상본에 안전하게 합친다."""
+    if incoming.get("months"):
+        return incoming
+    old_months = previous.get("months") if isinstance(previous, dict) else None
+    if not isinstance(old_months, dict) or not old_months:
+        raise ValueError("partial payload rejected (기존 months 없음)")
+    period = incoming.get("current_month") or incoming.get("period")
+    if not isinstance(period, str) or not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", period):
+        raise ValueError("partial payload rejected (유효한 period 없음)")
+    valid_old_periods = [key for key in old_months if isinstance(key, str) and re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", key)]
+    if valid_old_periods and period < max(valid_old_periods):
+        raise ValueError("partial payload rejected (이전 기간 데이터)")
+
+    merged = copy.deepcopy(previous)
+    for key, value in incoming.items():
+        if key not in ("months", "months_list"):
+            merged[key] = copy.deepcopy(value)
+
+    months = copy.deepcopy(old_months)
+    current = months.get(period)
+    current = copy.deepcopy(current) if isinstance(current, dict) else {}
+    for key in ("자금현황", "자금의증가", "자금의감소"):
+        if key in incoming:
+            current[key] = copy.deepcopy(incoming[key])
+    months[period] = current
+    merged["months"] = months
+    merged["months_list"] = sorted(months)
+    merged["period"] = period
+    merged["current_month"] = period
+    return merged
+
 def _load_jageum():
     """대시보드 데이터 로드. '내용이 있는' 로컬 파일을 우선, 비었거나 없으면(수집 실패·재배포)
     항상 켜진 Lightsail KV에서 복원, 그것도 실패하면 마지막 유효본(메모리)을 써서
@@ -2097,19 +2130,24 @@ async def jageum_ingest(request: Request):
         # 들어온 데이터가 비었으면 기존 유효본 유지(로컬·KV 둘 다 보존)
         _record_jageum_status("failed", error="empty payload rejected")
         return JSONResponse({"ok": False, "error": "empty payload rejected", "kept": True})
-    # '오늘치'만 담긴 반쪽 데이터(latest.json)가 18개월치 전체(dashboard.json)를 덮어쓰면
-    # 월별 카드·손익월별이 통째로 사라진다. 있던 달력 데이터를 없애는 쪽으로는 덮지 않는다.
+    # '오늘치'만 담긴 latest.json은 마지막 전체본에 병합한다. 월별 이력은 보존하고
+    # 현재 월의 자금현황·입금·출금만 갱신해 오후 수집도 정상 발행한다.
+    merged_partial = False
     if not incoming.get("months"):
         old = _load_jageum()
-        if old.get("months"):
-            _record_jageum_status("failed", error="partial payload rejected (months 없음)")
-            return JSONResponse({"ok": False, "error": "partial payload rejected (months 없음)", "kept": True})
+        try:
+            incoming = _merge_partial_jageum_payload(old, incoming)
+            merged_partial = True
+        except ValueError as exc:
+            _record_jageum_status("failed", error=str(exc))
+            return JSONResponse({"ok": False, "error": str(exc), "kept": True})
+    published_text = json.dumps(incoming, ensure_ascii=False, separators=(",", ":"))
     received_at = _utc_now_iso()
-    snapshot_id = "sha256:" + hashlib.sha256(body).hexdigest()[:20]
+    snapshot_id = "sha256:" + hashlib.sha256(published_text.encode("utf-8")).hexdigest()[:20]
     source_as_of = _explicit_source_as_of(incoming)
     _record_jageum_status("running", received_at=received_at)
     try:
-        JAGEUM_FILE.write_text(text, encoding="utf-8")
+        _dataset_atomic_write(JAGEUM_FILE, incoming)
     except Exception as exc:
         _record_jageum_status("failed", error=f"publish failed: {exc}", received_at=received_at)
         raise
@@ -2145,7 +2183,7 @@ async def jageum_ingest(request: Request):
         # shadow 상태 기록 실패가 검증된 기존 ingest의 성공 여부나 화면 숫자를 바꾸면 안 된다.
         pass
     _record_jageum_status("success")
-    return JSONResponse({"ok": True})
+    return JSONResponse({"ok": True, "merged_partial": merged_partial})
 
 # ===== 자산 스냅샷 (현금·자산 흐름 시계열 추적 — 화면에 표시되는 값 그대로 하루 1줄 적재) =====
 ASSET_SNAP_FILE = data_path("asset_snapshots.json")

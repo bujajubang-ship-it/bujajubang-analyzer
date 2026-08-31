@@ -205,6 +205,76 @@ class JageumFreshnessTests(unittest.TestCase):
                 self.assertTrue(status["last_published_at"])
                 self.assertIsNone(status["source_as_of"])
 
+    def test_partial_ingest_updates_current_month_without_losing_history(self):
+        previous = {
+            "period": "2026-08",
+            "months": {
+                "2026-07": {"자금현황": [{"금일잔액": 70}], "자금의증가": [], "자금의감소": []},
+                "2026-08": {"자금현황": [{"금일잔액": 80}], "자금의증가": [], "자금의감소": []},
+            },
+            "months_list": ["2026-07", "2026-08"],
+            "current_month": "2026-08",
+            "자금현황": [{"계정명": "보통예금", "금일잔액": 80}],
+            "자금의증가": [],
+            "자금의감소": [],
+            "손익월별": {"months": ["2026-07", "2026-08"], "rows": [{"구분": "매출"}]},
+        }
+        partial = {
+            "period": "2026-09",
+            "자금현황": [{"계정명": "보통예금", "금일잔액": 95}],
+            "자금의증가": [{"일자": "2026-09-01", "금액": 15}],
+            "자금의감소": [],
+        }
+        raw = json.dumps(partial, ensure_ascii=False).encode("utf-8")
+        with tempfile.TemporaryDirectory() as tmp:
+            data_file = Path(tmp) / "jageum_data.json"
+            status_file = Path(tmp) / "jageum_status.json"
+            data_file.write_text(json.dumps(previous, ensure_ascii=False), encoding="utf-8")
+            with patch.object(main, "JAGEUM_FILE", data_file), \
+                 patch.object(main, "JAGEUM_STATUS_FILE", status_file), \
+                 patch.object(main, "_kv_backup", return_value=None):
+                main._JAGEUM_CACHE.update({"data": None, "serving_fallback": False})
+                main._JAGEUM_STATUS_CACHE["data"] = None
+                response = asyncio.run(main.jageum_ingest(FakeIngestRequest(raw)))
+                saved = json.loads(data_file.read_text(encoding="utf-8"))
+                self.assertEqual(response.status_code, 200)
+                self.assertTrue(response_json(response)["merged_partial"])
+                self.assertEqual(saved["months_list"], ["2026-07", "2026-08", "2026-09"])
+                self.assertEqual(saved["months"]["2026-07"], previous["months"]["2026-07"])
+                self.assertEqual(saved["months"]["2026-09"]["자금현황"], partial["자금현황"])
+                self.assertEqual(saved["손익월별"], previous["손익월별"])
+                self.assertEqual(saved["자금의증가"], partial["자금의증가"])
+                self.assertEqual(json.loads(status_file.read_text(encoding="utf-8"))["state"], "success")
+
+    def test_partial_ingest_rejects_older_period_and_preserves_snapshot(self):
+        previous = {
+            "period": "2026-08",
+            "months": {"2026-08": {"자금현황": [{"금일잔액": 80}]}},
+            "자금현황": [{"계정명": "보통예금", "금일잔액": 80}],
+            "자금의증가": [],
+            "자금의감소": [],
+        }
+        partial = {
+            "period": "2026-07",
+            "자금현황": [{"계정명": "보통예금", "금일잔액": 10}],
+            "자금의증가": [],
+            "자금의감소": [],
+        }
+        raw = json.dumps(partial, ensure_ascii=False).encode("utf-8")
+        with tempfile.TemporaryDirectory() as tmp:
+            data_file = Path(tmp) / "jageum_data.json"
+            status_file = Path(tmp) / "jageum_status.json"
+            data_file.write_text(json.dumps(previous, ensure_ascii=False), encoding="utf-8")
+            with patch.object(main, "JAGEUM_FILE", data_file), \
+                 patch.object(main, "JAGEUM_STATUS_FILE", status_file):
+                main._JAGEUM_CACHE.update({"data": None, "serving_fallback": False})
+                main._JAGEUM_STATUS_CACHE["data"] = None
+                response = asyncio.run(main.jageum_ingest(FakeIngestRequest(raw)))
+                self.assertFalse(response_json(response)["ok"])
+                self.assertTrue(response_json(response)["kept"])
+                self.assertEqual(json.loads(data_file.read_text(encoding="utf-8")), previous)
+                self.assertEqual(json.loads(status_file.read_text(encoding="utf-8"))["state"], "failed")
+
     def test_received_time_is_never_substituted_for_source_as_of(self):
         self.assertIsNone(main._explicit_source_as_of({"period": "2026-08"}))
 
