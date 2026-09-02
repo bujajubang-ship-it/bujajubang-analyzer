@@ -457,5 +457,64 @@ class ManualFrontendRegressionTests(unittest.TestCase):
         self.assertIn("KV 백업 ${kv?'성공':'실패'}", html)
 
 
+class RejectedPushKeepsGoodDataGreenTests(unittest.TestCase):
+    """반쪽 데이터를 막은 것은 '수집 실패'가 아니다.
+
+    거절을 실패로 적어 두면 숫자는 멀쩡한데 화면에는 며칠씩 빨간 오류만 뜬다.
+    실제로 8월 31일 이후 그 상태로 남아 있었다.
+    """
+
+    def setUp(self):
+        self._cache = dict(main._JAGEUM_CACHE)
+        self._status_cache = dict(main._JAGEUM_STATUS_CACHE)
+
+    def tearDown(self):
+        main._JAGEUM_CACHE.clear(); main._JAGEUM_CACHE.update(self._cache)
+        main._JAGEUM_STATUS_CACHE.clear(); main._JAGEUM_STATUS_CACHE.update(self._status_cache)
+
+    def _reject(self, tmp, *, has_data):
+        data_file = Path(tmp) / "jageum_data.json"
+        status_file = Path(tmp) / "jageum_status.json"
+        good = {"자금현황": [{"계정명": "보통예금", "금일잔액": 100}],
+                "months": {"2026-08": {}}, "자금의증가": [], "자금의감소": []}
+        if has_data:
+            data_file.write_text(json.dumps(good, ensure_ascii=False), encoding="utf-8")
+        with patch.object(main, "JAGEUM_FILE", data_file), \
+             patch.object(main, "JAGEUM_STATUS_FILE", status_file), \
+             patch.object(main, "_kv_backup", return_value=None):
+            main._JAGEUM_CACHE.update({"data": good if has_data else None, "serving_fallback": False})
+            main._JAGEUM_STATUS_CACHE["data"] = {
+                "state": "success", "last_published_at": main._utc_now_iso(),
+                "last_received_at": main._utc_now_iso(),
+            }
+            raw = json.dumps({"period": "2026-09"}, ensure_ascii=False).encode("utf-8")
+            response = asyncio.run(main.jageum_ingest(FakeIngestRequest(raw)))
+            return response, main._jageum_status_payload()
+
+    def test_a_rejected_push_does_not_turn_good_data_red(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            response, payload = self._reject(tmp, has_data=True)
+            self.assertEqual(json.loads(bytes(response.body))["kept"], True)
+            self.assertEqual(payload["state"], "success")      # 화면은 초록 유지
+            self.assertTrue(payload["last_rejected_at"])       # 거절 사실은 남는다
+            self.assertIn("empty", payload["last_rejection"])
+
+    def test_a_rejected_push_with_nothing_to_show_is_a_real_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, payload = self._reject(tmp, has_data=False)
+            self.assertEqual(payload["state"], "failed")
+
+    def test_the_screen_is_told_how_old_the_numbers_are(self):
+        self.assertIsNone(main._jageum_data_age_hours(None))
+        self.assertIsNone(main._jageum_data_age_hours("어제쯤"))
+        old = datetime(2026, 9, 1, 0, 0, tzinfo=timezone.utc).isoformat()
+        self.assertGreater(main._jageum_data_age_hours(old), 24)
+
+    def test_the_screen_warns_when_the_numbers_are_a_day_old(self):
+        html = Path("static/jageum.html").read_text(encoding="utf-8")
+        self.assertIn("data_age_hours", html)
+        self.assertIn("데이터 새로고침을 눌러주세요", html)
+
+
 if __name__ == "__main__":
     unittest.main()

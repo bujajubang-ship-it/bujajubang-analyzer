@@ -1212,6 +1212,22 @@ def _record_jageum_status(state: str, *, error: str | None = None,
     _write_jageum_status(current)
     return current
 
+def _reject_jageum_push(reason: str) -> None:
+    """들어온 데이터를 거절했지만 화면에는 멀쩡한 이전 데이터가 그대로 있는 경우.
+
+    이걸 '수집 실패'로 적으면 숫자는 정상인데 화면에 빨간 오류만 계속 뜬다.
+    거절 사실은 남기되, 보여줄 정상 데이터가 있으면 상태는 내리지 않는다.
+    """
+    current = _read_jageum_status()
+    current["last_attempt_at"] = _utc_now_iso()
+    current["last_rejected_at"] = current["last_attempt_at"]
+    current["last_rejection"] = str(reason)[:300]
+    if not _has_local_jageum_data():
+        # 보여줄 게 아무것도 없으면 그건 진짜 실패다.
+        current["state"] = "failed"
+        current["error"] = str(reason)[:300]
+    _write_jageum_status(current)
+
 def _explicit_source_as_of(payload: dict) -> str | None:
     """Lightsail이 명시한 원본 수집 시각만 사용하고 다른 날짜 필드로 추정하지 않는다."""
     candidates = []
@@ -1255,7 +1271,24 @@ def _jageum_status_payload() -> dict:
         "source_as_of_known": bool(status.get("source_as_of")),
         "snapshot_id": status.get("snapshot_id"),
         "error": status.get("error"),
+        # 거절을 실패로 적지 않는 대신, 데이터가 며칠째 안 바뀌는 것은 화면이 알려야 한다.
+        "data_age_hours": _jageum_data_age_hours(status.get("last_published_at")),
+        "last_rejected_at": status.get("last_rejected_at"),
+        "last_rejection": status.get("last_rejection"),
     }
+
+def _jageum_data_age_hours(published_at) -> float | None:
+    """지금 보고 있는 숫자가 몇 시간 전 것인지. 모르면 추측하지 않고 None."""
+    if not isinstance(published_at, str) or not published_at.strip():
+        return None
+    try:
+        moment = datetime.fromisoformat(published_at.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    delta = (datetime.now(timezone.utc) - moment).total_seconds() / 3600
+    return round(max(0.0, delta), 1)
 
 def _normalize_scrape_status(data) -> str:
     """신·구 Lightsail 응답을 보수적으로 4개 상태로 정규화한다."""
@@ -2082,18 +2115,18 @@ async def jageum_ingest(request: Request):
     try:
         incoming = json.loads(text)
     except Exception:
-        _record_jageum_status("failed", error="bad json")
+        _reject_jageum_push("bad json")
         return JSONResponse({"ok": False, "error": "bad json"}, status_code=400)
     if not _jageum_has_content(incoming):
         # 들어온 데이터가 비었으면 기존 유효본 유지(로컬·KV 둘 다 보존)
-        _record_jageum_status("failed", error="empty payload rejected")
+        _reject_jageum_push("empty payload rejected")
         return JSONResponse({"ok": False, "error": "empty payload rejected", "kept": True})
     # '오늘치'만 담긴 반쪽 데이터(latest.json)가 18개월치 전체(dashboard.json)를 덮어쓰면
     # 월별 카드·손익월별이 통째로 사라진다. 있던 달력 데이터를 없애는 쪽으로는 덮지 않는다.
     if not incoming.get("months"):
         old = _load_jageum()
         if old.get("months"):
-            _record_jageum_status("failed", error="partial payload rejected (months 없음)")
+            _reject_jageum_push("partial payload rejected (months 없음)")
             return JSONResponse({"ok": False, "error": "partial payload rejected (months 없음)", "kept": True})
     received_at = _utc_now_iso()
     snapshot_id = "sha256:" + hashlib.sha256(body).hexdigest()[:20]

@@ -850,6 +850,12 @@ function renderDataFreshness(s){
  }else if(s.state==='failed'){
    parts.push(ui.text);parts.push('이전 정상 데이터를 표시 중입니다');el.style.color=ui.color;
  }else{parts.push(ui.text);el.style.color=ui.color;}
+ // 수집이 조용히 멎으면 초록불인 채로 며칠 전 숫자를 보게 된다. 나이를 직접 알린다.
+ const age=s.data_age_hours;
+ if(typeof age==='number'&&age>=30){
+   parts.push('⚠️ 지금 보이는 숫자는 '+(age>=48?Math.floor(age/24)+'일':Math.round(age)+'시간')+' 전 것입니다 — 데이터 새로고침을 눌러주세요');
+   if(el.style.color!=='#dc2626')el.style.color='#d97706';
+ }
  if(s.last_received_at)parts.push('Render 수신 '+_statusTime(s.last_received_at));
  if(s.last_published_at)parts.push('화면 반영 '+_statusTime(s.last_published_at));
  parts.push(s.source_as_of?'원본 수집 '+_statusTime(s.source_as_of):'원본 수집 시각 확인 불가');
