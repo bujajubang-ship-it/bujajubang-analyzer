@@ -4225,7 +4225,7 @@ POINT REVIEW 카드, 핵심 기능 요약, 제품 차별점, 핵심 기능 1 상
 기능 수가 부족한 상세 구간은 enabled를 false로 설정하세요."""
 
 
-async def _cn_collect_product(url: str) -> dict:
+async def _cn_collect_product(url: str, allow_uploaded_fallback: bool = False) -> dict:
     """Lightsail에서 이미지 생성 없이 1688 상품자료만 가져온다."""
     async with httpx.AsyncClient(timeout=120) as client:
         response = await client.post(
@@ -4238,6 +4238,13 @@ async def _cn_collect_product(url: str) -> dict:
     except Exception:
         payload = {}
     if response.status_code != 200 or not payload.get("product"):
+        if allow_uploaded_fallback:
+            return {
+                "title": "",
+                "images": [],
+                "warning": "1688 자동 수집이 차단되어 직접 올린 제품 사진과 입력 정보만 사용했습니다.",
+            }
+        payload["error"] = "UPLOAD_REQUIRED:1688 자동 수집이 차단됐습니다. 제품 사진을 올린 뒤 다시 눌러주세요."
         raise ValueError(payload.get("error") or "1688 상품정보를 가져오지 못했습니다.")
     return payload["product"]
 
@@ -4353,13 +4360,14 @@ async def cnmaker_plan(request: Request):
         return JSONResponse({"error": "로그인이 필요합니다."}, status_code=401)
     data = await request.json()
     url1688 = (data.get("url1688") or "").strip()
+    images = data.get("images") or []
     if not url1688.startswith("http"):
         return JSONResponse({"error": "1688 상품 링크를 넣어주세요."}, status_code=400)
     api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
     if not api_key:
         return JSONResponse({"error": "텍스트 기획용 AI 키가 설정되지 않았습니다."}, status_code=503)
     try:
-        data["collected"] = await _cn_collect_product(url1688)
+        data["collected"] = await _cn_collect_product(url1688, bool(images))
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=502)
     except Exception:
@@ -4376,7 +4384,6 @@ async def cnmaker_plan(request: Request):
             reference_warning = "쿠팡 참고 상품을 읽지 못해 1688 자료와 직접 입력만 사용했습니다."
             data["coupang_reference"] = {}
     content = [{"type": "text", "text": _cn_plan_prompt(data)}]
-    images = data.get("images") or []
     if len(images) > 10:
         return JSONResponse({"error": "기준 이미지는 최대 10장까지 올릴 수 있습니다."}, status_code=400)
     total_image_bytes = 0
@@ -4440,6 +4447,8 @@ async def cnmaker_plan(request: Request):
         plan = json.loads(match.group(0))
         if len(plan.get("sections") or []) != 11:
             return JSONResponse({"error": "기획안 구간 수가 맞지 않습니다. 다시 시도해 주세요."}, status_code=502)
+        if data["collected"].get("warning"):
+            plan.setdefault("warnings", []).append(data["collected"]["warning"])
         if reference_warning:
             plan.setdefault("warnings", []).append(reference_warning)
         project_id = uuid.uuid4().hex[:12]

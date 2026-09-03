@@ -46,6 +46,7 @@ button.go:disabled{background:#d1a0a3;cursor:not-allowed}
 .field-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field label{display:block;font-size:12px;font-weight:700;margin-bottom:6px}.field.full{grid-column:1/-1}
 .field input,.field textarea,.field select{width:100%;padding:11px 12px;border:2px solid #e5e7eb;border-radius:9px;font:inherit}.field textarea{min-height:76px;resize:vertical}.field input:focus,.field textarea:focus{outline:none;border-color:#D70010}
 .required{color:#D70010}.upload-hint{font-weight:700;color:#374151}.thumb{overflow:visible}.thumb img{border-radius:8px}.thumb-tools{display:flex;position:absolute;left:2px;right:2px;bottom:2px;justify-content:center;gap:2px}.thumb-tools button{border:0;border-radius:4px;background:rgba(0,0,0,.68);color:white;cursor:pointer;padding:1px 5px}
+.upload-fallback{display:none;background:#fff7ed;border:1px solid #fdba74;border-radius:10px;padding:13px 14px;margin:10px 0;color:#9a3412;font-size:13px;line-height:1.55}.upload-fallback b{display:block;margin-bottom:3px}.upload-fallback button{margin-top:8px;border:0;border-radius:8px;background:#ea580c;color:#fff;padding:8px 12px;font-weight:700;cursor:pointer}
 .autosave{font-size:12px;color:#059669;margin-left:auto}.plan-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.plan-actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.secondary{border:1px solid #d1d5db;background:#fff;border-radius:9px;padding:10px 14px;cursor:pointer;font-weight:600}.section-edit{border:1px solid #e5e7eb;border-left:4px solid #D70010;border-radius:10px;padding:14px;margin:10px 0}.section-edit.off{opacity:.55;border-left-color:#9ca3af}.section-title{display:flex;align-items:center;gap:8px;margin-bottom:10px}.section-title b{flex:1}.warn{background:#fffbeb;color:#92400e;padding:12px;border-radius:9px;font-size:13px;margin:10px 0}.phase{display:flex;gap:8px;margin-bottom:16px}.phase span{flex:1;background:#f3f4f6;padding:9px;border-radius:8px;text-align:center;font-size:12px;font-weight:700}.phase span.on{background:#fee2e2;color:#D70010}
 @media(max-width:620px){.field-grid{grid-template-columns:1fr}.field.full{grid-column:auto}}
 </style></head><body>
@@ -73,6 +74,7 @@ button.go:disabled{background:#d1a0a3;cursor:not-allowed}
        <div class="field full"><label>추가 전달사항</label><textarea id="cn-notes" placeholder="꼭 강조할 기능, 사용 시 주의사항 등을 적어주세요"></textarea></div>
      </div>
      <div class="drop" id="cn-drop" style="margin-top:14px"><div class="upload-hint">📷 제품 사진을 붙여넣거나 끌어다 놓으세요</div><span style="font-size:12px">캡처 후 Ctrl+V 가능 · 최대 10장</span></div>
+     <div class="upload-fallback" id="cn-upload-fallback"><b>1688 자동 수집이 막혔습니다</b><span id="cn-upload-message">제품 사진을 올리면 입력한 상품 정보와 함께 기획안을 계속 만들 수 있습니다.</span><br><button type="button" onclick="openCnUpload()">제품 사진 선택하기</button></div>
      <input type="file" id="cn-file" accept="image/*" multiple style="display:none">
      <div class="thumbs" id="cn-thumbs"></div>
      <div style="display:flex;align-items:center;gap:8px"><span class="note">직접 입력한 정보와 사진을 가장 우선하여 기획합니다.</span><span class="autosave" id="autosave">자동 저장됨</span></div>
@@ -179,6 +181,7 @@ cnDrop.addEventListener('drop',e=>addCnFiles(e.dataTransfer.files));
 document.addEventListener('paste',e=>{if(src!=='cninsider')return;const pasted=[...(e.clipboardData?.files||[])];if(pasted.length)addCnFiles(pasted);});
 function addCnFiles(list){
   const imgs=[...list].filter(f=>f.type.startsWith('image/'));
+  if(imgs.length){document.getElementById('cn-upload-fallback').style.display='none';cnDrop.style.borderColor='';}
   if(cnFiles.length+imgs.length>10){fail('기준 이미지는 최대 10장까지 올릴 수 있어요.');return;}
   imgs.forEach(f=>compressCnImage(f).then(data=>{cnFiles.push({name:f.name||'붙여넣은 이미지',data});renderCnThumbs();}).catch(()=>fail('이미지를 읽지 못했습니다. 다른 파일을 선택해 주세요.')));
 }
@@ -277,7 +280,8 @@ function done(d){for(let i=1;i<=4;i++){const e=document.getElementById('s'+i);e.
   const s='/cnmaker/api/result?job='+job+'&t='+t;document.getElementById('rimg').src=s;document.getElementById('dl').href=s;
   if(d.thumb){const ts='/cnmaker/api/result?job='+job+'&thumb=1&t='+t;document.getElementById('thumbbox').style.display='block';document.getElementById('thumbimg').src=ts;document.getElementById('dlthumb').href=ts;}
   document.getElementById('result').scrollIntoView({behavior:'smooth'});loadHistory();}
-function fail(msg){if(timer)clearInterval(timer);document.getElementById('go').disabled=false;document.getElementById('err').innerHTML='<div class=err>'+msg+'</div>';}
+function openCnUpload(){cnDrop.scrollIntoView({behavior:'smooth',block:'center'});cnDrop.style.borderColor='#ea580c';setTimeout(()=>cnFile.click(),350);}
+function fail(msg){if(timer)clearInterval(timer);document.getElementById('go').disabled=false;const upload=String(msg||'').startsWith('UPLOAD_REQUIRED:');if(upload){msg=String(msg).slice(16);const box=document.getElementById('cn-upload-fallback');document.getElementById('cn-upload-message').textContent=msg;box.style.display='block';box.scrollIntoView({behavior:'smooth',block:'center'});}document.getElementById('err').innerHTML='<div class=err>'+esc(msg)+'</div>';}
 let _histItems=[];
 // 소스별 라벨·색 (뱃지)
 const SRC_INFO={
