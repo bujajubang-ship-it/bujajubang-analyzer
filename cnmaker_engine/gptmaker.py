@@ -303,6 +303,57 @@ def make_thumbnail(form, refs, out_path):
     Image.open(io.BytesIO(raw)).convert("RGB").save(out_path,"JPEG",quality=92)
     return out_path
 
+
+def run_plan_draft(plan, image_paths, reference_urls, out_path):
+    """확정된 기획안으로 글자 없는 저해상도 구간 시안을 만든다."""
+    refs = []
+    for path in image_paths[:4]:
+        try:
+            with open(path, "rb") as image_file:
+                raw = image_file.read()
+            mime = "image/png" if raw[:4] == b"\x89PNG" else "image/jpeg"
+            refs.append((mime, base64.b64encode(raw).decode()))
+        except Exception:
+            pass
+    for url in reference_urls:
+        if len(refs) >= 4:
+            break
+        try:
+            raw = urllib.request.urlopen(urllib.request.Request(url, headers=HDR), timeout=20).read()
+            mime = "image/png" if raw[:4] == b"\x89PNG" else "image/jpeg"
+            refs.append((mime, base64.b64encode(raw).decode()))
+        except Exception:
+            pass
+    if not refs:
+        raise RuntimeError("시안에 사용할 제품 사진이 없습니다")
+
+    product = plan.get("product") or {}
+    palette = plan.get("palette") or {}
+    sections = [section for section in (plan.get("sections") or []) if section.get("enabled", True)]
+    if not sections:
+        raise RuntimeError("사용할 상세페이지 구간이 없습니다")
+    drafts = []
+    for index, section in enumerate(sections, 1):
+        log(f"저해상도 시안 {index}/{len(sections)} 생성")
+        prompt = f"""첨부 사진의 실제 제품을 그대로 유지한 한국 쇼핑몰 상세페이지 배경 장면을 만드세요.
+제품명: {product.get('name') or '상품'}
+구간: {section.get('type') or section.get('number')}
+이미지 계획: {section.get('image_prompt') or section.get('body') or ''}
+배경색: {palette.get('background') or '아이보리'}
+포인트색: {palette.get('accent') or '차콜'}
+절대 규칙: 이미지 안에 글자, 숫자, 로고, 워터마크, 가짜 리뷰, 별점을 넣지 마세요.
+제품의 색상, 형태, 구조, 구성품 수량을 바꾸지 마세요. 세로형 모바일 구도, 차분한 저채도 배경."""
+        raw = _oai_image(prompt, ref_imgs_b64=refs, size="1024x1536", quality="low")
+        image = Image.open(io.BytesIO(raw)).convert("RGB")
+        image = image.resize((430, 645), Image.LANCZOS)
+        drafts.append(image)
+    final = Image.new("RGB", (430, sum(image.height for image in drafts)), (255, 255, 255))
+    y = 0
+    for image in drafts:
+        final.paste(image, (0, y)); y += image.height
+    final.save(out_path, "JPEG", quality=82)
+    return {"product_name": product.get("name") or "상품", "section_count": len(drafts)}
+
 # ---------- 메인: 상세페이지 생성 ----------
 def run(url, out_path, category='kitchen'):
     src=P.detect_source(normalize_url(url))

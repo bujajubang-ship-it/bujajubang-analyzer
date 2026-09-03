@@ -4449,6 +4449,7 @@ async def cnmaker_plan(request: Request):
             "product": data.get("product") or {},
             "image_count": min(10, int(data.get("image_count") or 0)),
             "collected_title": data["collected"].get("title") or "",
+            "collected_images": (data["collected"].get("images") or [])[:10],
             "coupang_title": (data.get("coupang_reference") or {}).get("title") or "",
         }
         saved = _cn_store_plan(project_id, plan, source)
@@ -4462,6 +4463,38 @@ async def cnmaker_plan(request: Request):
         return JSONResponse({"error": "기획안을 정리하지 못했습니다. 다시 시도해 주세요."}, status_code=502)
     except Exception:
         return JSONResponse({"error": "텍스트 기획안을 만드는 중 연결이 끊겼습니다."}, status_code=502)
+
+
+@app.post("/cnmaker/api/plans/{project_id}/generate-draft")
+async def cnmaker_generate_draft(project_id: str, request: Request):
+    if not _site_auth(request):
+        return JSONResponse({"error": "로그인이 필요합니다."}, status_code=401)
+    if not re.fullmatch(r"[a-f0-9]{12}", project_id):
+        return JSONResponse({"error": "기획안 번호가 올바르지 않습니다."}, status_code=400)
+    item = _cn_load_plans().get(project_id)
+    if not item or item.get("status") != "confirmed" or not item.get("confirmed_plan"):
+        return JSONResponse({"error": "기획안을 먼저 확정해 주세요."}, status_code=409)
+    data = await request.json()
+    images = data.get("images") or []
+    if len(images) > 10:
+        return JSONResponse({"error": "기준 이미지는 최대 10장까지 올릴 수 있습니다."}, status_code=400)
+    payload = {
+        "project_id": project_id,
+        "plan": item["confirmed_plan"],
+        "images": images,
+        "reference_urls": (item.get("source") or {}).get("collected_images") or [],
+    }
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.post(
+                f"{CNMAKER_BASE}/cnmaker/start_plan_draft",
+                json=payload,
+                headers={"x-secret": CNMAKER_SECRET},
+            )
+        result = response.json()
+        return JSONResponse(result, status_code=response.status_code)
+    except Exception:
+        return JSONResponse({"error": "시안 생성 서버에 연결하지 못했습니다."}, status_code=502)
 
 @app.get("/cnmaker")
 def cnmaker_page(request: Request):

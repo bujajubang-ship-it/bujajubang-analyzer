@@ -148,6 +148,26 @@ def analyze_product(url):
         raise RuntimeError("상품 이미지를 찾지 못했습니다")
     return {"title": (data.get("title") or "").strip(), "images": images}
 
+
+def worker_plan_draft(job_id, plan, image_paths, reference_urls):
+    JOBS[job_id] = {"status": "running", "msg": "저해상도 시안 준비"}
+    try:
+        out = os.path.join(RESULT_DIR, job_id + ".jpg")
+        def patched_log(message):
+            JOBS[job_id]["msg"] = message
+            print(f"[{job_id}] {message}", flush=True)
+        gptmaker.log = patched_log
+        result = gptmaker.run_plan_draft(plan, image_paths, reference_urls, out)
+        JOBS[job_id] = {
+            "status": "done", "msg": "저해상도 시안 완성",
+            "product_name": result["product_name"], "result": job_id + ".jpg",
+            "copy": {"headline": "텍스트 기획안 확정본 사용"},
+            "draft": True, "section_count": result["section_count"],
+        }
+    except Exception as e:
+        traceback.print_exc()
+        JOBS[job_id] = {"status": "error", "error": str(e)[:200], "msg": "시안 생성 실패"}
+
 class H(BaseHTTPRequestHandler):
     def log_message(self,*a): pass
     def _send(self,code,obj,ctype="application/json"):
@@ -221,6 +241,27 @@ class H(BaseHTTPRequestHandler):
             except Exception as e:
                 print("[cnmaker/analyze] "+str(e)[:200], flush=True)
                 return self._send(502,{"error":"1688 상품정보를 가져오지 못했습니다. 링크와 로그인을 확인해 주세요."})
+        if self.path=="/cnmaker/start_plan_draft":
+            import uuid, base64
+            project_id=(body.get("project_id") or "").strip()
+            plan=body.get("plan") or {}; images=body.get("images") or []
+            reference_urls=[url for url in (body.get("reference_urls") or []) if str(url).startswith("http")][:10]
+            if len(project_id)!=12 or any(char not in "0123456789abcdef" for char in project_id) or len(plan.get("sections") or []) != 11:
+                return self._send(400,{"error":"확정된 기획안을 확인해 주세요"})
+            if len(images)>10:
+                return self._send(400,{"error":"기준 이미지는 최대 10장입니다"})
+            jid=uuid.uuid4().hex[:12]; paths=[]
+            updir=os.path.join(RESULT_DIR,"up",project_id); os.makedirs(updir,exist_ok=True)
+            try:
+                for i,value in enumerate(images):
+                    encoded=value.split(",",1)[1] if "," in value else value
+                    raw=base64.b64decode(encoded,validate=True)
+                    if len(raw)>5*1024*1024: return self._send(413,{"error":"이미지 한 장은 5MB 이하여야 합니다"})
+                    path=os.path.join(updir,str(i)+".jpg"); open(path,"wb").write(raw); paths.append(path)
+            except Exception:
+                return self._send(400,{"error":"기준 이미지를 읽지 못했습니다"})
+            threading.Thread(target=worker_plan_draft,args=(jid,plan,paths,reference_urls),daemon=True).start()
+            return self._send(200,{"job_id":jid})
         if self.path=="/cnmaker/start_imgs":
             import uuid, base64; jid=uuid.uuid4().hex[:12]
             imgs=body.get("images",[]); title=(body.get("title") or "").strip(); cat=(body.get("category") or "kitchen").strip()

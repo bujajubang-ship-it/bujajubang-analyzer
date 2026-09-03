@@ -57,6 +57,14 @@ class CnmakerPlanStorageTest(unittest.TestCase):
         self.assertEqual(loaded["status"], "draft")
         self.assertEqual(loaded["confirmed_plan"]["sections"], sample_plan()["sections"])
 
+    @patch.object(main, "_site_auth", return_value=True)
+    @patch.object(main, "_cn_load_plans", return_value={"abcdef123456": {"status": "draft"}})
+    def test_draft_generation_requires_confirmed_plan(self, *_):
+        response = self.client.post(
+            "/cnmaker/api/plans/abcdef123456/generate-draft", json={"images": []}
+        )
+        self.assertEqual(response.status_code, 409)
+
 
 class CoupangReferenceTest(unittest.IsolatedAsyncioTestCase):
     async def test_rejects_non_coupang_url(self):
