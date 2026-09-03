@@ -418,6 +418,8 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path):
 
     product = plan.get("product") or {}
     palette = plan.get("palette") or {}
+    option_names = product.get("color") or "단일 옵션"
+    multi_option = len([value for value in re.split(r"[,/\n]", option_names) if value.strip()]) > 1
     sections = [section for section in (plan.get("sections") or []) if section.get("enabled", True)]
     if not sections:
         raise RuntimeError("사용할 상세페이지 구간이 없습니다")
@@ -428,10 +430,16 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path):
 제품명: {product.get('name') or '상품'}
 구간: {section.get('type') or section.get('number')}
 이미지 계획: {section.get('image_prompt') or section.get('body') or ''}
+실제 색상·옵션명: {option_names}
 배경색: {palette.get('background') or '아이보리'}
 포인트색: {palette.get('accent') or '차콜'}
 절대 규칙: 이미지 안에 글자, 숫자, 로고, 워터마크, 가짜 리뷰, 별점을 넣지 마세요.
 제품의 색상, 형태, 구조, 구성품 수량을 바꾸지 마세요. 세로형 모바일 구도, 차분한 저채도 배경."""
+        if multi_option:
+            prompt += """
+여러 색상·옵션이 입력되었습니다. 첨부된 서로 다른 옵션의 실제 제품 사진을 구간마다 번갈아 참고하고,
+전체 상세페이지에는 입력된 여러 옵션이 고르게 등장하게 하세요. 한 제품에 옵션을 임의로 합치거나
+첨부 사진에 없는 색상·무늬·형태를 새로 만들지 마세요."""
         raw = _oai_image(prompt, ref_imgs_b64=refs, size="1024x1536", quality="low")
         image = Image.open(io.BytesIO(raw)).convert("RGB")
         image = image.resize((430, 645), Image.LANCZOS)

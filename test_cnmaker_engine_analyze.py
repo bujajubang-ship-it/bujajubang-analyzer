@@ -67,7 +67,7 @@ class CnmakerEngineAnalyzeTest(unittest.TestCase):
         Image.new("RGB", (1024, 1536), "white").save(buffer, "JPEG")
         generated = buffer.getvalue()
         plan = {
-            "product": {"name": "테스트 상품"},
+            "product": {"name": "테스트 상품", "color": "상어, 돌고래"},
             "palette": {},
             "sections": [
                 {"number": 1, "enabled": True, "image_prompt": "첫 장면"},
@@ -84,6 +84,8 @@ class CnmakerEngineAnalyzeTest(unittest.TestCase):
                 size = draft_image.size
         self.assertEqual(result["section_count"], 1)
         self.assertEqual(image_api.call_count, 1)
+        self.assertIn("상어, 돌고래", image_api.call_args.args[0])
+        self.assertIn("여러 색상·옵션", image_api.call_args.args[0])
         self.assertEqual(size, (430, 645))
 
 
