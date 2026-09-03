@@ -2,6 +2,7 @@ import pathlib
 import sys
 import io
 import json
+import time
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -111,8 +112,11 @@ class CnmakerEngineAnalyzeTest(unittest.TestCase):
             result_dir.mkdir()
             history_file = pathlib.Path(directory) / "history.json"
 
-            def fake_draft(plan, image_paths, reference_urls, output):
+            def fake_draft(plan, image_paths, reference_urls, output, on_section=None):
                 pathlib.Path(output).write_bytes(b"draft")
+                if on_section:
+                    for index in range(3):
+                        on_section(index, str(result_dir / f"section-{index}.jpg"))
                 return {"product_name": "히스토리 상품", "section_count": 3}
 
             with patch.object(server, "RESULT_DIR", str(result_dir)), \
@@ -125,6 +129,37 @@ class CnmakerEngineAnalyzeTest(unittest.TestCase):
             self.assertEqual(history[0]["src"], "저해상도 시안")
             self.assertEqual(history[0]["section_count"], 3)
             self.assertTrue(history[0]["draft"])
+            self.assertEqual(server.JOBS["abc123def456"]["ready_sections"], [0, 1, 2])
+
+    def test_low_resolution_sections_are_generated_in_parallel(self):
+        buffer = io.BytesIO()
+        Image.new("RGB", (1024, 1536), "white").save(buffer, "JPEG")
+        generated = buffer.getvalue()
+        plan = {
+            "product": {"name": "병렬 테스트"},
+            "sections": [{"enabled": True, "number": number} for number in range(6)],
+        }
+
+        def delayed_image(*args, **kwargs):
+            time.sleep(0.1)
+            return generated
+
+        with tempfile.TemporaryDirectory() as directory:
+            reference = pathlib.Path(directory) / "reference.jpg"
+            output = pathlib.Path(directory) / "parallel.jpg"
+            reference.write_bytes(generated)
+            started = time.monotonic()
+            ready = []
+            with patch.object(server.gptmaker, "_oai_image", side_effect=delayed_image):
+                result = server.gptmaker.run_plan_draft(
+                    plan, [str(reference)], [], str(output),
+                    on_section=lambda index, path: ready.append(index),
+                )
+            elapsed = time.monotonic() - started
+
+        self.assertEqual(result["section_count"], 6)
+        self.assertEqual(sorted(ready), list(range(6)))
+        self.assertLess(elapsed, 0.45)
 
 
 if __name__ == "__main__":

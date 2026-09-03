@@ -1,6 +1,8 @@
 """CN인사이더 → gpt-image 상세페이지 (돈버는하마 프롬프트 방식, v2)
 기존 pipeline.py의 로그인/스크랩/Claude를 재사용하고, 생성만 gpt-image로 교체."""
 import os, json, io, re, base64, urllib.request, urllib.error, time
+from concurrent.futures import ThreadPoolExecutor
+from threading import Lock
 from PIL import Image
 import pipeline as P   # 기존 모듈 재사용 (ensure_login, scrape, _claude, _json, log 등)
 
@@ -393,7 +395,7 @@ def make_thumbnail(form, refs, out_path):
     return out_path
 
 
-def run_plan_draft(plan, image_paths, reference_urls, out_path):
+def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None):
     """확정된 기획안으로 글자 없는 저해상도 구간 시안을 만든다."""
     refs = []
     for path in image_paths[:4]:
@@ -423,9 +425,12 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path):
     sections = [section for section in (plan.get("sections") or []) if section.get("enabled", True)]
     if not sections:
         raise RuntimeError("사용할 상세페이지 구간이 없습니다")
-    drafts = []
-    for index, section in enumerate(sections, 1):
-        log(f"저해상도 시안 {index}/{len(sections)} 생성")
+    completed = 0
+    progress_lock = Lock()
+
+    def generate_section(item):
+        nonlocal completed
+        index, section = item
         prompt = f"""첨부 사진의 실제 제품을 그대로 유지한 한국 쇼핑몰 상세페이지 배경 장면을 만드세요.
 제품명: {product.get('name') or '상품'}
 구간: {section.get('type') or section.get('number')}
@@ -443,9 +448,19 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path):
         raw = _oai_image(prompt, ref_imgs_b64=refs, size="1024x1536", quality="low")
         image = Image.open(io.BytesIO(raw)).convert("RGB")
         image = image.resize((430, 645), Image.LANCZOS)
-        section_path = os.path.splitext(out_path)[0] + f"_section_{index - 1}.jpg"
+        section_path = os.path.splitext(out_path)[0] + f"_section_{index}.jpg"
         image.save(section_path, "JPEG", quality=84)
-        drafts.append(image)
+        if on_section:
+            on_section(index, section_path)
+        with progress_lock:
+            completed += 1
+            log(f"저해상도 시안 {completed}/{len(sections)} 생성 완료")
+        return image
+
+    # 초안은 속도가 우선이므로 최대 6개 구간을 동시에 생성한다. map으로 최종 순서는 유지한다.
+    workers = min(6, len(sections))
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        drafts = list(executor.map(generate_section, enumerate(sections)))
     final = Image.new("RGB", (430, sum(image.height for image in drafts)), (255, 255, 255))
     y = 0
     for image in drafts:
