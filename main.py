@@ -4272,11 +4272,14 @@ def _cn_store_plan(project_id: str, plan: dict, source: dict | None = None) -> d
         old = plans.get(project_id) if isinstance(plans.get(project_id), dict) else {}
         now = datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d %H:%M:%S")
         plans[project_id] = {
+            **old,
             "id": project_id,
             "created_at": old.get("created_at") or now,
             "updated_at": now,
             "source": source if source is not None else old.get("source", {}),
             "plan": plan,
+            "status": "draft",
+            "version": int(old.get("version") or 0),
         }
         ordered = sorted(plans.values(), key=lambda item: item.get("updated_at", ""), reverse=True)[:100]
         trimmed = {item["id"]: item for item in ordered}
@@ -4310,6 +4313,38 @@ async def cnmaker_plan_save(project_id: str, request: Request):
     if not saved["backup"].get("ok"):
         return JSONResponse({"error": "서버 백업에 저장하지 못했습니다. 잠시 뒤 다시 시도해 주세요."}, status_code=502)
     return JSONResponse({"ok": True, "updated_at": saved["item"]["updated_at"]})
+
+
+@app.post("/cnmaker/api/plans/{project_id}/confirm")
+async def cnmaker_plan_confirm(project_id: str, request: Request):
+    if not _site_auth(request):
+        return JSONResponse({"error": "로그인이 필요합니다."}, status_code=401)
+    if not re.fullmatch(r"[a-f0-9]{12}", project_id):
+        return JSONResponse({"error": "기획안 번호가 올바르지 않습니다."}, status_code=400)
+    with CN_PLANS_LOCK:
+        plans = _cn_load_plans()
+        item = plans.get(project_id)
+        if not isinstance(item, dict) or not isinstance(item.get("plan"), dict):
+            return JSONResponse({"error": "확정할 기획안을 찾지 못했습니다."}, status_code=404)
+        if len(item["plan"].get("sections") or []) != 11:
+            return JSONResponse({"error": "11개 구간의 기획안을 확인해 주세요."}, status_code=400)
+        now = datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d %H:%M:%S")
+        version = int(item.get("version") or 0) + 1
+        revisions = item.get("revisions") if isinstance(item.get("revisions"), list) else []
+        revisions.append({"version": version, "confirmed_at": now, "plan": copy.deepcopy(item["plan"])})
+        item.update({
+            "status": "confirmed",
+            "version": version,
+            "confirmed_at": now,
+            "confirmed_plan": copy.deepcopy(item["plan"]),
+            "revisions": revisions[-10:],
+            "updated_at": now,
+        })
+        plans[project_id] = item
+        backup = _cn_save_plans(plans)
+    if not backup.get("ok"):
+        return JSONResponse({"error": "확정본을 서버 백업에 저장하지 못했습니다."}, status_code=502)
+    return JSONResponse({"ok": True, "version": version, "confirmed_at": now})
 
 
 @app.post("/cnmaker/api/plan")

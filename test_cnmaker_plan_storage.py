@@ -38,6 +38,25 @@ class CnmakerPlanStorageTest(unittest.TestCase):
         self.assertEqual(loaded.status_code, 200)
         self.assertEqual(len(loaded.json()["item"]["plan"]["sections"]), 11)
 
+    @patch.object(main, "_site_auth", return_value=True)
+    def test_confirm_creates_versions_and_edit_returns_to_draft(self, *_):
+        with tempfile.TemporaryDirectory() as directory:
+            plan_file = Path(directory) / "plans.json"
+            with patch.object(main, "CN_PLANS_FILE", plan_file), \
+                 patch.object(main, "_kv_restore", return_value=None), \
+                 patch.object(main, "_kv_backup_checked", return_value={"ok": True, "error": None}):
+                project_id = "123456abcdef"
+                self.client.put(f"/cnmaker/api/plans/{project_id}", json={"plan": sample_plan()})
+                first = self.client.post(f"/cnmaker/api/plans/{project_id}/confirm")
+                second = self.client.post(f"/cnmaker/api/plans/{project_id}/confirm")
+                self.client.put(f"/cnmaker/api/plans/{project_id}", json={"plan": sample_plan()})
+                loaded = self.client.get(f"/cnmaker/api/plans/{project_id}").json()["item"]
+        self.assertEqual(first.json()["version"], 1)
+        self.assertEqual(second.json()["version"], 2)
+        self.assertEqual(len(loaded["revisions"]), 2)
+        self.assertEqual(loaded["status"], "draft")
+        self.assertEqual(loaded["confirmed_plan"]["sections"], sample_plan()["sections"])
+
 
 class CoupangReferenceTest(unittest.IsolatedAsyncioTestCase):
     async def test_rejects_non_coupang_url(self):
