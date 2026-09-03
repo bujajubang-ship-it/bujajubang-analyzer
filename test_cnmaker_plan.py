@@ -29,11 +29,18 @@ class FakeAIResponse:
             ],
             "warnings": [],
         }
-        return {"content": [{"type": "text", "text": json.dumps(plan, ensure_ascii=False)}]}
+        return {
+            "output": [{
+                "type": "message",
+                "content": [{"type": "output_text", "text": json.dumps(plan, ensure_ascii=False)}],
+            }]
+        }
 
 
 async def fake_ai_post(*args, **kwargs):
     assert "temperature" not in args[1]
+    assert args[1]["model"] == "gpt-5.6-sol"
+    assert args[1]["input"][0]["content"][0]["type"] == "input_text"
     return FakeAIResponse()
 
 
@@ -59,11 +66,11 @@ class CnmakerPlanTest(unittest.TestCase):
         response = self.client.post("/cnmaker/api/plan", json={"url1688": "https://example.com/item"})
         self.assertEqual(response.status_code, 401)
 
-    @patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"})
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
     @patch.object(main, "_site_auth", return_value=True)
     @patch.object(main, "_cn_collect_product", side_effect=fake_collect_product)
     @patch.object(main, "_cn_store_plan", return_value={"item": {}, "backup": {"ok": True}})
-    @patch.object(main, "_ai_post", side_effect=fake_ai_post)
+    @patch.object(main, "_openai_post", side_effect=fake_ai_post)
     def test_returns_eleven_section_plan(self, *_):
         response = self.client.post(
             "/cnmaker/api/plan",
@@ -73,7 +80,7 @@ class CnmakerPlanTest(unittest.TestCase):
         self.assertEqual(len(response.json()["plan"]["sections"]), 11)
         self.assertEqual(len(response.json()["plan"]["features"]), 3)
 
-    @patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"})
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
     @patch.object(main, "_site_auth", return_value=True)
     @patch.object(main, "_cn_collect_product", side_effect=fake_collect_product)
     def test_rejects_more_than_ten_images(self, *_):
@@ -84,11 +91,11 @@ class CnmakerPlanTest(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
 
 
-    @patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"})
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
     @patch.object(main, "_site_auth", return_value=True)
     @patch.object(main, "_cn_collect_product", side_effect=fake_collect_with_upload_fallback)
     @patch.object(main, "_cn_store_plan", return_value={"item": {}, "backup": {"ok": True}})
-    @patch.object(main, "_ai_post", side_effect=fake_ai_post)
+    @patch.object(main, "_openai_post", side_effect=fake_ai_post)
     def test_uploaded_image_continues_when_1688_collection_is_blocked(self, *_):
         response = self.client.post(
             "/cnmaker/api/plan",

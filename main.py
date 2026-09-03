@@ -81,6 +81,38 @@ async def _ai_post(client, body, headers, tries: int = 4):
     return r
 
 
+async def _openai_post(client, body, headers, tries: int = 4):
+    """Post to the OpenAI Responses API with transient-error retries."""
+    wait = 1.5
+    for i in range(tries):
+        last_try = i == tries - 1
+        try:
+            r = await client.post(OPENAI_RESPONSES_URL, json=body, headers=headers)
+        except Exception:
+            if last_try:
+                raise
+        else:
+            if r.status_code < 500 and r.status_code != 429:
+                return r
+            if last_try:
+                return r
+        await asyncio.sleep(wait)
+        wait *= 2
+    return r
+
+
+def _openai_response_text(response_data: dict) -> str:
+    """Extract assistant text from a raw Responses API response."""
+    parts = []
+    for item in response_data.get("output", []):
+        if item.get("type") != "message":
+            continue
+        for block in item.get("content", []):
+            if block.get("type") in ("output_text", "text"):
+                parts.append(str(block.get("text") or ""))
+    return "".join(parts).strip()
+
+
 def _ai_err(r) -> str:
     """실패 응답을 사람이 읽을 수 있는 한 줄로."""
     if r.status_code in (429, 529):
@@ -4375,16 +4407,16 @@ async def cnmaker_plan(request: Request):
     images = data.get("images") or []
     if not url1688.startswith("http"):
         return JSONResponse({"error": "CN인사이더 상품 링크를 넣어주세요."}, status_code=400)
-    api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
-        return JSONResponse({"error": "텍스트 기획용 AI 키가 설정되지 않았습니다."}, status_code=503)
+        return JSONResponse({"error": "기획안용 OpenAI API 키가 설정되지 않았습니다."}, status_code=503)
     try:
         data["collected"] = await _cn_collect_product(url1688, bool(images))
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=502)
     except Exception:
         return JSONResponse({"error": "1688 수집 서버에 연결하지 못했습니다."}, status_code=502)
-    content = [{"type": "text", "text": _cn_plan_prompt(data)}]
+    content = [{"type": "input_text", "text": _cn_plan_prompt(data)}]
     if len(images) > 10:
         return JSONResponse({"error": "기준 이미지는 최대 10장까지 올릴 수 있습니다."}, status_code=400)
     total_image_bytes = 0
@@ -4394,8 +4426,9 @@ async def cnmaker_plan(request: Request):
             return JSONResponse({"error": "읽을 수 없는 이미지가 포함되어 있습니다."}, status_code=400)
         total_image_bytes += len(match.group(2)) * 3 // 4
         content.append({
-            "type": "image",
-            "source": {"type": "base64", "media_type": match.group(1), "data": match.group(2)},
+            "type": "input_image",
+            "image_url": f"data:{match.group(1)};base64,{match.group(2)}",
+            "detail": "high",
         })
     if total_image_bytes > 25 * 1024 * 1024:
         return JSONResponse({"error": "이미지 전체 용량을 25MB 이하로 줄여주세요."}, status_code=413)
@@ -4412,35 +4445,31 @@ async def cnmaker_plan(request: Request):
                 if media_type not in ("image/jpeg", "image/png", "image/webp", "image/gif"):
                     continue
                 content.append({
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": media_type,
-                        "data": base64.b64encode(image_bytes).decode(),
-                    },
+                    "type": "input_image",
+                    "image_url": f"data:{media_type};base64,{base64.b64encode(image_bytes).decode()}",
+                    "detail": "high",
                 })
             except Exception:
                 continue
     body = {
-        "model": os.getenv("CN_PLAN_MODEL", "claude-opus-4-8"),
-        "max_tokens": 7000,
-        "messages": [{"role": "user", "content": content}],
+        "model": os.getenv("CN_PLAN_MODEL", "gpt-5.6-sol"),
+        "input": [{"role": "user", "content": content}],
+        "reasoning": {"effort": "high"},
+        "text": {"verbosity": "medium"},
+        "max_output_tokens": 10000,
+        "store": False,
     }
     headers = {
-        "x-api-key": api_key,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
     }
     try:
-        async with httpx.AsyncClient(timeout=120) as client:
-            r = await _ai_post(client, body, headers)
+        async with httpx.AsyncClient(timeout=180) as client:
+            r = await _openai_post(client, body, headers)
         if r.status_code != 200:
-            return JSONResponse({"error": _ai_err(r)}, status_code=r.status_code)
+            return JSONResponse({"error": _openai_error_message(r.status_code)}, status_code=r.status_code)
         response_data = r.json()
-        raw = "".join(
-            block.get("text", "") for block in response_data.get("content", [])
-            if block.get("type") == "text"
-        )
+        raw = _openai_response_text(response_data)
         match = re.search(r"\{.*\}", raw, re.S)
         if not match:
             raise ValueError("JSON 응답 없음")
@@ -4471,7 +4500,7 @@ async def cnmaker_plan(request: Request):
     except (ValueError, json.JSONDecodeError):
         return JSONResponse({"error": "기획안을 정리하지 못했습니다. 다시 시도해 주세요."}, status_code=502)
     except Exception:
-        return JSONResponse({"error": "텍스트 기획안을 만드는 중 연결이 끊겼습니다."}, status_code=502)
+        return JSONResponse({"error": "GPT가 기획안을 만드는 중 연결이 끊겼습니다."}, status_code=502)
 
 
 @app.post("/cnmaker/api/plans/{project_id}/generate-draft")
