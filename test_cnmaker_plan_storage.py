@@ -94,6 +94,24 @@ class CnmakerPlanStorageTest(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("체크포인트 3개", response.json()["error"])
 
+    @patch.object(main, "_site_auth", return_value=True)
+    def test_remote_backup_failure_does_not_block_save_or_confirm(self, *_):
+        with tempfile.TemporaryDirectory() as directory:
+            plan_file = Path(directory) / "plans.json"
+            with patch.object(main, "CN_PLANS_FILE", plan_file), \
+                 patch.object(main, "_kv_restore", return_value=None), \
+                 patch.object(main, "_kv_backup_checked", return_value={"ok": False, "error": "offline"}):
+                project_id = "fedcba654321"
+                saved = self.client.put(f"/cnmaker/api/plans/{project_id}", json={"plan": sample_plan()})
+                confirmed = self.client.post(f"/cnmaker/api/plans/{project_id}/confirm")
+
+        self.assertEqual(saved.status_code, 200)
+        self.assertFalse(saved.json()["backup_ok"])
+        self.assertIn("보조 백업", saved.json()["backup_warning"])
+        self.assertEqual(confirmed.status_code, 200)
+        self.assertEqual(confirmed.json()["version"], 1)
+        self.assertFalse(confirmed.json()["backup_ok"])
+
 
 if __name__ == "__main__":
     unittest.main()

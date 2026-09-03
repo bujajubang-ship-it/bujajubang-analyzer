@@ -4318,9 +4318,13 @@ async def cnmaker_plan_save(project_id: str, request: Request):
     if len(json.dumps(plan, ensure_ascii=False)) > 200_000:
         return JSONResponse({"error": "기획안 내용이 너무 깁니다."}, status_code=413)
     saved = _cn_store_plan(project_id, plan)
-    if not saved["backup"].get("ok"):
-        return JSONResponse({"error": "서버 백업에 저장하지 못했습니다. 잠시 뒤 다시 시도해 주세요."}, status_code=502)
-    return JSONResponse({"ok": True, "updated_at": saved["item"]["updated_at"]})
+    backup_ok = bool(saved["backup"].get("ok"))
+    return JSONResponse({
+        "ok": True,
+        "updated_at": saved["item"]["updated_at"],
+        "backup_ok": backup_ok,
+        "backup_warning": "보조 백업이 지연되고 있습니다. 현재 서버에는 저장됐습니다." if not backup_ok else "",
+    })
 
 
 @app.post("/cnmaker/api/plans/{project_id}/confirm")
@@ -4352,9 +4356,14 @@ async def cnmaker_plan_confirm(project_id: str, request: Request):
         })
         plans[project_id] = item
         backup = _cn_save_plans(plans)
-    if not backup.get("ok"):
-        return JSONResponse({"error": "확정본을 서버 백업에 저장하지 못했습니다."}, status_code=502)
-    return JSONResponse({"ok": True, "version": version, "confirmed_at": now})
+    backup_ok = bool(backup.get("ok"))
+    return JSONResponse({
+        "ok": True,
+        "version": version,
+        "confirmed_at": now,
+        "backup_ok": backup_ok,
+        "backup_warning": "보조 백업이 지연되고 있습니다. 확정본은 현재 서버에 저장됐습니다." if not backup_ok else "",
+    })
 
 
 @app.post("/cnmaker/api/plan")
@@ -4539,9 +4548,13 @@ async def cnmaker_draft_complete(project_id: str, request: Request):
         ).strftime("%Y-%m-%d %H:%M:%S")
         plans[project_id] = item
         backup = _cn_save_plans(plans)
-    if not backup.get("ok"):
-        return JSONResponse({"error": "전체 편집 상태를 저장하지 못했습니다."}, status_code=502)
-    return JSONResponse({"ok": True, "low_res_generated": True})
+    backup_ok = bool(backup.get("ok"))
+    return JSONResponse({
+        "ok": True,
+        "low_res_generated": True,
+        "backup_ok": backup_ok,
+        "backup_warning": "보조 백업이 지연되고 있습니다." if not backup_ok else "",
+    })
 
 @app.get("/cnmaker")
 def cnmaker_page(request: Request):
