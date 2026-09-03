@@ -43,39 +43,15 @@ button.go:disabled{background:#d1a0a3;cursor:not-allowed}
 .hrow .hts{font-size:12px;color:#9ca3af}
 .hrow a{font-size:12px;text-decoration:none;background:#1f2937;color:#fff;border-radius:7px;padding:6px 10px;white-space:nowrap}
 .hrow a.t{background:#0891b2}
+.field-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field label{display:block;font-size:12px;font-weight:700;margin-bottom:6px}.field.full{grid-column:1/-1}
+.field input,.field textarea,.field select{width:100%;padding:11px 12px;border:2px solid #e5e7eb;border-radius:9px;font:inherit}.field textarea{min-height:76px;resize:vertical}.field input:focus,.field textarea:focus{outline:none;border-color:#D70010}
+.required{color:#D70010}.upload-hint{font-weight:700;color:#374151}.thumb{overflow:visible}.thumb img{border-radius:8px}.thumb-tools{display:flex;position:absolute;left:2px;right:2px;bottom:2px;justify-content:center;gap:2px}.thumb-tools button{border:0;border-radius:4px;background:rgba(0,0,0,.68);color:white;cursor:pointer;padding:1px 5px}
+.upload-fallback{display:none;background:#fff7ed;border:1px solid #fdba74;border-radius:10px;padding:13px 14px;margin:10px 0;color:#9a3412;font-size:13px;line-height:1.55}.upload-fallback b{display:block;margin-bottom:3px}.upload-fallback button{margin-top:8px;border:0;border-radius:8px;background:#ea580c;color:#fff;padding:8px 12px;font-weight:700;cursor:pointer}
+.autosave{font-size:12px;color:#059669;margin-left:auto}.plan-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.plan-actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.secondary{border:1px solid #d1d5db;background:#fff;border-radius:9px;padding:10px 14px;cursor:pointer;font-weight:600}.section-edit{border:1px solid #e5e7eb;border-left:4px solid #D70010;border-radius:10px;padding:14px;margin:10px 0}.section-edit.off{opacity:.55;border-left-color:#9ca3af}.section-title{display:flex;align-items:center;gap:8px;margin-bottom:10px}.section-title b{flex:1}.warn{background:#fffbeb;color:#92400e;padding:12px;border-radius:9px;font-size:13px;margin:10px 0}.phase{display:flex;gap:8px;margin-bottom:16px}.phase span{flex:1;background:#f3f4f6;padding:9px;border-radius:8px;text-align:center;font-size:12px;font-weight:700}.phase span.on{background:#fee2e2;color:#D70010}
+@media(max-width:620px){.field-grid{grid-template-columns:1fr}.field.full{grid-column:auto}}
 </style></head><body>
 <div class="top" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap"><h1 style="margin:0">🏭 CN메이커 — 부자주방 상세페이지 자동생성</h1><a id="backlink" href="/" style="text-decoration:none;background:#1f2937;color:#fff;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:600;white-space:nowrap">← 소싱 분석기</a></div>
 <script>if(window.self!==window.top){var _b=document.getElementById('backlink');if(_b)_b.style.display='none';}</script>
-<!-- 로고 자동삽입 설정 -->
-<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px 16px;margin:10px 0 4px">
-  <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:14px">
-    <label style="font-weight:700"><input type="checkbox" id="lg-on" onchange="lgSave()" /> 🏷 부자주방 로고 자동삽입</label>
-    <label>위치 <select id="lg-pos" onchange="lgSave()" style="padding:5px;border:1px solid #d1d5db;border-radius:6px">
-      <option value="bottom-right">우하단</option><option value="bottom-left">좌하단</option><option value="bottom-center">하단중앙</option>
-      <option value="top-right">우상단</option><option value="top-left">좌상단</option><option value="top-center">상단중앙</option></select></label>
-    <label>크기 <input type="range" id="lg-size" min="5" max="40" oninput="document.getElementById('lg-size-v').textContent=this.value+'%';" onchange="lgSave()" style="vertical-align:middle"><span id="lg-size-v">15%</span></label>
-    <label>여백 <input type="range" id="lg-margin" min="0" max="12" oninput="document.getElementById('lg-margin-v').textContent=this.value+'%';" onchange="lgSave()" style="vertical-align:middle"><span id="lg-margin-v">3%</span></label>
-    <img src="/static/logo_bujajubang.png" style="height:22px" />
-    <span id="lg-status" style="color:#059669;font-size:12px"></span>
-  </div>
-</div>
-<script>
-function lgLoad(){ fetch('/cnmaker/api/logo_config').then(r=>r.json()).then(c=>{
-  document.getElementById('lg-on').checked=!!c.enabled;
-  document.getElementById('lg-pos').value=c.position||'bottom-right';
-  const sz=Math.round((c.size_pct||0.15)*100), mg=Math.round((c.margin_pct||0.03)*100);
-  document.getElementById('lg-size').value=sz; document.getElementById('lg-size-v').textContent=sz+'%';
-  document.getElementById('lg-margin').value=mg; document.getElementById('lg-margin-v').textContent=mg+'%';
-}); }
-function lgSave(){
-  const body={enabled:document.getElementById('lg-on').checked,position:document.getElementById('lg-pos').value,
-    size_pct:parseInt(document.getElementById('lg-size').value)/100,margin_pct:parseInt(document.getElementById('lg-margin').value)/100};
-  fetch('/cnmaker/api/logo_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(()=>{
-    const s=document.getElementById('lg-status'); s.textContent='✅ 저장됨 (다음 생성부터 적용)'; setTimeout(()=>s.textContent='',2500);
-  });
-}
-lgLoad();
-</script>
 <div class="wrap">
  <div class="card">
    <div class="tabs">
@@ -85,8 +61,27 @@ lgLoad();
      <div class="tab" data-src="coupang" data-mode="img"><span class="ico">🔵</span>쿠팡<div class="sub">이미지 업로드</div></div>
    </div>
 
-   <!-- URL 모드 -->
-   <div id="urlmode">
+   <!-- CN인사이더: 이미지 생성 전에 텍스트 기획안을 먼저 만든다 -->
+   <div id="cnmode">
+     <div class="phase"><span class="on">1. 자료 입력</span><span>2. 기획안 검토</span><span>3. 이미지 생성</span><span>4. 결과</span></div>
+     <div class="field-grid">
+       <div class="field full"><label>1688 상품 링크 <span class="required">필수</span></label><input id="cn-url1688" type="url" placeholder="https://detail.1688.com/offer/..."></div>
+       <div class="field full"><label>쿠팡 참고 상품 링크 <span style="color:#9ca3af">선택</span></label><input id="cn-coupang" type="url" placeholder="구성과 구매 포인트만 참고합니다"></div>
+       <div class="field"><label>판매 상품명</label><input id="cn-name" placeholder="실제로 판매할 상품명"></div>
+       <div class="field"><label>실제 판매 색상</label><input id="cn-color" placeholder="예: 아이보리"></div>
+       <div class="field"><label>사이즈</label><input id="cn-size" placeholder="예: 30 × 20 × 8cm"></div>
+       <div class="field"><label>수량·구성</label><input id="cn-composition" placeholder="예: 본품 1개 + 받침 1개"></div>
+       <div class="field full"><label>추가 전달사항</label><textarea id="cn-notes" placeholder="꼭 강조할 기능, 사용 시 주의사항 등을 적어주세요"></textarea></div>
+     </div>
+     <div class="drop" id="cn-drop" style="margin-top:14px"><div class="upload-hint">📷 제품 사진을 붙여넣거나 끌어다 놓으세요</div><span style="font-size:12px">캡처 후 Ctrl+V 가능 · 최대 10장</span></div>
+     <div class="upload-fallback" id="cn-upload-fallback"><b>1688 자동 수집이 막혔습니다</b><span id="cn-upload-message">제품 사진을 올리면 입력한 상품 정보와 함께 기획안을 계속 만들 수 있습니다.</span><br><button type="button" onclick="openCnUpload()">제품 사진 선택하기</button></div>
+     <input type="file" id="cn-file" accept="image/*" multiple style="display:none">
+     <div class="thumbs" id="cn-thumbs"></div>
+     <div style="display:flex;align-items:center;gap:8px"><span class="note">직접 입력한 정보와 사진을 가장 우선하여 기획합니다.</span><span class="autosave" id="autosave">자동 저장됨</span></div>
+   </div>
+
+   <!-- 기존 URL 모드(카페24) -->
+   <div id="urlmode" style="display:none">
      <input class="url" id="url" placeholder="상품 페이지 URL 붙여넣기">
      <div class="note" id="urlnote"></div>
    </div>
@@ -100,7 +95,7 @@ lgLoad();
      <div class="note">네이버·쿠팡은 자동 수집이 막혀있어, 상품 이미지를 직접 올리면 → AI가 분석해 부자주방 스타일로 만들어드립니다.</div>
    </div>
 
-   <div style="display:flex;gap:14px;align-items:center;margin:12px 0 6px;flex-wrap:wrap">
+   <div id="category-options" style="display:none;gap:14px;align-items:center;margin:12px 0 6px;flex-wrap:wrap">
      <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:14px">
        <input type="radio" name="cat" id="cat_kitchen" value="kitchen" checked style="width:18px;height:18px">
        <span>🍳 <b>주방기구</b> <span style="color:#9ca3af;font-size:12px">(부자주방 로고·빨강 스타일)</span></span>
@@ -110,8 +105,26 @@ lgLoad();
        <span>📦 <b>기타 제품</b> <span style="color:#9ca3af;font-size:12px">(원본 톤 살려 색만 변형, 로고 없음)</span></span>
      </label>
    </div>
-   <button class="go" id="go" onclick="go()" style="margin-top:6px">상세페이지 만들기 🚀</button>
+   <button class="go" id="go" onclick="go()" style="margin-top:14px">텍스트 기획안 만들기 →</button>
    <div id="err"></div>
+ </div>
+
+ <div class="card" id="plan" style="display:none">
+   <div class="plan-head"><h2 style="margin:0">📝 텍스트 기획안 검토</h2><span id="plan-status" style="font-size:12px;background:#fef3c7;color:#92400e;padding:4px 8px;border-radius:6px">수정 중</span><span class="autosave" id="plan-save">수정 내용 자동 저장</span></div>
+   <div class="note">이미지는 아직 만들지 않았습니다. 사실정보·문구·이미지 계획을 충분히 고친 뒤 확정하세요.</div>
+   <div id="plan-warnings"></div>
+   <div id="plan-product"></div>
+   <div id="plan-sections"></div>
+   <div class="plan-actions">
+     <button class="secondary" onclick="showInput()">← 자료 입력 수정</button>
+     <button class="secondary" onclick="clearPlanAndRetry()">기획안 다시 만들기</button>
+     <button class="go" onclick="confirmPlan()">기획안 확정하기 ✓</button>
+   </div>
+   <div id="draft-actions" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px;margin-top:12px">
+     <b>다음 단계: 저해상도 시안</b>
+     <div class="note" id="draft-estimate" style="margin:6px 0 10px"></div>
+     <button class="go" id="draft-go" onclick="startDraft()">저해상도 시안 만들기</button>
+   </div>
  </div>
 
  <div class="card" id="progress">
@@ -143,18 +156,45 @@ lgLoad();
  </div>
 </div>
 <script>
-let job=null,timer=null,mode="url",src="cninsider",files=[];
+let job=null,timer=null,mode="plan",src="cninsider",files=[],cnFiles=[],currentPlan=null,currentProjectId='';
+const CN_DRAFT_KEY='cninsider-draft-v1', CN_PLAN_KEY='cninsider-plan-v1', CN_PROJECT_KEY='cninsider-project-v1';
 const NOTES={cninsider:"CN인사이더 상품 URL을 넣으면 → 자동 로그인 → 중국어 번역 → 이미지 정리 → 부자주방 스타일 (약 1~2분)",
  cafe24:"자사몰(카페24) 상품 URL을 넣으면 → 상품정보·이미지 수집 → 부자주방 스타일로 재구성"};
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));t.classList.add('on');
-  src=t.dataset.src; mode=t.dataset.mode;
+  src=t.dataset.src; mode=src==='cninsider'?'plan':t.dataset.mode;
+  document.getElementById('cnmode').style.display = mode==='plan'?'':'none';
   document.getElementById('urlmode').style.display = mode==='url'?'':'none';
   document.getElementById('imgmode').style.display = mode==='img'?'':'none';
+  document.getElementById('category-options').style.display = mode==='plan'?'none':'flex';
+  document.getElementById('go').textContent = mode==='plan'?'텍스트 기획안 만들기 →':'상세페이지 만들기 🚀';
   document.getElementById('urlnote').textContent = NOTES[src]||'';
   document.getElementById('l1').textContent = mode==='url'?'상품 수집':'이미지 분석';
 });
 document.getElementById('urlnote').textContent=NOTES.cninsider;
+// CN인사이더 기준 이미지 — 화면을 닫으면 큰 이미지까지 자동복원되지는 않지만 텍스트는 보존한다.
+const cnDrop=document.getElementById('cn-drop'),cnFile=document.getElementById('cn-file');
+cnDrop.onclick=()=>cnFile.click();cnFile.onchange=e=>addCnFiles(e.target.files);
+['dragover','dragenter'].forEach(ev=>cnDrop.addEventListener(ev,e=>{e.preventDefault();cnDrop.classList.add('over')}));
+['dragleave','drop'].forEach(ev=>cnDrop.addEventListener(ev,e=>{e.preventDefault();cnDrop.classList.remove('over')}));
+cnDrop.addEventListener('drop',e=>addCnFiles(e.dataTransfer.files));
+document.addEventListener('paste',e=>{if(src!=='cninsider')return;const pasted=[...(e.clipboardData?.files||[])];if(pasted.length)addCnFiles(pasted);});
+function addCnFiles(list){
+  const imgs=[...list].filter(f=>f.type.startsWith('image/'));
+  if(imgs.length){document.getElementById('cn-upload-fallback').style.display='none';cnDrop.style.borderColor='';}
+  if(cnFiles.length+imgs.length>10){fail('기준 이미지는 최대 10장까지 올릴 수 있어요.');return;}
+  imgs.forEach(f=>compressCnImage(f).then(data=>{cnFiles.push({name:f.name||'붙여넣은 이미지',data});renderCnThumbs();}).catch(()=>fail('이미지를 읽지 못했습니다. 다른 파일을 선택해 주세요.')));
+}
+function compressCnImage(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onerror=reject;r.onload=()=>{const img=new Image();img.onerror=reject;img.onload=()=>{const max=1600,scale=Math.min(1,max/Math.max(img.width,img.height)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.width*scale));c.height=Math.max(1,Math.round(img.height*scale));c.getContext('2d').drawImage(img,0,0,c.width,c.height);resolve(c.toDataURL('image/jpeg',.82));};img.src=r.result;};r.readAsDataURL(file);});}
+function moveCn(i,delta){const n=i+delta;if(n<0||n>=cnFiles.length)return;[cnFiles[i],cnFiles[n]]=[cnFiles[n],cnFiles[i]];renderCnThumbs();}
+function removeCn(i){cnFiles.splice(i,1);renderCnThumbs();}
+function renderCnThumbs(){document.getElementById('cn-thumbs').innerHTML=cnFiles.map((f,i)=>`<div class="thumb"><img src="${f.data}" alt="기준 이미지 ${i+1}"><div class="x" onclick="removeCn(${i})">×</div><div class="thumb-tools"><button onclick="moveCn(${i},-1)" aria-label="앞으로">←</button><button onclick="moveCn(${i},1)" aria-label="뒤로">→</button></div></div>`).join('');}
+
+const draftIds=['cn-url1688','cn-coupang','cn-name','cn-color','cn-size','cn-composition','cn-notes'];
+function saveDraft(){const d={};draftIds.forEach(id=>d[id]=document.getElementById(id).value);localStorage.setItem(CN_DRAFT_KEY,JSON.stringify(d));const el=document.getElementById('autosave');el.textContent='자동 저장됨';}
+function loadDraft(){try{const d=JSON.parse(localStorage.getItem(CN_DRAFT_KEY)||'{}');draftIds.forEach(id=>document.getElementById(id).value=d[id]||'');currentPlan=JSON.parse(localStorage.getItem(CN_PLAN_KEY)||'null');currentProjectId=localStorage.getItem(CN_PROJECT_KEY)||'';}catch(e){}}
+draftIds.forEach(id=>document.getElementById(id).addEventListener('input',()=>{document.getElementById('autosave').textContent='저장 중…';clearTimeout(window._draftTimer);window._draftTimer=setTimeout(saveDraft,300);}));
+loadDraft();
 // 파일 업로드
 const drop=document.getElementById('drop'),fileInput=document.getElementById('file');
 drop.onclick=()=>fileInput.click();
@@ -170,6 +210,7 @@ function renderThumbs(){
 }
 function go(){
   document.getElementById('err').innerHTML='';
+  if(mode==='plan'){return createPlan();}
   const category=document.getElementById('cat_kitchen').checked?'kitchen':'other';
   if(mode==='url'){
     const url=document.getElementById('url').value.trim();
@@ -184,6 +225,36 @@ function go(){
       .then(r=>r.json()).then(d=>d.error?fail(d.error):(job=d.job_id,poll())).catch(()=>fail('요청 실패'));
   }
 }
+function cnPayload(){return {url1688:document.getElementById('cn-url1688').value.trim(),coupang_url:document.getElementById('cn-coupang').value.trim(),image_count:cnFiles.length,images:cnFiles.map(f=>f.data),product:{name:document.getElementById('cn-name').value.trim(),color:document.getElementById('cn-color').value.trim(),size:document.getElementById('cn-size').value.trim(),composition:document.getElementById('cn-composition').value.trim(),notes:document.getElementById('cn-notes').value.trim()}};}
+async function createPlan(){
+  const body=cnPayload();if(!body.url1688.startsWith('http'))return fail('1688 상품 링크를 넣어주세요.');
+  saveDraft();document.getElementById('go').disabled=true;document.getElementById('go').textContent='텍스트 기획안 작성 중…';document.getElementById('err').innerHTML='';
+  try{const r=await fetch('/cnmaker/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(!r.ok||d.error)throw new Error(d.error||'기획안을 만들지 못했습니다.');currentPlan=d.plan;currentProjectId=d.project_id||'';if(currentProjectId)localStorage.setItem(CN_PROJECT_KEY,currentProjectId);savePlan();renderPlan();document.getElementById('plan').scrollIntoView({behavior:'smooth'});}catch(e){fail(e.message||'기획안을 만들지 못했습니다.');}
+  finally{document.getElementById('go').disabled=false;document.getElementById('go').textContent='텍스트 기획안 만들기 →';}
+}
+function esc(v){return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');}
+const productLabels={name:'판매 상품명',subtitle:'보조 문구',summary:'제품 소개',material:'소재',color:'색상',size:'크기',composition:'구성',country:'제조국',usage:'사용법',caution:'주의사항'};
+function renderPlan(){
+  if(!currentPlan)return;document.getElementById('plan').style.display='block';
+  const warnings=currentPlan.warnings||[];document.getElementById('plan-warnings').innerHTML=warnings.length?`<div class="warn"><b>확인이 필요한 내용</b><br>${warnings.map(esc).join('<br>')}</div>`:'';
+  const p=currentPlan.product||{},palette=currentPlan.palette||{},features=currentPlan.features||[];document.getElementById('plan-product').innerHTML=`<h3>상품정보</h3><div class="field-grid">${Object.entries(productLabels).map(([k,l])=>`<div class="field ${k==='summary'||k==='caution'?'full':''}"><label>${l}</label>${k==='summary'||k==='caution'?`<textarea oninput="updateProduct('${k}',this.value)">${esc(p[k])}</textarea>`:`<input value="${esc(p[k])}" oninput="updateProduct('${k}',this.value)">`}</div>`).join('')}</div><h3>디자인 색상</h3><div class="field-grid"><div class="field"><label>기본 배경</label><input value="${esc(palette.background)}" oninput="updatePalette('background',this.value)"></div><div class="field"><label>보조 배경</label><input value="${esc(palette.secondary)}" oninput="updatePalette('secondary',this.value)"></div><div class="field"><label>포인트색</label><input value="${esc(palette.accent)}" oninput="updatePalette('accent',this.value)"></div></div><h3>핵심 기능</h3><div id="feature-list">${features.map((f,i)=>`<div class="section-edit"><div class="section-title"><b>기능 ${i+1}</b><button class="secondary" onclick="removeFeature(${i})">삭제</button></div><div class="field"><label>기능명</label><input value="${esc(f.title)}" oninput="updateFeature(${i},'title',this.value)"></div><div class="field"><label>설명</label><textarea oninput="updateFeature(${i},'description',this.value)">${esc(f.description)}</textarea></div><div class="field"><label>사실 근거</label><textarea oninput="updateFeature(${i},'evidence',this.value)">${esc(f.evidence)}</textarea></div><div class="field"><label>이미지 계획</label><textarea oninput="updateFeature(${i},'image_prompt',this.value)">${esc(f.image_prompt)}</textarea></div></div>`).join('')}</div>${features.length<4?'<button class="secondary" onclick="addFeature()">+ 핵심 기능 추가</button>':''}`;
+  document.getElementById('plan-sections').innerHTML='<h3>상세페이지 11개 구간</h3>'+(currentPlan.sections||[]).map((s,i)=>`<div class="section-edit ${s.enabled===false?'off':''}" id="section-${i}"><div class="section-title"><input type="checkbox" ${s.enabled===false?'':'checked'} onchange="updateSection(${i},'enabled',this.checked)"><b>${s.number||i+1}. ${esc(s.type||'구간')}</b></div><div class="field"><label>제목</label><input value="${esc(s.title)}" oninput="updateSection(${i},'title',this.value)"></div><div class="field"><label>본문</label><textarea oninput="updateSection(${i},'body',this.value)">${esc(s.body)}</textarea></div><div class="field"><label>이미지 계획</label><textarea oninput="updateSection(${i},'image_prompt',this.value)">${esc(s.image_prompt)}</textarea></div></div>`).join('');
+}
+function updateProduct(k,v){currentPlan.product[k]=v;savePlan();}
+function updatePalette(k,v){currentPlan.palette=currentPlan.palette||{};currentPlan.palette[k]=v;savePlan();}
+function updateFeature(i,k,v){currentPlan.features[i][k]=v;savePlan();}
+function addFeature(){currentPlan.features=currentPlan.features||[];if(currentPlan.features.length>=4)return;currentPlan.features.push({title:'',description:'',evidence:'확인 필요',image_prompt:''});savePlan();renderPlan();}
+function removeFeature(i){currentPlan.features.splice(i,1);savePlan();renderPlan();}
+function updateSection(i,k,v){currentPlan.sections[i][k]=v;document.getElementById('section-'+i).classList.toggle('off',currentPlan.sections[i].enabled===false);savePlan();}
+function savePlan(){localStorage.setItem(CN_PLAN_KEY,JSON.stringify(currentPlan));const e=document.getElementById('plan-save'),s=document.getElementById('plan-status');if(e)e.textContent='저장 중…';if(s){s.textContent='수정 중';s.style.background='#fef3c7';s.style.color='#92400e';}clearTimeout(window._planTimer);window._planTimer=setTimeout(savePlanToServer,700);}
+async function savePlanToServer(){const e=document.getElementById('plan-save');if(!currentProjectId||!currentPlan){if(e)e.textContent='이 브라우저에 저장됨';return;}try{const r=await fetch('/cnmaker/api/plans/'+currentProjectId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan:currentPlan})});const d=await r.json();if(!r.ok)throw new Error(d.error||'저장 실패');if(e)e.textContent='서버에 자동 저장됨';}catch(err){if(e)e.textContent='서버 저장 실패 · 다시 수정하면 재시도';}}
+function showInput(){document.getElementById('cnmode').scrollIntoView({behavior:'smooth'});}
+function clearPlanAndRetry(){if(!confirm('현재 기획안을 지우고 다시 만들까요?'))return;currentPlan=null;currentProjectId='';localStorage.removeItem(CN_PLAN_KEY);localStorage.removeItem(CN_PROJECT_KEY);document.getElementById('plan').style.display='none';createPlan();}
+function showDraftAction(){const count=(currentPlan?.sections||[]).filter(s=>s.enabled!==false).length;document.getElementById('draft-actions').style.display='block';document.getElementById('draft-estimate').textContent='생성 예정 '+count+'개 구간 · 저해상도 · 약 '+Math.max(3,count*2)+'~'+Math.max(5,count*4)+'분 예상 · 버튼을 눌러야 비용이 발생합니다.';}
+async function confirmPlan(){if(!currentProjectId)return alert('먼저 텍스트 기획안을 만들어주세요.');clearTimeout(window._planTimer);await savePlanToServer();if(!confirm('현재 문구와 이미지 계획을 확정할까요? 확정만으로 이미지 비용은 발생하지 않습니다.'))return;try{const r=await fetch('/cnmaker/api/plans/'+currentProjectId+'/confirm',{method:'POST'}),d=await r.json();if(!r.ok)throw new Error(d.error||'확정 실패');const s=document.getElementById('plan-status');s.textContent='확정본 v'+d.version;s.style.background='#dcfce7';s.style.color='#166534';showDraftAction();alert('기획안 v'+d.version+'이 확정되었습니다. 이미지 생성은 아직 시작하지 않았습니다.');}catch(e){alert(e.message||'기획안을 확정하지 못했습니다.');}}
+async function startDraft(){const count=(currentPlan?.sections||[]).filter(s=>s.enabled!==false).length;if(!confirm('저해상도 시안 '+count+'개를 생성할까요? 지금부터 이미지 생성 비용이 발생합니다.'))return;const btn=document.getElementById('draft-go');btn.disabled=true;begin();document.getElementById('pmsg').textContent='확정된 기획안을 생성 서버로 보내는 중…';try{const r=await fetch('/cnmaker/api/plans/'+currentProjectId+'/generate-draft',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({images:cnFiles.map(f=>f.data)})}),d=await r.json();if(!r.ok||d.error)throw new Error(d.error||'시안 생성을 시작하지 못했습니다.');job=d.job_id;poll();document.getElementById('progress').scrollIntoView({behavior:'smooth'});}catch(e){fail(e.message||'시안 생성을 시작하지 못했습니다.');btn.disabled=false;}}
+async function restoreServerPlan(){if(!currentProjectId)return;try{const r=await fetch('/cnmaker/api/plans/'+currentProjectId),d=await r.json();if(r.ok&&d.item?.plan){if(!currentPlan){currentPlan=d.item.plan;localStorage.setItem(CN_PLAN_KEY,JSON.stringify(currentPlan));renderPlan();}if(d.item.status==='confirmed'){const s=document.getElementById('plan-status');s.textContent='확정본 v'+d.item.version;s.style.background='#dcfce7';s.style.color='#166534';showDraftAction();}}}catch(e){}}
+if(currentPlan)renderPlan();restoreServerPlan();
 function begin(){document.getElementById('go').disabled=true;document.getElementById('progress').style.display='block';document.getElementById('result').style.display='none';setStep(1);}
 function setStep(active){const nums=['','①','②','③','④'];for(let i=1;i<=4;i++){const e=document.getElementById('s'+i);e.className='step'+(i<active?' done':i===active?' active':'');e.querySelector('.ico').innerHTML=i<active?'✓':(i===active?'<span class="spin"></span>':nums[i]);}}
 function poll(){timer=setInterval(()=>{fetch('/cnmaker/api/status?job='+job).then(r=>r.json()).then(d=>{
@@ -209,7 +280,8 @@ function done(d){for(let i=1;i<=4;i++){const e=document.getElementById('s'+i);e.
   const s='/cnmaker/api/result?job='+job+'&t='+t;document.getElementById('rimg').src=s;document.getElementById('dl').href=s;
   if(d.thumb){const ts='/cnmaker/api/result?job='+job+'&thumb=1&t='+t;document.getElementById('thumbbox').style.display='block';document.getElementById('thumbimg').src=ts;document.getElementById('dlthumb').href=ts;}
   document.getElementById('result').scrollIntoView({behavior:'smooth'});loadHistory();}
-function fail(msg){if(timer)clearInterval(timer);document.getElementById('go').disabled=false;document.getElementById('err').innerHTML='<div class=err>'+msg+'</div>';}
+function openCnUpload(){cnDrop.scrollIntoView({behavior:'smooth',block:'center'});cnDrop.style.borderColor='#ea580c';setTimeout(()=>cnFile.click(),350);}
+function fail(msg){if(timer)clearInterval(timer);document.getElementById('go').disabled=false;const upload=String(msg||'').startsWith('UPLOAD_REQUIRED:');if(upload){msg=String(msg).slice(16);const box=document.getElementById('cn-upload-fallback');document.getElementById('cn-upload-message').textContent=msg;box.style.display='block';box.scrollIntoView({behavior:'smooth',block:'center'});}document.getElementById('err').innerHTML='<div class=err>'+esc(msg)+'</div>';}
 let _histItems=[];
 // 소스별 라벨·색 (뱃지)
 const SRC_INFO={

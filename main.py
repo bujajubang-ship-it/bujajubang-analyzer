@@ -8,6 +8,7 @@ import random
 import math
 import smtplib
 import threading
+import uuid
 import urllib.parse
 from datetime import datetime, timezone, timedelta
 from email.mime.text import MIMEText
@@ -29,7 +30,7 @@ from sourcing_data import SOURCING_CANDIDATES
 from coupang_api import CoupangPartnersAPI
 from coupang_analysis import analyze as coupang_analyze, get_recommendations as coupang_reco
 from coupang_opportunities import scan_opportunities
-from page_maker import scrape_images, build_processed_zip, analyze_product_image, stream_ai_sections, scrape_and_analyze_url
+from page_maker import scrape_images, build_processed_zip, analyze_product_image, stream_ai_sections, scrape_and_analyze_url, fetch_coupang_reference
 from jageum_state import (
     atomic_write_json as _dataset_atomic_write,
     briefing_contract as _build_briefing_contract,
@@ -4156,6 +4157,354 @@ async def category_recommend_bulk(request: Request):
 CNMAKER_BASE = os.getenv("CNMAKER_BASE", "http://43.200.232.189")
 CNMAKER_SECRET = os.getenv("CNMAKER_SECRET", "bj-cnmaker-2026")
 
+
+def _cn_plan_prompt(data: dict) -> str:
+    """이미지 비용을 쓰기 전에 사람이 검토할 텍스트 기획안만 만든다."""
+    direct = data.get("product") or {}
+    collected = data.get("collected") or {}
+    coupang = data.get("coupang_reference") or {}
+    return f"""당신은 쿠팡용 상품 상세페이지 기획자입니다.
+아직 이미지를 만들지 말고, 사용자가 먼저 검토할 수 있는 텍스트 기획안만 작성하세요.
+
+[절대 규칙]
+- 사용자가 직접 입력한 정보가 최우선입니다.
+- 확인되지 않은 소재, 규격, 수치, 효능은 만들지 말고 반드시 '확인 필요'라고 쓰세요.
+- 쿠팡 참고 상품의 문구나 이미지를 복제하지 마세요.
+- 브랜드명과 로고를 새로 만들지 마세요.
+- 핵심 기능은 근거가 있는 것만 1~4개 작성하세요. 부족하면 억지로 4개를 만들지 마세요.
+- 디자인은 저채도 배경 1~2개와 포인트색 1개만 사용하세요.
+- 결과는 설명 없이 JSON 객체 하나만 출력하세요.
+
+[사용자 직접 입력]
+1688 링크: {data.get('url1688') or '없음'}
+쿠팡 참고 링크: {data.get('coupang_url') or '없음'}
+판매 상품명: {direct.get('name') or '미입력'}
+색상: {direct.get('color') or '미입력'}
+사이즈: {direct.get('size') or '미입력'}
+수량·구성: {direct.get('composition') or '미입력'}
+추가 전달사항: {direct.get('notes') or '없음'}
+업로드한 기준 이미지 수: {int(data.get('image_count') or 0)}장
+
+[1688에서 실제 수집한 자료]
+수집된 상품명: {collected.get('title') or '확인 필요'}
+수집된 상품 이미지 수: {len(collected.get('images') or [])}장
+
+[쿠팡 참고 상품에서 읽은 자료]
+참고 상품명: {coupang.get('title') or '없음'}
+참고 페이지 정보: {(coupang.get('page_text') or '없음')[:2000]}
+위 자료에서는 강조 기능, 설명 순서, 소비자 관심정보, 사용 장면과 비교 포인트만 참고하세요.
+상품명·문장·이미지 구성은 그대로 복제하지 마세요.
+
+[필수 JSON 구조]
+{{
+  "product": {{
+    "name": "판매 상품명",
+    "subtitle": "짧은 보조 문구",
+    "summary": "제품 소개",
+    "material": "소재 또는 확인 필요",
+    "color": "색상 또는 확인 필요",
+    "size": "크기 또는 확인 필요",
+    "composition": "구성 또는 확인 필요",
+    "country": "제조국 또는 확인 필요",
+    "usage": "사용법 또는 확인 필요",
+    "caution": "주의사항 또는 확인 필요"
+  }},
+  "features": [
+    {{"title":"기능명", "description":"설명", "evidence":"직접 입력에서 확인 또는 확인 필요", "image_prompt":"제품 형태를 바꾸지 않는 이미지 계획"}}
+  ],
+  "palette": {{"background":"아이보리", "secondary":"연베이지", "accent":"다크 브라운"}},
+  "sections": [
+    {{"number":1, "type":"hero", "enabled":true, "title":"제목", "body":"본문", "image_prompt":"이미지 계획"}}
+  ],
+  "warnings": ["확인이 필요한 사실"]
+}}
+
+sections는 반드시 다음 11개 순서로 작성하세요: 메인 배너, 상품 핵심 소개, POINT REVIEW 도입,
+POINT REVIEW 카드, 핵심 기능 요약, 제품 차별점, 핵심 기능 1 상세, 핵심 기능 2 상세,
+핵심 기능 3 상세, 핵심 기능 4 및 활용 장면, PRODUCT INFO.
+기능 수가 부족한 상세 구간은 enabled를 false로 설정하세요."""
+
+
+async def _cn_collect_product(url: str, allow_uploaded_fallback: bool = False) -> dict:
+    """Lightsail에서 이미지 생성 없이 1688 상품자료만 가져온다."""
+    async with httpx.AsyncClient(timeout=120) as client:
+        response = await client.post(
+            f"{CNMAKER_BASE}/cnmaker/analyze",
+            json={"url": url},
+            headers={"x-secret": CNMAKER_SECRET},
+        )
+    try:
+        payload = response.json()
+    except Exception:
+        payload = {}
+    if response.status_code != 200 or not payload.get("product"):
+        if allow_uploaded_fallback:
+            return {
+                "title": "",
+                "images": [],
+                "warning": "1688 자동 수집이 차단되어 직접 올린 제품 사진과 입력 정보만 사용했습니다.",
+            }
+        payload["error"] = "UPLOAD_REQUIRED:1688 자동 수집이 차단됐습니다. 제품 사진을 올린 뒤 다시 눌러주세요."
+        raise ValueError(payload.get("error") or "1688 상품정보를 가져오지 못했습니다.")
+    return payload["product"]
+
+
+CN_PLANS_FILE = data_path("cninsider_plans.json")
+CN_PLANS_LOCK = threading.RLock()
+
+
+def _cn_load_plans() -> dict:
+    try:
+        local = json.loads(CN_PLANS_FILE.read_text(encoding="utf-8"))
+        if isinstance(local, dict):
+            return local
+    except Exception:
+        pass
+    restored = _kv_restore("cninsider_plans", timeout=10)
+    return restored if isinstance(restored, dict) else {}
+
+
+def _cn_save_plans(plans: dict) -> dict:
+    """Render 로컬과 Lightsail KV에 기획안을 함께 저장한다."""
+    CN_PLANS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = CN_PLANS_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(plans, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(CN_PLANS_FILE)
+    return _kv_backup_checked("cninsider_plans", plans, timeout=10)
+
+
+def _cn_store_plan(project_id: str, plan: dict, source: dict | None = None) -> dict:
+    with CN_PLANS_LOCK:
+        plans = _cn_load_plans()
+        old = plans.get(project_id) if isinstance(plans.get(project_id), dict) else {}
+        now = datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d %H:%M:%S")
+        plans[project_id] = {
+            **old,
+            "id": project_id,
+            "created_at": old.get("created_at") or now,
+            "updated_at": now,
+            "source": source if source is not None else old.get("source", {}),
+            "plan": plan,
+            "status": "draft",
+            "version": int(old.get("version") or 0),
+        }
+        ordered = sorted(plans.values(), key=lambda item: item.get("updated_at", ""), reverse=True)[:100]
+        trimmed = {item["id"]: item for item in ordered}
+        backup = _cn_save_plans(trimmed)
+        return {"item": trimmed[project_id], "backup": backup}
+
+
+@app.get("/cnmaker/api/plans/{project_id}")
+async def cnmaker_plan_get(project_id: str, request: Request):
+    if not _site_auth(request):
+        return JSONResponse({"error": "로그인이 필요합니다."}, status_code=401)
+    item = _cn_load_plans().get(project_id)
+    if not item:
+        return JSONResponse({"error": "저장된 기획안을 찾지 못했습니다."}, status_code=404)
+    return JSONResponse({"ok": True, "item": item})
+
+
+@app.put("/cnmaker/api/plans/{project_id}")
+async def cnmaker_plan_save(project_id: str, request: Request):
+    if not _site_auth(request):
+        return JSONResponse({"error": "로그인이 필요합니다."}, status_code=401)
+    if not re.fullmatch(r"[a-f0-9]{12}", project_id):
+        return JSONResponse({"error": "기획안 번호가 올바르지 않습니다."}, status_code=400)
+    data = await request.json()
+    plan = data.get("plan")
+    if not isinstance(plan, dict) or len(plan.get("sections") or []) != 11:
+        return JSONResponse({"error": "11개 구간의 기획안을 확인해 주세요."}, status_code=400)
+    if len(json.dumps(plan, ensure_ascii=False)) > 200_000:
+        return JSONResponse({"error": "기획안 내용이 너무 깁니다."}, status_code=413)
+    saved = _cn_store_plan(project_id, plan)
+    if not saved["backup"].get("ok"):
+        return JSONResponse({"error": "서버 백업에 저장하지 못했습니다. 잠시 뒤 다시 시도해 주세요."}, status_code=502)
+    return JSONResponse({"ok": True, "updated_at": saved["item"]["updated_at"]})
+
+
+@app.post("/cnmaker/api/plans/{project_id}/confirm")
+async def cnmaker_plan_confirm(project_id: str, request: Request):
+    if not _site_auth(request):
+        return JSONResponse({"error": "로그인이 필요합니다."}, status_code=401)
+    if not re.fullmatch(r"[a-f0-9]{12}", project_id):
+        return JSONResponse({"error": "기획안 번호가 올바르지 않습니다."}, status_code=400)
+    with CN_PLANS_LOCK:
+        plans = _cn_load_plans()
+        item = plans.get(project_id)
+        if not isinstance(item, dict) or not isinstance(item.get("plan"), dict):
+            return JSONResponse({"error": "확정할 기획안을 찾지 못했습니다."}, status_code=404)
+        if len(item["plan"].get("sections") or []) != 11:
+            return JSONResponse({"error": "11개 구간의 기획안을 확인해 주세요."}, status_code=400)
+        now = datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d %H:%M:%S")
+        version = int(item.get("version") or 0) + 1
+        revisions = item.get("revisions") if isinstance(item.get("revisions"), list) else []
+        revisions.append({"version": version, "confirmed_at": now, "plan": copy.deepcopy(item["plan"])})
+        item.update({
+            "status": "confirmed",
+            "version": version,
+            "confirmed_at": now,
+            "confirmed_plan": copy.deepcopy(item["plan"]),
+            "revisions": revisions[-10:],
+            "updated_at": now,
+        })
+        plans[project_id] = item
+        backup = _cn_save_plans(plans)
+    if not backup.get("ok"):
+        return JSONResponse({"error": "확정본을 서버 백업에 저장하지 못했습니다."}, status_code=502)
+    return JSONResponse({"ok": True, "version": version, "confirmed_at": now})
+
+
+@app.post("/cnmaker/api/plan")
+async def cnmaker_plan(request: Request):
+    if not _site_auth(request):
+        return JSONResponse({"error": "로그인이 필요합니다."}, status_code=401)
+    data = await request.json()
+    url1688 = (data.get("url1688") or "").strip()
+    images = data.get("images") or []
+    if not url1688.startswith("http"):
+        return JSONResponse({"error": "1688 상품 링크를 넣어주세요."}, status_code=400)
+    api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+    if not api_key:
+        return JSONResponse({"error": "텍스트 기획용 AI 키가 설정되지 않았습니다."}, status_code=503)
+    try:
+        data["collected"] = await _cn_collect_product(url1688, bool(images))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=502)
+    except Exception:
+        return JSONResponse({"error": "1688 수집 서버에 연결하지 못했습니다."}, status_code=502)
+    reference_warning = ""
+    coupang_url = (data.get("coupang_url") or "").strip()
+    if coupang_url:
+        try:
+            data["coupang_reference"] = await fetch_coupang_reference(coupang_url)
+        except ValueError as e:
+            reference_warning = str(e)
+            data["coupang_reference"] = {}
+        except Exception:
+            reference_warning = "쿠팡 참고 상품을 읽지 못해 1688 자료와 직접 입력만 사용했습니다."
+            data["coupang_reference"] = {}
+    content = [{"type": "text", "text": _cn_plan_prompt(data)}]
+    if len(images) > 10:
+        return JSONResponse({"error": "기준 이미지는 최대 10장까지 올릴 수 있습니다."}, status_code=400)
+    total_image_bytes = 0
+    for image in images:
+        match = re.match(r"^data:(image/(?:jpeg|png|webp|gif));base64,(.+)$", str(image), re.S)
+        if not match:
+            return JSONResponse({"error": "읽을 수 없는 이미지가 포함되어 있습니다."}, status_code=400)
+        total_image_bytes += len(match.group(2)) * 3 // 4
+        content.append({
+            "type": "image",
+            "source": {"type": "base64", "media_type": match.group(1), "data": match.group(2)},
+        })
+    if total_image_bytes > 25 * 1024 * 1024:
+        return JSONResponse({"error": "이미지 전체 용량을 25MB 이하로 줄여주세요."}, status_code=413)
+    # 직접 올린 사진 다음에 1688 제품 사진을 보조 근거로 전달한다.
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        for image_url in (data["collected"].get("images") or [])[:3]:
+            try:
+                image_response = await client.get(image_url, headers={"User-Agent": "Mozilla/5.0"})
+                image_response.raise_for_status()
+                image_bytes = image_response.content
+                if len(image_bytes) > 5 * 1024 * 1024:
+                    continue
+                media_type = (image_response.headers.get("content-type") or "image/jpeg").split(";", 1)[0]
+                if media_type not in ("image/jpeg", "image/png", "image/webp", "image/gif"):
+                    continue
+                content.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": media_type,
+                        "data": base64.b64encode(image_bytes).decode(),
+                    },
+                })
+            except Exception:
+                continue
+    body = {
+        "model": os.getenv("CN_PLAN_MODEL", "claude-opus-4-8"),
+        "max_tokens": 7000,
+        "temperature": 0.2,
+        "messages": [{"role": "user", "content": content}],
+    }
+    headers = {
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            r = await _ai_post(client, body, headers)
+        if r.status_code != 200:
+            return JSONResponse({"error": _ai_err(r)}, status_code=r.status_code)
+        response_data = r.json()
+        raw = "".join(
+            block.get("text", "") for block in response_data.get("content", [])
+            if block.get("type") == "text"
+        )
+        match = re.search(r"\{.*\}", raw, re.S)
+        if not match:
+            raise ValueError("JSON 응답 없음")
+        plan = json.loads(match.group(0))
+        if len(plan.get("sections") or []) != 11:
+            return JSONResponse({"error": "기획안 구간 수가 맞지 않습니다. 다시 시도해 주세요."}, status_code=502)
+        if data["collected"].get("warning"):
+            plan.setdefault("warnings", []).append(data["collected"]["warning"])
+        if reference_warning:
+            plan.setdefault("warnings", []).append(reference_warning)
+        project_id = uuid.uuid4().hex[:12]
+        source = {
+            "url1688": url1688,
+            "coupang_url": coupang_url,
+            "product": data.get("product") or {},
+            "image_count": min(10, int(data.get("image_count") or 0)),
+            "collected_title": data["collected"].get("title") or "",
+            "collected_images": (data["collected"].get("images") or [])[:10],
+            "coupang_title": (data.get("coupang_reference") or {}).get("title") or "",
+        }
+        saved = _cn_store_plan(project_id, plan, source)
+        return JSONResponse({
+            "ok": True,
+            "project_id": project_id,
+            "plan": plan,
+            "saved": bool(saved["backup"].get("ok")),
+        })
+    except (ValueError, json.JSONDecodeError):
+        return JSONResponse({"error": "기획안을 정리하지 못했습니다. 다시 시도해 주세요."}, status_code=502)
+    except Exception:
+        return JSONResponse({"error": "텍스트 기획안을 만드는 중 연결이 끊겼습니다."}, status_code=502)
+
+
+@app.post("/cnmaker/api/plans/{project_id}/generate-draft")
+async def cnmaker_generate_draft(project_id: str, request: Request):
+    if not _site_auth(request):
+        return JSONResponse({"error": "로그인이 필요합니다."}, status_code=401)
+    if not re.fullmatch(r"[a-f0-9]{12}", project_id):
+        return JSONResponse({"error": "기획안 번호가 올바르지 않습니다."}, status_code=400)
+    item = _cn_load_plans().get(project_id)
+    if not item or item.get("status") != "confirmed" or not item.get("confirmed_plan"):
+        return JSONResponse({"error": "기획안을 먼저 확정해 주세요."}, status_code=409)
+    data = await request.json()
+    images = data.get("images") or []
+    if len(images) > 10:
+        return JSONResponse({"error": "기준 이미지는 최대 10장까지 올릴 수 있습니다."}, status_code=400)
+    payload = {
+        "project_id": project_id,
+        "plan": item["confirmed_plan"],
+        "images": images,
+        "reference_urls": (item.get("source") or {}).get("collected_images") or [],
+    }
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.post(
+                f"{CNMAKER_BASE}/cnmaker/start_plan_draft",
+                json=payload,
+                headers={"x-secret": CNMAKER_SECRET},
+            )
+        result = response.json()
+        return JSONResponse(result, status_code=response.status_code)
+    except Exception:
+        return JSONResponse({"error": "시안 생성 서버에 연결하지 못했습니다."}, status_code=502)
+
 @app.get("/cnmaker")
 def cnmaker_page(request: Request):
     if not _site_auth(request):
@@ -4201,53 +4550,6 @@ async def cnmaker_history():
         r = await client.get(f"{CNMAKER_BASE}/cnmaker/history", headers={"x-secret": CNMAKER_SECRET})
         return JSONResponse(r.json(), status_code=r.status_code)
 
-# ── CN메이커 로고 자동삽입 (부자홀딩스/부자주방 로고) ──
-CN_LOGO_PATH = "static/logo_bujajubang.png"
-CN_LOGO_CFG = data_path("cnmaker_logo.json")
-def _cn_logo_cfg():
-    try:
-        return json.loads(CN_LOGO_CFG.read_text(encoding="utf-8"))
-    except Exception:
-        return {"enabled": True, "position": "bottom-right", "size_pct": 0.15, "margin_pct": 0.03}
-def _cn_apply_logo(img_bytes: bytes) -> bytes:
-    cfg = _cn_logo_cfg()
-    if not cfg.get("enabled"):
-        return img_bytes
-    try:
-        import io as _io
-        from PIL import Image as _Img
-        base = _Img.open(_io.BytesIO(img_bytes)).convert("RGBA")
-        logo = _Img.open(CN_LOGO_PATH).convert("RGBA")
-        W, H = base.size
-        lw = max(1, int(W * float(cfg.get("size_pct", 0.15))))
-        lh = max(1, int(logo.height * lw / logo.width))
-        logo = logo.resize((lw, lh))
-        m = int(W * float(cfg.get("margin_pct", 0.03)))
-        pos = str(cfg.get("position", "bottom-right"))
-        x = m if "left" in pos else (W - lw - m if "right" in pos else (W - lw) // 2)
-        y = m if "top" in pos else (H - lh - m)
-        base.alpha_composite(logo, (x, y))
-        out = _io.BytesIO(); base.convert("RGB").save(out, "JPEG", quality=90)
-        return out.getvalue()
-    except Exception:
-        return img_bytes
-
-@app.get("/cnmaker/api/logo_config")
-async def cn_logo_get():
-    return _cn_logo_cfg()
-
-@app.post("/cnmaker/api/logo_config")
-async def cn_logo_set(request: Request):
-    d = await request.json()
-    cfg = {
-        "enabled": bool(d.get("enabled", True)),
-        "position": str(d.get("position", "bottom-right")),
-        "size_pct": max(0.03, min(0.5, float(d.get("size_pct", 0.15)))),
-        "margin_pct": max(0.0, min(0.2, float(d.get("margin_pct", 0.03)))),
-    }
-    CN_LOGO_CFG.write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
-    return {"ok": True, "cfg": cfg}
-
 @app.get("/cnmaker/api/result")
 async def cnmaker_result(job: str, thumb: str = ""):
     params = {"job": job}
@@ -4255,10 +4557,7 @@ async def cnmaker_result(job: str, thumb: str = ""):
         params["thumb"] = "1"
     async with httpx.AsyncClient(timeout=60) as client:
         r = await client.get(f"{CNMAKER_BASE}/cnmaker/result", params=params)
-        content = r.content
-        if not thumb and r.status_code == 200:
-            content = _cn_apply_logo(content)  # 상세 이미지에 로고 자동합성
-        return Response(content=content, media_type="image/jpeg")
+        return Response(content=r.content, media_type="image/jpeg")
 
 
 # ── 📊 시장조사 (쿠팡 윙 원천 데이터 뷰어) ──────────────────────────

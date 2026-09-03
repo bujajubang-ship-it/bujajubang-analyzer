@@ -1,0 +1,76 @@
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from fastapi.testclient import TestClient
+
+import main
+from page_maker import fetch_coupang_reference
+
+
+def sample_plan():
+    return {"sections": [{"number": number} for number in range(1, 12)]}
+
+
+class CnmakerPlanStorageTest(unittest.TestCase):
+    def setUp(self):
+        self.client = TestClient(main.app)
+
+    @patch.object(main, "_site_auth", return_value=True)
+    def test_rejects_invalid_project_id(self, *_):
+        response = self.client.put("/cnmaker/api/plans/not-valid", json={"plan": sample_plan()})
+        self.assertEqual(response.status_code, 400)
+
+    @patch.object(main, "_site_auth", return_value=True)
+    def test_saves_and_loads_plan(self, *_):
+        with tempfile.TemporaryDirectory() as directory:
+            plan_file = Path(directory) / "plans.json"
+            with patch.object(main, "CN_PLANS_FILE", plan_file), \
+                 patch.object(main, "_kv_restore", return_value=None), \
+                 patch.object(main, "_kv_backup_checked", return_value={"ok": True, "error": None}):
+                project_id = "abcdef123456"
+                saved = self.client.put(
+                    f"/cnmaker/api/plans/{project_id}", json={"plan": sample_plan()}
+                )
+                loaded = self.client.get(f"/cnmaker/api/plans/{project_id}")
+        self.assertEqual(saved.status_code, 200)
+        self.assertEqual(loaded.status_code, 200)
+        self.assertEqual(len(loaded.json()["item"]["plan"]["sections"]), 11)
+
+    @patch.object(main, "_site_auth", return_value=True)
+    def test_confirm_creates_versions_and_edit_returns_to_draft(self, *_):
+        with tempfile.TemporaryDirectory() as directory:
+            plan_file = Path(directory) / "plans.json"
+            with patch.object(main, "CN_PLANS_FILE", plan_file), \
+                 patch.object(main, "_kv_restore", return_value=None), \
+                 patch.object(main, "_kv_backup_checked", return_value={"ok": True, "error": None}):
+                project_id = "123456abcdef"
+                self.client.put(f"/cnmaker/api/plans/{project_id}", json={"plan": sample_plan()})
+                first = self.client.post(f"/cnmaker/api/plans/{project_id}/confirm")
+                second = self.client.post(f"/cnmaker/api/plans/{project_id}/confirm")
+                self.client.put(f"/cnmaker/api/plans/{project_id}", json={"plan": sample_plan()})
+                loaded = self.client.get(f"/cnmaker/api/plans/{project_id}").json()["item"]
+        self.assertEqual(first.json()["version"], 1)
+        self.assertEqual(second.json()["version"], 2)
+        self.assertEqual(len(loaded["revisions"]), 2)
+        self.assertEqual(loaded["status"], "draft")
+        self.assertEqual(loaded["confirmed_plan"]["sections"], sample_plan()["sections"])
+
+    @patch.object(main, "_site_auth", return_value=True)
+    @patch.object(main, "_cn_load_plans", return_value={"abcdef123456": {"status": "draft"}})
+    def test_draft_generation_requires_confirmed_plan(self, *_):
+        response = self.client.post(
+            "/cnmaker/api/plans/abcdef123456/generate-draft", json={"images": []}
+        )
+        self.assertEqual(response.status_code, 409)
+
+
+class CoupangReferenceTest(unittest.IsolatedAsyncioTestCase):
+    async def test_rejects_non_coupang_url(self):
+        with self.assertRaises(ValueError):
+            await fetch_coupang_reference("https://example.com/product/1")
+
+
+if __name__ == "__main__":
+    unittest.main()
