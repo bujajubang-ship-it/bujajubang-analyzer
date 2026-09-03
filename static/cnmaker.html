@@ -20,7 +20,7 @@ button.go{background:#D70010;color:#fff;border:none;border-radius:10px;padding:1
 button.go:disabled{background:#d1a0a3;cursor:not-allowed}
 .note{font-size:12px;color:#9ca3af;margin-top:8px;line-height:1.6}
 .drop{border:2px dashed #d1d5db;border-radius:12px;padding:26px;text-align:center;color:#9ca3af;cursor:pointer;margin-bottom:12px}
-.cn-photo-drop{min-height:230px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:#fafafa}.small-upload{border:1px solid #d1d5db;background:#fff;border-radius:7px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;color:#374151}
+.cn-photo-label{display:block;margin:18px 0 7px;font-size:13px;font-weight:800;color:#1f2937}.cn-photo-drop{min-height:280px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:#fff7f7;border:3px dashed #D70010;color:#4b5563;box-shadow:inset 0 0 0 5px #fff;outline:none}.cn-photo-drop:focus{background:#fff0f0;box-shadow:0 0 0 4px rgba(215,0,16,.12)}.cn-photo-drop .upload-hint{font-size:18px;color:#b91c1c}.cn-photo-drop .paste-icon{font-size:42px}.small-upload{border:1px solid #d1d5db;background:#fff;border-radius:7px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;color:#374151}
 .drop.over{border-color:#D70010;background:#fff5f5}
 .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
 .thumb{position:relative;width:74px;height:74px;border-radius:8px;overflow:hidden;border:1px solid #eee}
@@ -74,8 +74,9 @@ button.go:disabled{background:#d1a0a3;cursor:not-allowed}
        <div class="field"><label>사이즈</label><input id="cn-size" placeholder="예: 30 × 20 × 8cm"></div>
        <div class="field"><label>수량·구성</label><input id="cn-composition" placeholder="예: 본품 1개 + 받침 1개"></div>
      </div>
-     <div class="drop cn-photo-drop" id="cn-drop" style="margin-top:14px"><div class="upload-hint">📷 제품 사진을 붙여넣거나 끌어다 놓으세요</div><span style="font-size:12px">캡처 후 Ctrl+V 가능 · 최대 10장</span><button type="button" class="small-upload" onclick="event.stopPropagation();openCnUpload()">사진 업로드</button></div>
-     <div class="upload-fallback" id="cn-upload-fallback"><b>1688 자동 수집이 막혔습니다</b><span id="cn-upload-message">제품 사진을 올리면 입력한 상품 정보와 함께 기획안을 계속 만들 수 있습니다.</span><br><button type="button" onclick="openCnUpload()">제품 사진 선택하기</button></div>
+     <label class="cn-photo-label" for="cn-drop">제품 사진</label>
+     <div class="drop cn-photo-drop" id="cn-drop" tabindex="0" role="button" aria-label="제품 사진 붙여넣기 또는 업로드"><div class="paste-icon">📋</div><div class="upload-hint">이 큰 창에 제품 사진을 붙여넣으세요</div><span>창을 한 번 누른 뒤 <b>Ctrl+V</b> · 또는 사진을 끌어다 놓기</span><span style="font-size:12px">최대 10장</span><button type="button" class="small-upload" onclick="event.stopPropagation();openCnUpload()">파일 선택</button></div>
+     <div class="upload-fallback" id="cn-upload-fallback"><b>상품 사진 자동 수집이 막혔습니다</b><span id="cn-upload-message">제품 사진을 올리면 입력한 상품 정보와 함께 기획안을 계속 만들 수 있습니다.</span><br><button type="button" onclick="openCnUpload()">제품 사진 선택하기</button></div>
      <input type="file" id="cn-file" accept="image/*" multiple style="display:none">
      <div class="thumbs" id="cn-thumbs"></div>
      <div style="display:flex;align-items:center;gap:8px"><span class="note">직접 입력한 정보와 사진을 가장 우선하여 기획합니다.</span><span class="autosave" id="autosave">자동 저장됨</span></div>
@@ -176,7 +177,7 @@ document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
 document.getElementById('urlnote').textContent=NOTES.cninsider;
 // CN인사이더 기준 이미지 — 화면을 닫으면 큰 이미지까지 자동복원되지는 않지만 텍스트는 보존한다.
 const cnDrop=document.getElementById('cn-drop'),cnFile=document.getElementById('cn-file');
-cnDrop.onclick=()=>cnFile.click();cnFile.onchange=e=>addCnFiles(e.target.files);
+cnDrop.onclick=()=>cnDrop.focus();cnFile.onchange=e=>addCnFiles(e.target.files);
 ['dragover','dragenter'].forEach(ev=>cnDrop.addEventListener(ev,e=>{e.preventDefault();cnDrop.classList.add('over')}));
 ['dragleave','drop'].forEach(ev=>cnDrop.addEventListener(ev,e=>{e.preventDefault();cnDrop.classList.remove('over')}));
 cnDrop.addEventListener('drop',e=>addCnFiles(e.dataTransfer.files));
