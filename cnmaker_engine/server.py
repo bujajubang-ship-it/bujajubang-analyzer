@@ -155,7 +155,7 @@ def analyze_product(url):
 
 
 def worker_plan_draft(job_id, plan, image_paths, reference_urls):
-    JOBS[job_id] = {"status": "running", "msg": "저해상도 시안 준비"}
+    JOBS[job_id] = {"status": "running", "msg": "저해상도 시안 준비", "ready_sections": []}
     started_at = time.time()
     try:
         out = os.path.join(RESULT_DIR, job_id + ".jpg")
@@ -163,12 +163,19 @@ def worker_plan_draft(job_id, plan, image_paths, reference_urls):
             JOBS[job_id]["msg"] = message
             print(f"[{job_id}] {message}", flush=True)
         gptmaker.log = patched_log
-        result = gptmaker.run_plan_draft(plan, image_paths, reference_urls, out)
+        def section_ready(index, _path):
+            ready = JOBS[job_id].setdefault("ready_sections", [])
+            if index not in ready:
+                ready.append(index)
+                ready.sort()
+            JOBS[job_id]["msg"] = f"저해상도 시안 {len(ready)}개 화면에 표시"
+        result = gptmaker.run_plan_draft(plan, image_paths, reference_urls, out, on_section=section_ready)
         JOBS[job_id] = {
             "status": "done", "msg": "저해상도 시안 완성",
             "product_name": result["product_name"], "result": job_id + ".jpg",
             "copy": {"headline": "텍스트 기획안 확정본 사용"},
             "draft": True, "section_count": result["section_count"],
+            "ready_sections": list(range(result["section_count"])),
         }
         _save_history(
             job_id, result["product_name"], False, "", "저해상도 시안",
