@@ -84,6 +84,8 @@ def _collect_product_images(pg):
 def _clean_product_title(value):
     title = re.sub(r"\s+", " ", str(value or "")).strip()
     title = re.sub(r"\s*[-_|]\s*(?:1688|阿里巴巴).*$", "", title, flags=re.I)
+    if title.lower() in {"cninsider", "cn인사이더"}:
+        return ""
     return title[:200]
 
 def _is_access_blocked(title, body=""):
