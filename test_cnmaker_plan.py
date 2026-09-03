@@ -71,6 +71,7 @@ class CnmakerPlanTest(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()["plan"]["sections"]), 11)
+        self.assertEqual(len(response.json()["plan"]["features"]), 3)
 
     @patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"})
     @patch.object(main, "_site_auth", return_value=True)

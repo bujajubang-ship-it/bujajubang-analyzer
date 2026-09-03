@@ -7,11 +7,11 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 import main
-from page_maker import fetch_coupang_reference
-
-
 def sample_plan():
-    return {"sections": [{"number": number} for number in range(1, 12)]}
+    return {
+        "features": [{"title": "체크 1"}, {"title": "체크 2"}, {"title": "체크 3"}],
+        "sections": [{"number": number} for number in range(1, 12)],
+    }
 
 
 class CnmakerPlanStorageTest(unittest.TestCase):
@@ -85,10 +85,14 @@ class CnmakerPlanStorageTest(unittest.TestCase):
         self.assertTrue(loaded["abcdef123456"]["low_res_generated"])
 
 
-class CoupangReferenceTest(unittest.IsolatedAsyncioTestCase):
-    async def test_rejects_non_coupang_url(self):
-        with self.assertRaises(ValueError):
-            await fetch_coupang_reference("https://example.com/product/1")
+    @patch.object(main, "_site_auth", return_value=True)
+    def test_rejects_plan_without_three_checkpoints(self, *_):
+        response = self.client.put(
+            "/cnmaker/api/plans/abcdef123456",
+            json={"plan": {"features": [{"title": "하나"}], "sections": [{"number": n} for n in range(1, 12)]}},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("체크포인트 3개", response.json()["error"])
 
 
 if __name__ == "__main__":
