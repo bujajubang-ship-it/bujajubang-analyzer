@@ -8,6 +8,7 @@ import random
 import math
 import smtplib
 import threading
+import uuid
 import urllib.parse
 from datetime import datetime, timezone, timedelta
 from email.mime.text import MIMEText
@@ -29,7 +30,7 @@ from sourcing_data import SOURCING_CANDIDATES
 from coupang_api import CoupangPartnersAPI
 from coupang_analysis import analyze as coupang_analyze, get_recommendations as coupang_reco
 from coupang_opportunities import scan_opportunities
-from page_maker import scrape_images, build_processed_zip, analyze_product_image, stream_ai_sections, scrape_and_analyze_url
+from page_maker import scrape_images, build_processed_zip, analyze_product_image, stream_ai_sections, scrape_and_analyze_url, fetch_coupang_reference
 from jageum_state import (
     atomic_write_json as _dataset_atomic_write,
     briefing_contract as _build_briefing_contract,
@@ -4161,6 +4162,7 @@ def _cn_plan_prompt(data: dict) -> str:
     """이미지 비용을 쓰기 전에 사람이 검토할 텍스트 기획안만 만든다."""
     direct = data.get("product") or {}
     collected = data.get("collected") or {}
+    coupang = data.get("coupang_reference") or {}
     return f"""당신은 쿠팡용 상품 상세페이지 기획자입니다.
 아직 이미지를 만들지 말고, 사용자가 먼저 검토할 수 있는 텍스트 기획안만 작성하세요.
 
@@ -4186,6 +4188,12 @@ def _cn_plan_prompt(data: dict) -> str:
 [1688에서 실제 수집한 자료]
 수집된 상품명: {collected.get('title') or '확인 필요'}
 수집된 상품 이미지 수: {len(collected.get('images') or [])}장
+
+[쿠팡 참고 상품에서 읽은 자료]
+참고 상품명: {coupang.get('title') or '없음'}
+참고 페이지 정보: {(coupang.get('page_text') or '없음')[:2000]}
+위 자료에서는 강조 기능, 설명 순서, 소비자 관심정보, 사용 장면과 비교 포인트만 참고하세요.
+상품명·문장·이미지 구성은 그대로 복제하지 마세요.
 
 [필수 JSON 구조]
 {{
@@ -4234,6 +4242,76 @@ async def _cn_collect_product(url: str) -> dict:
     return payload["product"]
 
 
+CN_PLANS_FILE = data_path("cninsider_plans.json")
+CN_PLANS_LOCK = threading.RLock()
+
+
+def _cn_load_plans() -> dict:
+    try:
+        local = json.loads(CN_PLANS_FILE.read_text(encoding="utf-8"))
+        if isinstance(local, dict):
+            return local
+    except Exception:
+        pass
+    restored = _kv_restore("cninsider_plans", timeout=10)
+    return restored if isinstance(restored, dict) else {}
+
+
+def _cn_save_plans(plans: dict) -> dict:
+    """Render 로컬과 Lightsail KV에 기획안을 함께 저장한다."""
+    CN_PLANS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = CN_PLANS_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(plans, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(CN_PLANS_FILE)
+    return _kv_backup_checked("cninsider_plans", plans, timeout=10)
+
+
+def _cn_store_plan(project_id: str, plan: dict, source: dict | None = None) -> dict:
+    with CN_PLANS_LOCK:
+        plans = _cn_load_plans()
+        old = plans.get(project_id) if isinstance(plans.get(project_id), dict) else {}
+        now = datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d %H:%M:%S")
+        plans[project_id] = {
+            "id": project_id,
+            "created_at": old.get("created_at") or now,
+            "updated_at": now,
+            "source": source if source is not None else old.get("source", {}),
+            "plan": plan,
+        }
+        ordered = sorted(plans.values(), key=lambda item: item.get("updated_at", ""), reverse=True)[:100]
+        trimmed = {item["id"]: item for item in ordered}
+        backup = _cn_save_plans(trimmed)
+        return {"item": trimmed[project_id], "backup": backup}
+
+
+@app.get("/cnmaker/api/plans/{project_id}")
+async def cnmaker_plan_get(project_id: str, request: Request):
+    if not _site_auth(request):
+        return JSONResponse({"error": "로그인이 필요합니다."}, status_code=401)
+    item = _cn_load_plans().get(project_id)
+    if not item:
+        return JSONResponse({"error": "저장된 기획안을 찾지 못했습니다."}, status_code=404)
+    return JSONResponse({"ok": True, "item": item})
+
+
+@app.put("/cnmaker/api/plans/{project_id}")
+async def cnmaker_plan_save(project_id: str, request: Request):
+    if not _site_auth(request):
+        return JSONResponse({"error": "로그인이 필요합니다."}, status_code=401)
+    if not re.fullmatch(r"[a-f0-9]{12}", project_id):
+        return JSONResponse({"error": "기획안 번호가 올바르지 않습니다."}, status_code=400)
+    data = await request.json()
+    plan = data.get("plan")
+    if not isinstance(plan, dict) or len(plan.get("sections") or []) != 11:
+        return JSONResponse({"error": "11개 구간의 기획안을 확인해 주세요."}, status_code=400)
+    if len(json.dumps(plan, ensure_ascii=False)) > 200_000:
+        return JSONResponse({"error": "기획안 내용이 너무 깁니다."}, status_code=413)
+    saved = _cn_store_plan(project_id, plan)
+    if not saved["backup"].get("ok"):
+        return JSONResponse({"error": "서버 백업에 저장하지 못했습니다. 잠시 뒤 다시 시도해 주세요."}, status_code=502)
+    return JSONResponse({"ok": True, "updated_at": saved["item"]["updated_at"]})
+
+
 @app.post("/cnmaker/api/plan")
 async def cnmaker_plan(request: Request):
     if not _site_auth(request):
@@ -4251,6 +4329,17 @@ async def cnmaker_plan(request: Request):
         return JSONResponse({"error": str(e)}, status_code=502)
     except Exception:
         return JSONResponse({"error": "1688 수집 서버에 연결하지 못했습니다."}, status_code=502)
+    reference_warning = ""
+    coupang_url = (data.get("coupang_url") or "").strip()
+    if coupang_url:
+        try:
+            data["coupang_reference"] = await fetch_coupang_reference(coupang_url)
+        except ValueError as e:
+            reference_warning = str(e)
+            data["coupang_reference"] = {}
+        except Exception:
+            reference_warning = "쿠팡 참고 상품을 읽지 못해 1688 자료와 직접 입력만 사용했습니다."
+            data["coupang_reference"] = {}
     content = [{"type": "text", "text": _cn_plan_prompt(data)}]
     images = data.get("images") or []
     if len(images) > 10:
@@ -4316,7 +4405,24 @@ async def cnmaker_plan(request: Request):
         plan = json.loads(match.group(0))
         if len(plan.get("sections") or []) != 11:
             return JSONResponse({"error": "기획안 구간 수가 맞지 않습니다. 다시 시도해 주세요."}, status_code=502)
-        return JSONResponse({"ok": True, "plan": plan})
+        if reference_warning:
+            plan.setdefault("warnings", []).append(reference_warning)
+        project_id = uuid.uuid4().hex[:12]
+        source = {
+            "url1688": url1688,
+            "coupang_url": coupang_url,
+            "product": data.get("product") or {},
+            "image_count": min(10, int(data.get("image_count") or 0)),
+            "collected_title": data["collected"].get("title") or "",
+            "coupang_title": (data.get("coupang_reference") or {}).get("title") or "",
+        }
+        saved = _cn_store_plan(project_id, plan, source)
+        return JSONResponse({
+            "ok": True,
+            "project_id": project_id,
+            "plan": plan,
+            "saved": bool(saved["backup"].get("ok")),
+        })
     except (ValueError, json.JSONDecodeError):
         return JSONResponse({"error": "기획안을 정리하지 못했습니다. 다시 시도해 주세요."}, status_code=502)
     except Exception:

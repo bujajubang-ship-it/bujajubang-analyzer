@@ -2191,6 +2191,19 @@ async def _fetch_coupang_data(product_url: str) -> tuple:
     return title, page_text, main_imgs[:3], detail_imgs[:8]
 
 
+async def fetch_coupang_reference(product_url: str) -> dict:
+    """경쟁사 원문·이미지를 복제하지 않고 기획 참고용 텍스트만 반환한다."""
+    parsed = urlparse((product_url or "").strip())
+    host = (parsed.hostname or "").lower()
+    if host != "coupang.com" and not host.endswith(".coupang.com"):
+        raise ValueError("쿠팡 상품 링크를 확인해 주세요")
+    title, page_text, _, _ = await _fetch_coupang_data(product_url)
+    clean_text = re.sub(r"\s+", " ", page_text or "").strip()[:2000]
+    if not title and not clean_text:
+        raise ValueError("쿠팡 참고 상품 정보를 읽지 못했습니다")
+    return {"title": (title or "").strip()[:300], "page_text": clean_text}
+
+
 async def scrape_and_analyze_url(product_url: str) -> dict:
     """상품 URL → 페이지 텍스트 + 이미지들 스크래핑 → Gemini 종합 분석"""
 

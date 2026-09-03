@@ -51,6 +51,7 @@ class CnmakerPlanTest(unittest.TestCase):
     @patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"})
     @patch.object(main, "_site_auth", return_value=True)
     @patch.object(main, "_cn_collect_product", side_effect=fake_collect_product)
+    @patch.object(main, "_cn_store_plan", return_value={"item": {}, "backup": {"ok": True}})
     @patch.object(main, "_ai_post", side_effect=fake_ai_post)
     def test_returns_eleven_section_plan(self, *_):
         response = self.client.post(
