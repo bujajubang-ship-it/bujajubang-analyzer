@@ -4423,7 +4423,6 @@ async def cnmaker_plan(request: Request):
     body = {
         "model": os.getenv("CN_PLAN_MODEL", "claude-opus-4-8"),
         "max_tokens": 7000,
-        "temperature": 0.2,
         "messages": [{"role": "user", "content": content}],
     }
     headers = {

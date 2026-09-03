@@ -33,6 +33,7 @@ class FakeAIResponse:
 
 
 async def fake_ai_post(*args, **kwargs):
+    assert "temperature" not in args[1]
     return FakeAIResponse()
 
 
