@@ -299,6 +299,7 @@ let _histItems=[];
 // 소스별 라벨·색 (뱃지)
 const SRC_INFO={
   'cninsider':{label:'CN인사이더', bg:'#fff0e6', fg:'#c2410c', bar:'#f97316'},
+  '저해상도 시안':{label:'저해상도 시안', bg:'#fef3c7', fg:'#92400e', bar:'#f59e0b'},
   'cafe24':   {label:'카페24',     bg:'#f3e8ff', fg:'#7c3aed', bar:'#a855f7'},
   '이미지업로드':{label:'이미지업로드', bg:'#e0f2fe', fg:'#0369a1', bar:'#0ea5e9'}
 };
@@ -316,7 +317,8 @@ function renderHistory(){
     const thb='/cnmaker/api/result?job='+h.job+'&thumb=1';
     const si=srcInfo(h.src);
     const badge=`<span style="background:${si.bg};color:${si.fg};border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;white-space:nowrap">${si.label}</span>`;
-    return `<div class="hrow" style="border-left:4px solid ${si.bar}"><div class="hinfo"><div class="hname">${(h.product_name||'(제목없음)').replace(/</g,'&lt;')}</div><div class="hts">${badge} <span style="margin-left:4px">${h.ts||''}</span></div></div>`
+    const timing=h.elapsed_seconds?` · ${Math.ceil(h.elapsed_seconds/60)}분 · ${h.section_count||0}구간`:'';
+    return `<div class="hrow" style="border-left:4px solid ${si.bar}"><div class="hinfo"><div class="hname">${(h.product_name||'(제목없음)').replace(/</g,'&lt;')}</div><div class="hts">${badge} <span style="margin-left:4px">${h.ts||''}${timing}</span></div></div>`
       +`<a href="${det}" download="상세_${h.job}.jpg" target="_blank">상세 ⬇</a>`
       +(h.thumb?`<a class="t" href="${thb}" download="대표_${h.job}.jpg" target="_blank">대표 ⬇</a>`:'')
       +`</div>`;

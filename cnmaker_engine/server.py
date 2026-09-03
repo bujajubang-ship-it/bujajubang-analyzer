@@ -11,19 +11,23 @@ INGEST_SECRET = (os.getenv("JAGEUM_INGEST_SECRET") or pipeline.ENV.get("JAGEUM_I
 RESULT_DIR = os.path.join(BASE, "results")
 os.makedirs(RESULT_DIR, exist_ok=True)
 HISTORY_FILE = os.path.join(BASE, "history.json")
+HISTORY_LOCK = threading.RLock()
 
-def _save_history(job_id, product_name, has_thumb, url="", src=""):
+def _save_history(job_id, product_name, has_thumb, url="", src="", **metadata):
     """완료된 생성을 히스토리에 누적 (최신순, 최대 200개)."""
-    try:
-        hist = json.load(open(HISTORY_FILE, encoding="utf-8")) if os.path.exists(HISTORY_FILE) else []
-    except Exception:
-        hist = []
-    hist = [h for h in hist if h.get("job") != job_id]  # 중복 제거
-    hist.insert(0, {"job": job_id, "product_name": product_name or "(제목없음)",
-                    "thumb": bool(has_thumb), "url": url, "src": src,
-                    "ts": time.strftime("%Y-%m-%d %H:%M")})
-    hist = hist[:200]
-    json.dump(hist, open(HISTORY_FILE, "w", encoding="utf-8"), ensure_ascii=False)
+    with HISTORY_LOCK:
+        try:
+            with open(HISTORY_FILE, encoding="utf-8") as history_file:
+                hist = json.load(history_file) if os.path.exists(HISTORY_FILE) else []
+        except Exception:
+            hist = []
+        hist = [h for h in hist if h.get("job") != job_id]
+        hist.insert(0, {"job": job_id, "product_name": product_name or "(제목없음)",
+                        "thumb": bool(has_thumb), "url": url, "src": src,
+                        "ts": time.strftime("%Y-%m-%d %H:%M"), **metadata})
+        hist = hist[:200]
+        with open(HISTORY_FILE, "w", encoding="utf-8") as history_file:
+            json.dump(hist, history_file, ensure_ascii=False)
 
 # ===== 영업결산: 이카운트 판매조회 온디맨드 재수집 (영업직원이 판매 넘긴 후 새로고침) =====
 # 실시간 대신 필요할 때만. 중복 실행 잠금으로 서버 과부하 방지.
@@ -152,6 +156,7 @@ def analyze_product(url):
 
 def worker_plan_draft(job_id, plan, image_paths, reference_urls):
     JOBS[job_id] = {"status": "running", "msg": "저해상도 시안 준비"}
+    started_at = time.time()
     try:
         out = os.path.join(RESULT_DIR, job_id + ".jpg")
         def patched_log(message):
@@ -165,6 +170,11 @@ def worker_plan_draft(job_id, plan, image_paths, reference_urls):
             "copy": {"headline": "텍스트 기획안 확정본 사용"},
             "draft": True, "section_count": result["section_count"],
         }
+        _save_history(
+            job_id, result["product_name"], False, "", "저해상도 시안",
+            draft=True, section_count=result["section_count"],
+            elapsed_seconds=max(1, int(time.time() - started_at)),
+        )
     except Exception as e:
         traceback.print_exc()
         JOBS[job_id] = {"status": "error", "error": str(e)[:200], "msg": "시안 생성 실패"}

@@ -1,6 +1,7 @@
 import pathlib
 import sys
 import io
+import json
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -103,6 +104,27 @@ class CnmakerEngineAnalyzeTest(unittest.TestCase):
                 server.gptmaker.run_plan_section_high(plan, 0, [str(reference)], [], str(output))
             self.assertTrue(output.exists())
             self.assertEqual(image_api.call_args.kwargs["quality"], "high")
+
+    def test_completed_low_resolution_draft_is_saved_to_history(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result_dir = pathlib.Path(directory) / "results"
+            result_dir.mkdir()
+            history_file = pathlib.Path(directory) / "history.json"
+
+            def fake_draft(plan, image_paths, reference_urls, output):
+                pathlib.Path(output).write_bytes(b"draft")
+                return {"product_name": "히스토리 상품", "section_count": 3}
+
+            with patch.object(server, "RESULT_DIR", str(result_dir)), \
+                 patch.object(server, "HISTORY_FILE", str(history_file)), \
+                 patch.object(server.gptmaker, "run_plan_draft", side_effect=fake_draft):
+                server.worker_plan_draft("abc123def456", {"sections": []}, [], [])
+
+            history = json.loads(history_file.read_text(encoding="utf-8"))
+            self.assertEqual(history[0]["job"], "abc123def456")
+            self.assertEqual(history[0]["src"], "저해상도 시안")
+            self.assertEqual(history[0]["section_count"], 3)
+            self.assertTrue(history[0]["draft"])
 
 
 if __name__ == "__main__":
