@@ -4,7 +4,7 @@
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,'Pretendard','Malgun Gothic',sans-serif;background:#f4f6fa;color:#1f2937}
 .top{background:#D70010;color:#fff;padding:16px 22px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .top h1{font-size:18px;margin:0;flex:1}
-.wrap{max-width:760px;margin:0 auto;padding:22px}
+.wrap{max-width:1120px;margin:0 auto;padding:22px}
 .card{background:#fff;border-radius:14px;padding:22px;box-shadow:0 1px 4px rgba(0,0,0,.08);margin-bottom:18px}
 .card h2{font-size:16px;margin:0 0 14px}
 .tabs{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap}
@@ -20,6 +20,7 @@ button.go{background:#D70010;color:#fff;border:none;border-radius:10px;padding:1
 button.go:disabled{background:#d1a0a3;cursor:not-allowed}
 .note{font-size:12px;color:#9ca3af;margin-top:8px;line-height:1.6}
 .drop{border:2px dashed #d1d5db;border-radius:12px;padding:26px;text-align:center;color:#9ca3af;cursor:pointer;margin-bottom:12px}
+.cn-photo-drop{min-height:230px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:#fafafa}.small-upload{border:1px solid #d1d5db;background:#fff;border-radius:7px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;color:#374151}
 .drop.over{border-color:#D70010;background:#fff5f5}
 .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
 .thumb{position:relative;width:74px;height:74px;border-radius:8px;overflow:hidden;border:1px solid #eee}
@@ -48,7 +49,9 @@ button.go:disabled{background:#d1a0a3;cursor:not-allowed}
 .required{color:#D70010}.upload-hint{font-weight:700;color:#374151}.thumb{overflow:visible}.thumb img{border-radius:8px}.thumb-tools{display:flex;position:absolute;left:2px;right:2px;bottom:2px;justify-content:center;gap:2px}.thumb-tools button{border:0;border-radius:4px;background:rgba(0,0,0,.68);color:white;cursor:pointer;padding:1px 5px}
 .upload-fallback{display:none;background:#fff7ed;border:1px solid #fdba74;border-radius:10px;padding:13px 14px;margin:10px 0;color:#9a3412;font-size:13px;line-height:1.55}.upload-fallback b{display:block;margin-bottom:3px}.upload-fallback button{margin-top:8px;border:0;border-radius:8px;background:#ea580c;color:#fff;padding:8px 12px;font-weight:700;cursor:pointer}
 .autosave{font-size:12px;color:#059669;margin-left:auto}.plan-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.plan-actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.secondary{border:1px solid #d1d5db;background:#fff;border-radius:9px;padding:10px 14px;cursor:pointer;font-weight:600}.section-edit{border:1px solid #e5e7eb;border-left:4px solid #D70010;border-radius:10px;padding:14px;margin:10px 0}.section-edit.off{opacity:.55;border-left-color:#9ca3af}.section-title{display:flex;align-items:center;gap:8px;margin-bottom:10px}.section-title b{flex:1}.warn{background:#fffbeb;color:#92400e;padding:12px;border-radius:9px;font-size:13px;margin:10px 0}.phase{display:flex;gap:8px;margin-bottom:16px}.phase span{flex:1;background:#f3f4f6;padding:9px;border-radius:8px;text-align:center;font-size:12px;font-weight:700}.phase span.on{background:#fee2e2;color:#D70010}
+.checkpoint{display:flex;align-items:center;gap:9px;margin:9px 0}.checkpoint b{width:88px;font-size:13px}.checkpoint input{flex:1}.draft-review{display:grid;grid-template-columns:minmax(280px,430px) 1fr;gap:18px;align-items:start;margin:18px 0;padding-bottom:18px;border-bottom:1px solid #e5e7eb}.draft-review img{width:100%;border-radius:10px;border:1px solid #e5e7eb}.draft-copy textarea{width:100%;min-height:115px;padding:11px;border:2px solid #e5e7eb;border-radius:9px;font:inherit;resize:vertical}.draft-tabs{display:flex;gap:8px;margin-top:10px}.draft-tabs button,.draft-tabs a{border:1px solid #d1d5db;background:#fff;color:#374151;border-radius:8px;padding:8px 11px;text-decoration:none;font-size:13px;font-weight:700;cursor:pointer}.draft-tabs .high{background:#1f2937;color:#fff;border-color:#1f2937}
 @media(max-width:620px){.field-grid{grid-template-columns:1fr}.field.full{grid-column:auto}}
+@media(max-width:760px){.draft-review{grid-template-columns:1fr}}
 </style></head><body>
 <div class="top" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap"><h1 style="margin:0">🏭 CN메이커 — 부자주방 상세페이지 자동생성</h1><a id="backlink" href="/" style="text-decoration:none;background:#1f2937;color:#fff;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:600;white-space:nowrap">← 소싱 분석기</a></div>
 <script>if(window.self!==window.top){var _b=document.getElementById('backlink');if(_b)_b.style.display='none';}</script>
@@ -65,15 +68,13 @@ button.go:disabled{background:#d1a0a3;cursor:not-allowed}
    <div id="cnmode">
      <div class="phase"><span class="on">1. 자료 입력</span><span>2. 기획안 검토</span><span>3. 이미지 생성</span><span>4. 결과</span></div>
      <div class="field-grid">
-       <div class="field full"><label>1688 상품 링크 <span class="required">필수</span></label><input id="cn-url1688" type="url" placeholder="https://detail.1688.com/offer/..."></div>
-       <div class="field full"><label>쿠팡 참고 상품 링크 <span style="color:#9ca3af">선택</span></label><input id="cn-coupang" type="url" placeholder="구성과 구매 포인트만 참고합니다"></div>
+       <div class="field full"><label>CN인사이더 상품 링크 <span class="required">필수</span></label><input id="cn-url1688" type="url" placeholder="CN인사이더에서 복사한 상품 링크를 붙여넣으세요"></div>
        <div class="field"><label>판매 상품명</label><input id="cn-name" placeholder="실제로 판매할 상품명"></div>
        <div class="field"><label>색상·옵션명 <span style="color:#9ca3af">여러 개 가능</span></label><input id="cn-color" placeholder="예: 상어, 돌고래, 핑크 (쉼표로 구분)"></div>
        <div class="field"><label>사이즈</label><input id="cn-size" placeholder="예: 30 × 20 × 8cm"></div>
        <div class="field"><label>수량·구성</label><input id="cn-composition" placeholder="예: 본품 1개 + 받침 1개"></div>
-       <div class="field full"><label>추가 전달사항</label><textarea id="cn-notes" placeholder="꼭 강조할 기능, 사용 시 주의사항 등을 적어주세요"></textarea></div>
      </div>
-     <div class="drop" id="cn-drop" style="margin-top:14px"><div class="upload-hint">📷 제품 사진을 붙여넣거나 끌어다 놓으세요</div><span style="font-size:12px">캡처 후 Ctrl+V 가능 · 최대 10장</span></div>
+     <div class="drop cn-photo-drop" id="cn-drop" style="margin-top:14px"><div class="upload-hint">📷 제품 사진을 붙여넣거나 끌어다 놓으세요</div><span style="font-size:12px">캡처 후 Ctrl+V 가능 · 최대 10장</span><button type="button" class="small-upload" onclick="event.stopPropagation();openCnUpload()">사진 업로드</button></div>
      <div class="upload-fallback" id="cn-upload-fallback"><b>1688 자동 수집이 막혔습니다</b><span id="cn-upload-message">제품 사진을 올리면 입력한 상품 정보와 함께 기획안을 계속 만들 수 있습니다.</span><br><button type="button" onclick="openCnUpload()">제품 사진 선택하기</button></div>
      <input type="file" id="cn-file" accept="image/*" multiple style="display:none">
      <div class="thumbs" id="cn-thumbs"></div>
@@ -111,7 +112,7 @@ button.go:disabled{background:#d1a0a3;cursor:not-allowed}
 
  <div class="card" id="plan" style="display:none">
    <div class="plan-head"><h2 style="margin:0">📝 텍스트 기획안 검토</h2><span id="plan-status" style="font-size:12px;background:#fef3c7;color:#92400e;padding:4px 8px;border-radius:6px">수정 중</span><span class="autosave" id="plan-save">수정 내용 자동 저장</span></div>
-   <div class="note">이미지는 아직 만들지 않았습니다. 사실정보·문구·이미지 계획을 충분히 고친 뒤 확정하세요.</div>
+   <div class="note">상품정보와 체크포인트를 확인한 뒤 저화질 상세페이지를 만드세요.</div>
    <div id="plan-warnings"></div>
    <div id="plan-product"></div>
    <div id="plan-sections"></div>
@@ -139,6 +140,7 @@ button.go:disabled{background:#d1a0a3;cursor:not-allowed}
  <div class="card" id="result">
    <h2 id="rtitle">✅ 완성!</h2>
    <div class="copybox" id="copybox"></div>
+   <div id="draft-review-list"></div>
    <div id="thumbbox" style="display:none;margin-bottom:14px">
      <div style="font-weight:700;margin-bottom:6px">🖼️ 대표 이미지 (쿠팡 썸네일용)</div>
      <img id="thumbimg" style="max-width:300px;border:1px solid #eee;border-radius:8px">
@@ -156,8 +158,8 @@ button.go:disabled{background:#d1a0a3;cursor:not-allowed}
  </div>
 </div>
 <script>
-let job=null,timer=null,mode="plan",src="cninsider",files=[],cnFiles=[],currentPlan=null,currentProjectId='',fullEdit=false;
-const CN_DRAFT_KEY='cninsider-draft-v1', CN_PLAN_KEY='cninsider-plan-v1', CN_PROJECT_KEY='cninsider-project-v1', CN_FULL_EDIT_KEY='cninsider-full-edit-v1';
+let job=null,timer=null,mode="plan",src="cninsider",files=[],cnFiles=[],currentPlan=null,currentProjectId='';
+const CN_DRAFT_KEY='cninsider-draft-v2', CN_PLAN_KEY='cninsider-plan-v1', CN_PROJECT_KEY='cninsider-project-v1';
 const NOTES={cninsider:"CN인사이더 상품 URL을 넣으면 → 자동 로그인 → 중국어 번역 → 이미지 정리 → 부자주방 스타일 (약 1~2분)",
  cafe24:"자사몰(카페24) 상품 URL을 넣으면 → 상품정보·이미지 수집 → 부자주방 스타일로 재구성"};
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
@@ -190,9 +192,9 @@ function moveCn(i,delta){const n=i+delta;if(n<0||n>=cnFiles.length)return;[cnFil
 function removeCn(i){cnFiles.splice(i,1);renderCnThumbs();}
 function renderCnThumbs(){document.getElementById('cn-thumbs').innerHTML=cnFiles.map((f,i)=>`<div class="thumb"><img src="${f.data}" alt="기준 이미지 ${i+1}"><div class="x" onclick="removeCn(${i})">×</div><div class="thumb-tools"><button onclick="moveCn(${i},-1)" aria-label="앞으로">←</button><button onclick="moveCn(${i},1)" aria-label="뒤로">→</button></div></div>`).join('');}
 
-const draftIds=['cn-url1688','cn-coupang','cn-name','cn-color','cn-size','cn-composition','cn-notes'];
+const draftIds=['cn-url1688','cn-name','cn-color','cn-size','cn-composition'];
 function saveDraft(){const d={};draftIds.forEach(id=>d[id]=document.getElementById(id).value);localStorage.setItem(CN_DRAFT_KEY,JSON.stringify(d));const el=document.getElementById('autosave');el.textContent='자동 저장됨';}
-function loadDraft(){try{const d=JSON.parse(localStorage.getItem(CN_DRAFT_KEY)||'{}');draftIds.forEach(id=>document.getElementById(id).value=d[id]||'');currentPlan=JSON.parse(localStorage.getItem(CN_PLAN_KEY)||'null');currentProjectId=localStorage.getItem(CN_PROJECT_KEY)||'';fullEdit=localStorage.getItem(CN_FULL_EDIT_KEY)==='1';}catch(e){}}
+function loadDraft(){try{const d=JSON.parse(localStorage.getItem(CN_DRAFT_KEY)||'{}');draftIds.forEach(id=>document.getElementById(id).value=d[id]||'');currentPlan=JSON.parse(localStorage.getItem(CN_PLAN_KEY)||'null');currentProjectId=localStorage.getItem(CN_PROJECT_KEY)||'';}catch(e){}}
 draftIds.forEach(id=>document.getElementById(id).addEventListener('input',()=>{document.getElementById('autosave').textContent='저장 중…';clearTimeout(window._draftTimer);window._draftTimer=setTimeout(saveDraft,300);}));
 loadDraft();
 // 파일 업로드
@@ -225,37 +227,37 @@ function go(){
       .then(r=>r.json()).then(d=>d.error?fail(d.error):(job=d.job_id,poll())).catch(()=>fail('요청 실패'));
   }
 }
-function cnPayload(){return {url1688:document.getElementById('cn-url1688').value.trim(),coupang_url:document.getElementById('cn-coupang').value.trim(),image_count:cnFiles.length,images:cnFiles.map(f=>f.data),product:{name:document.getElementById('cn-name').value.trim(),color:document.getElementById('cn-color').value.trim(),size:document.getElementById('cn-size').value.trim(),composition:document.getElementById('cn-composition').value.trim(),notes:document.getElementById('cn-notes').value.trim()}};}
+function cnPayload(){return {url1688:document.getElementById('cn-url1688').value.trim(),image_count:cnFiles.length,images:cnFiles.map(f=>f.data),product:{name:document.getElementById('cn-name').value.trim(),color:document.getElementById('cn-color').value.trim(),size:document.getElementById('cn-size').value.trim(),composition:document.getElementById('cn-composition').value.trim()}};}
 async function createPlan(){
-  const body=cnPayload();if(!body.url1688.startsWith('http'))return fail('1688 상품 링크를 넣어주세요.');
+  const body=cnPayload();if(!body.url1688.startsWith('http'))return fail('CN인사이더 상품 링크를 넣어주세요.');
   saveDraft();document.getElementById('go').disabled=true;document.getElementById('go').textContent='텍스트 기획안 작성 중…';document.getElementById('err').innerHTML='';
-  try{const r=await fetch('/cnmaker/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(!r.ok||d.error)throw new Error(d.error||'기획안을 만들지 못했습니다.');currentPlan=d.plan;currentProjectId=d.project_id||'';fullEdit=false;localStorage.removeItem(CN_FULL_EDIT_KEY);if(currentProjectId)localStorage.setItem(CN_PROJECT_KEY,currentProjectId);savePlan();renderPlan();document.getElementById('plan').scrollIntoView({behavior:'smooth'});}catch(e){fail(e.message||'기획안을 만들지 못했습니다.');}
+  try{const r=await fetch('/cnmaker/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(!r.ok||d.error)throw new Error(d.error||'기획안을 만들지 못했습니다.');currentPlan=d.plan;currentProjectId=d.project_id||'';ensureCheckpoints();if(currentProjectId)localStorage.setItem(CN_PROJECT_KEY,currentProjectId);savePlan();renderPlan();document.getElementById('plan').scrollIntoView({behavior:'smooth'});}catch(e){fail(e.message||'기획안을 만들지 못했습니다.');}
   finally{document.getElementById('go').disabled=false;document.getElementById('go').textContent='텍스트 기획안 만들기 →';}
 }
 function esc(v){return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');}
-const productLabels={name:'판매 상품명',subtitle:'보조 문구',summary:'제품 소개',material:'소재',color:'색상',size:'크기',composition:'구성',country:'제조국',usage:'사용법',caution:'주의사항'};
+const productLabels={name:'판매 상품명',summary:'제품 소개',material:'소재',color:'색상 혹은 옵션',size:'크기',composition:'구성',usage:'사용법',caution:'주의사항'};
+function ensureCheckpoints(){currentPlan.features=Array.isArray(currentPlan.features)?currentPlan.features:[];while(currentPlan.features.length<3)currentPlan.features.push({title:''});}
 function renderPlan(){
   if(!currentPlan)return;document.getElementById('plan').style.display='block';
   const warnings=currentPlan.warnings||[];document.getElementById('plan-warnings').innerHTML=warnings.length?`<details class="warn"><summary><b>확인이 필요한 내용 ${warnings.length}개</b></summary><div style="margin-top:8px">${warnings.map(esc).join('<br>')}</div></details>`:'';
-  const p=currentPlan.product||{},palette=currentPlan.palette||{},features=currentPlan.features||[];
-  if(!fullEdit){document.getElementById('plan-product').innerHTML=`<h3>상품정보</h3><div class="field-grid"><div class="field"><label>판매 상품명</label><input value="${esc(p.name)}" oninput="updateProduct('name',this.value)"></div><div class="field"><label>소재</label><input value="${esc(p.material)}" oninput="updateProduct('material',this.value)"></div><div class="field full"><label>색상·옵션명 <span style="color:#9ca3af">쉼표로 여러 개 입력</span></label><input value="${esc(p.color)}" placeholder="예: 상어, 돌고래, 핑크" oninput="updateProduct('color',this.value)"></div></div><h3>핵심 기능</h3><div id="feature-list">${features.map((f,i)=>`<div class="section-edit"><div class="section-title"><b>기능 ${i+1}</b><button class="secondary" onclick="removeFeature(${i})">삭제</button></div><div class="field"><label>기능명</label><input value="${esc(f.title)}" oninput="updateFeature(${i},'title',this.value)"></div></div>`).join('')}</div>${features.length<4?'<button class="secondary" onclick="addFeature()">+ 핵심 기능 추가</button>':''}<div class="note" style="margin-top:14px">보조문구와 상세 설명은 AI가 작성합니다. 저해상도 시안 완성 후 모든 텍스트를 수정할 수 있습니다.</div>`;document.getElementById('plan-sections').innerHTML=`<div class="note" style="padding:12px;background:#f9fafb;border-radius:9px">상세페이지 ${(currentPlan.sections||[]).filter(s=>s.enabled!==false).length}개 구간을 AI가 구성했습니다.</div>`;return;}
-  document.getElementById('plan-product').innerHTML=`<h3>상품정보 · 전체 편집</h3><div class="field-grid">${Object.entries(productLabels).map(([k,l])=>`<div class="field ${k==='summary'||k==='caution'?'full':''}"><label>${l}</label>${k==='summary'||k==='caution'?`<textarea oninput="updateProduct('${k}',this.value)">${esc(p[k])}</textarea>`:`<input value="${esc(p[k])}" oninput="updateProduct('${k}',this.value)">`}</div>`).join('')}</div><h3>디자인 색상</h3><div class="field-grid"><div class="field"><label>기본 배경</label><input value="${esc(palette.background)}" oninput="updatePalette('background',this.value)"></div><div class="field"><label>보조 배경</label><input value="${esc(palette.secondary)}" oninput="updatePalette('secondary',this.value)"></div><div class="field"><label>포인트색</label><input value="${esc(palette.accent)}" oninput="updatePalette('accent',this.value)"></div></div><h3>핵심 기능</h3><div id="feature-list">${features.map((f,i)=>`<div class="section-edit"><div class="section-title"><b>기능 ${i+1}</b><button class="secondary" onclick="removeFeature(${i})">삭제</button></div><div class="field"><label>기능명</label><input value="${esc(f.title)}" oninput="updateFeature(${i},'title',this.value)"></div><div class="field"><label>설명</label><textarea oninput="updateFeature(${i},'description',this.value)">${esc(f.description)}</textarea></div><div class="field"><label>사실 근거</label><textarea oninput="updateFeature(${i},'evidence',this.value)">${esc(f.evidence)}</textarea></div><div class="field"><label>이미지 계획</label><textarea oninput="updateFeature(${i},'image_prompt',this.value)">${esc(f.image_prompt)}</textarea></div></div>`).join('')}</div>${features.length<4?'<button class="secondary" onclick="addFeature()">+ 핵심 기능 추가</button>':''}`;
-  document.getElementById('plan-sections').innerHTML='<h3>상세페이지 11개 구간 · 전체 편집</h3>'+(currentPlan.sections||[]).map((s,i)=>`<div class="section-edit ${s.enabled===false?'off':''}" id="section-${i}"><div class="section-title"><input type="checkbox" ${s.enabled===false?'':'checked'} onchange="updateSection(${i},'enabled',this.checked)"><b>${s.number||i+1}. ${esc(s.type||'구간')}</b></div><div class="field"><label>제목</label><input value="${esc(s.title)}" oninput="updateSection(${i},'title',this.value)"></div><div class="field"><label>본문</label><textarea oninput="updateSection(${i},'body',this.value)">${esc(s.body)}</textarea></div><div class="field"><label>이미지 계획</label><textarea oninput="updateSection(${i},'image_prompt',this.value)">${esc(s.image_prompt)}</textarea></div></div>`).join('');
+  const p=currentPlan.product||{};ensureCheckpoints();const features=currentPlan.features;
+  document.getElementById('plan-product').innerHTML=`<h3>상품정보</h3><div class="field-grid">${Object.entries(productLabels).map(([k,l])=>`<div class="field ${k==='summary'||k==='caution'?'full':''}"><label>${l}</label>${k==='summary'||k==='caution'?`<textarea oninput="updateProduct('${k}',this.value)">${esc(p[k])}</textarea>`:`<input value="${esc(p[k])}" oninput="updateProduct('${k}',this.value)">`}</div>`).join('')}</div><h3>체크포인트 <span class="required">3개 필수</span></h3><div id="feature-list">${features.map((f,i)=>`<div class="checkpoint"><b>체크포인트 ${i+1}</b><input value="${esc(f.title)}" placeholder="체크포인트명" oninput="updateFeature(${i},'title',this.value)">${i>=3?`<button class="secondary" onclick="removeFeature(${i})">삭제</button>`:''}</div>`).join('')}</div><button class="secondary" onclick="addFeature()">+ 체크포인트 추가</button>`;
+  document.getElementById('plan-sections').innerHTML='';
 }
 function updateProduct(k,v){currentPlan.product[k]=v;savePlan();}
 function updatePalette(k,v){currentPlan.palette=currentPlan.palette||{};currentPlan.palette[k]=v;savePlan();}
 function updateFeature(i,k,v){currentPlan.features[i][k]=v;savePlan();}
-function addFeature(){currentPlan.features=currentPlan.features||[];if(currentPlan.features.length>=4)return;currentPlan.features.push({title:'',description:'',evidence:'확인 필요',image_prompt:''});savePlan();renderPlan();}
-function removeFeature(i){currentPlan.features.splice(i,1);savePlan();renderPlan();}
+function addFeature(){currentPlan.features=currentPlan.features||[];currentPlan.features.push({title:''});savePlan();renderPlan();}
+function removeFeature(i){if(currentPlan.features.length<=3)return alert('체크포인트 3개는 필수입니다.');currentPlan.features.splice(i,1);savePlan();renderPlan();}
 function updateSection(i,k,v){currentPlan.sections[i][k]=v;document.getElementById('section-'+i).classList.toggle('off',currentPlan.sections[i].enabled===false);savePlan();}
 function savePlan(){localStorage.setItem(CN_PLAN_KEY,JSON.stringify(currentPlan));const e=document.getElementById('plan-save'),s=document.getElementById('plan-status');if(e)e.textContent='저장 중…';if(s){s.textContent='수정 중';s.style.background='#fef3c7';s.style.color='#92400e';}clearTimeout(window._planTimer);window._planTimer=setTimeout(savePlanToServer,700);}
 async function savePlanToServer(){const e=document.getElementById('plan-save');if(!currentProjectId||!currentPlan){if(e)e.textContent='이 브라우저에 저장됨';return;}try{const r=await fetch('/cnmaker/api/plans/'+currentProjectId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan:currentPlan})});const d=await r.json();if(!r.ok)throw new Error(d.error||'저장 실패');if(e)e.textContent='서버에 자동 저장됨';}catch(err){if(e)e.textContent='서버 저장 실패 · 다시 수정하면 재시도';}}
 function showInput(){document.getElementById('cnmode').scrollIntoView({behavior:'smooth'});}
-function clearPlanAndRetry(){if(!confirm('현재 기획안을 지우고 다시 만들까요?'))return;currentPlan=null;currentProjectId='';fullEdit=false;localStorage.removeItem(CN_PLAN_KEY);localStorage.removeItem(CN_PROJECT_KEY);localStorage.removeItem(CN_FULL_EDIT_KEY);document.getElementById('plan').style.display='none';createPlan();}
+function clearPlanAndRetry(){if(!confirm('현재 기획안을 지우고 다시 만들까요?'))return;currentPlan=null;currentProjectId='';localStorage.removeItem(CN_PLAN_KEY);localStorage.removeItem(CN_PROJECT_KEY);document.getElementById('plan').style.display='none';createPlan();}
 function showDraftAction(){const count=(currentPlan?.sections||[]).filter(s=>s.enabled!==false).length;document.getElementById('draft-actions').style.display='block';document.getElementById('draft-estimate').textContent='생성 예정 '+count+'개 구간 · 저해상도 · 약 '+Math.max(3,count*2)+'~'+Math.max(5,count*4)+'분 예상 · 버튼을 눌러야 비용이 발생합니다.';}
-async function confirmPlan(){if(!currentProjectId)return alert('먼저 텍스트 기획안을 만들어주세요.');clearTimeout(window._planTimer);await savePlanToServer();if(!confirm('현재 문구와 이미지 계획을 확정할까요? 확정만으로 이미지 비용은 발생하지 않습니다.'))return;try{const r=await fetch('/cnmaker/api/plans/'+currentProjectId+'/confirm',{method:'POST'}),d=await r.json();if(!r.ok)throw new Error(d.error||'확정 실패');const s=document.getElementById('plan-status');s.textContent='확정본 v'+d.version;s.style.background='#dcfce7';s.style.color='#166534';showDraftAction();alert('기획안 v'+d.version+'이 확정되었습니다. 이미지 생성은 아직 시작하지 않았습니다.');}catch(e){alert(e.message||'기획안을 확정하지 못했습니다.');}}
+async function confirmPlan(){if(!currentProjectId)return alert('먼저 텍스트 기획안을 만들어주세요.');ensureCheckpoints();if(currentPlan.features.length<3||currentPlan.features.slice(0,3).some(f=>!String(f.title||'').trim()))return alert('체크포인트 3개를 모두 입력해 주세요.');clearTimeout(window._planTimer);await savePlanToServer();if(!confirm('이 내용으로 저화질 상세페이지 제작을 준비할까요?'))return;try{const r=await fetch('/cnmaker/api/plans/'+currentProjectId+'/confirm',{method:'POST'}),d=await r.json();if(!r.ok)throw new Error(d.error||'확정 실패');const s=document.getElementById('plan-status');s.textContent='확정본 v'+d.version;s.style.background='#dcfce7';s.style.color='#166534';showDraftAction();}catch(e){alert(e.message||'기획안을 확정하지 못했습니다.');}}
 async function startDraft(){const count=(currentPlan?.sections||[]).filter(s=>s.enabled!==false).length;if(!confirm('저해상도 시안 '+count+'개를 생성할까요? 지금부터 이미지 생성 비용이 발생합니다.'))return;const btn=document.getElementById('draft-go');btn.disabled=true;begin();document.getElementById('pmsg').textContent='확정된 기획안을 생성 서버로 보내는 중…';try{const r=await fetch('/cnmaker/api/plans/'+currentProjectId+'/generate-draft',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({images:cnFiles.map(f=>f.data)})}),d=await r.json();if(!r.ok||d.error)throw new Error(d.error||'시안 생성을 시작하지 못했습니다.');job=d.job_id;poll();document.getElementById('progress').scrollIntoView({behavior:'smooth'});}catch(e){fail(e.message||'시안 생성을 시작하지 못했습니다.');btn.disabled=false;}}
-async function restoreServerPlan(){if(!currentProjectId)return;try{const r=await fetch('/cnmaker/api/plans/'+currentProjectId),d=await r.json();if(r.ok&&d.item?.plan){if(!currentPlan){currentPlan=d.item.plan;localStorage.setItem(CN_PLAN_KEY,JSON.stringify(currentPlan));}if(d.item.low_res_generated){fullEdit=true;localStorage.setItem(CN_FULL_EDIT_KEY,'1');}renderPlan();if(d.item.status==='confirmed'){const s=document.getElementById('plan-status');s.textContent='확정본 v'+d.item.version;s.style.background='#dcfce7';s.style.color='#166534';showDraftAction();}}}catch(e){}}
+async function restoreServerPlan(){if(!currentProjectId)return;try{const r=await fetch('/cnmaker/api/plans/'+currentProjectId),d=await r.json();if(r.ok&&d.item?.plan){if(!currentPlan){currentPlan=d.item.plan;localStorage.setItem(CN_PLAN_KEY,JSON.stringify(currentPlan));}ensureCheckpoints();renderPlan();if(d.item.status==='confirmed'){const s=document.getElementById('plan-status');s.textContent='확정본 v'+d.item.version;s.style.background='#dcfce7';s.style.color='#166534';showDraftAction();}}}catch(e){}}
 if(currentPlan)renderPlan();restoreServerPlan();
 function begin(){document.getElementById('go').disabled=true;document.getElementById('progress').style.display='block';document.getElementById('result').style.display='none';setStep(1);}
 function setStep(active){const nums=['','①','②','③','④'];for(let i=1;i<=4;i++){const e=document.getElementById('s'+i);e.className='step'+(i<active?' done':i===active?' active':'');e.querySelector('.ico').innerHTML=i<active?'✓':(i===active?'<span class="spin"></span>':nums[i]);}}
@@ -267,9 +269,9 @@ function poll(){timer=setInterval(()=>{fetch('/cnmaker/api/status?job='+job).the
   else if(m.includes('합성')||m.includes('대표이미지')||m.includes('완성')) setStep(4);
   if(d.status==='done'){clearInterval(timer);done(d);}else if(d.status==='error'){clearInterval(timer);fail(d.error||'처리 실패');}
 }).catch(()=>{});},2500);}
-async function unlockFullEdit(){if(!currentProjectId)return;fullEdit=true;localStorage.setItem(CN_FULL_EDIT_KEY,'1');renderPlan();try{await fetch('/cnmaker/api/plans/'+currentProjectId+'/draft-complete',{method:'POST'});}catch(e){}}
+async function markDraftComplete(){if(!currentProjectId)return;try{await fetch('/cnmaker/api/plans/'+currentProjectId+'/draft-complete',{method:'POST'});}catch(e){}}
 function done(d){for(let i=1;i<=4;i++){const e=document.getElementById('s'+i);e.className='step done';e.querySelector('.ico').textContent='✓';}
-  if(mode==='plan')unlockFullEdit();
+  if(mode==='plan')markDraftComplete();
   document.getElementById('go').disabled=false;document.getElementById('result').style.display='block';
   document.getElementById('rtitle').textContent='✅ '+(d.product_name||'완성!');
   const c=d.copy||{};
@@ -282,8 +284,14 @@ function done(d){for(let i=1;i<=4;i++){const e=document.getElementById('s'+i);e.
   document.getElementById('copybox').innerHTML=cb;
   const t=Date.now();
   const s='/cnmaker/api/result?job='+job+'&t='+t;document.getElementById('rimg').src=s;document.getElementById('dl').href=s;
+  if(mode==='plan')renderDraftReview(d,t);
   if(d.thumb){const ts='/cnmaker/api/result?job='+job+'&thumb=1&t='+t;document.getElementById('thumbbox').style.display='block';document.getElementById('thumbimg').src=ts;document.getElementById('dlthumb').href=ts;}
   document.getElementById('result').scrollIntoView({behavior:'smooth'});loadHistory();}
+function sectionText(s){return [s.title,s.body].filter(Boolean).join('\n\n');}
+function renderDraftReview(d,t){const active=(currentPlan?.sections||[]).filter(s=>s.enabled!==false);document.getElementById('copybox').style.display='none';document.getElementById('rimg').style.display='none';document.getElementById('dl').parentElement.style.display='none';document.getElementById('draft-review-list').innerHTML=active.map((s,i)=>`<div class="draft-review"><div><img src="/cnmaker/api/result?job=${job}&section=${i}&t=${t}" alt="${esc(s.type||'구간')} 저화질 미리보기"></div><div class="draft-copy"><b>${i+1}. ${esc(s.type||'상세 구간')}</b><div class="note">사진에 들어갈 글자</div><textarea oninput="updateDraftText(${i},this.value)">${esc(sectionText(s))}</textarea><div class="draft-tabs"><a href="/cnmaker/api/result?job=${job}&section=${i}&t=${t}" target="_blank">미리보기</a><button class="high" onclick="saveHighQuality(${i},this)">고화질로 저장</button></div></div></div>`).join('');}
+function updateDraftText(activeIndex,value){const sections=(currentPlan.sections||[]).filter(s=>s.enabled!==false),target=sections[activeIndex];if(!target)return;const parts=value.split(/\n\s*\n/,2);target.title=(parts.shift()||'').trim();target.body=parts.join('\n\n').trim();savePlan();}
+async function saveHighQuality(index,button){if(!confirm('이 구간을 고화질로 생성할까요? 이미지 생성 비용이 발생합니다.'))return;button.disabled=true;button.textContent='고화질 생성 중…';try{await savePlanToServer();const cr=await fetch('/cnmaker/api/plans/'+currentProjectId+'/confirm',{method:'POST'}),cd=await cr.json();if(!cr.ok)throw new Error(cd.error||'수정 문구 확정 실패');const r=await fetch('/cnmaker/api/plans/'+currentProjectId+'/sections/'+index+'/generate-high',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({images:cnFiles.map(f=>f.data)})}),d=await r.json();if(!r.ok||d.error)throw new Error(d.error||'고화질 생성을 시작하지 못했습니다.');waitHighQuality(d.job_id,button);}catch(e){alert(e.message||'고화질 생성 실패');button.disabled=false;button.textContent='고화질로 저장';}}
+function waitHighQuality(highJob,button){const highTimer=setInterval(async()=>{try{const r=await fetch('/cnmaker/api/status?job='+highJob),d=await r.json();button.textContent=d.msg||'고화질 생성 중…';if(d.status==='done'){clearInterval(highTimer);button.disabled=false;button.textContent='고화질 다운로드';button.onclick=()=>{const a=document.createElement('a');a.href='/cnmaker/api/result?job='+highJob;a.download='고화질_구간.jpg';a.click();};}else if(d.status==='error'){clearInterval(highTimer);throw new Error(d.error||'고화질 생성 실패');}}catch(e){clearInterval(highTimer);button.disabled=false;button.textContent='고화질로 저장';alert(e.message||'고화질 생성 실패');}},2500);}
 function openCnUpload(){cnDrop.scrollIntoView({behavior:'smooth',block:'center'});cnDrop.style.borderColor='#ea580c';setTimeout(()=>cnFile.click(),350);}
 function fail(msg){if(timer)clearInterval(timer);document.getElementById('go').disabled=false;const upload=String(msg||'').startsWith('UPLOAD_REQUIRED:');if(upload){msg=String(msg).slice(16);const box=document.getElementById('cn-upload-fallback');document.getElementById('cn-upload-message').textContent=msg;box.style.display='block';box.scrollIntoView({behavior:'smooth',block:'center'});}document.getElementById('err').innerHTML='<div class=err>'+esc(msg)+'</div>';}
 let _histItems=[];

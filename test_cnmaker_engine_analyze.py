@@ -82,11 +82,27 @@ class CnmakerEngineAnalyzeTest(unittest.TestCase):
                 result = server.gptmaker.run_plan_draft(plan, [str(reference)], [], str(output))
             with Image.open(output) as draft_image:
                 size = draft_image.size
+            section_output = pathlib.Path(directory) / "draft_section_0.jpg"
+            self.assertTrue(section_output.exists())
         self.assertEqual(result["section_count"], 1)
         self.assertEqual(image_api.call_count, 1)
         self.assertIn("상어, 돌고래", image_api.call_args.args[0])
         self.assertIn("여러 색상·옵션", image_api.call_args.args[0])
         self.assertEqual(size, (430, 645))
+
+    def test_generates_one_high_quality_section(self):
+        buffer = io.BytesIO()
+        Image.new("RGB", (1024, 1536), "white").save(buffer, "JPEG")
+        generated = buffer.getvalue()
+        plan = {"product": {"name": "테스트"}, "sections": [{"enabled": True, "type": "메인"}]}
+        with tempfile.TemporaryDirectory() as directory:
+            reference = pathlib.Path(directory) / "reference.jpg"
+            output = pathlib.Path(directory) / "high.jpg"
+            reference.write_bytes(generated)
+            with patch.object(server.gptmaker, "_oai_image", return_value=generated) as image_api:
+                server.gptmaker.run_plan_section_high(plan, 0, [str(reference)], [], str(output))
+            self.assertTrue(output.exists())
+            self.assertEqual(image_api.call_args.kwargs["quality"], "high")
 
 
 if __name__ == "__main__":
