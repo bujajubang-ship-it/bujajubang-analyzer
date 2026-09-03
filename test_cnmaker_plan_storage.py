@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -64,6 +65,24 @@ class CnmakerPlanStorageTest(unittest.TestCase):
             "/cnmaker/api/plans/abcdef123456/generate-draft", json={"images": []}
         )
         self.assertEqual(response.status_code, 409)
+
+    @patch.object(main, "_site_auth", return_value=True)
+    def test_draft_complete_unlocks_full_editing(self, *_):
+        with tempfile.TemporaryDirectory() as directory:
+            plan_file = Path(directory) / "plans.json"
+            plan_file.write_text(
+                '{"abcdef123456":{"id":"abcdef123456","plan":{"sections":[]}}}',
+                encoding="utf-8",
+            )
+            with patch.object(main, "CN_PLANS_FILE", plan_file), \
+                 patch.object(main, "_kv_backup_checked", return_value={"ok": True, "error": None}):
+                response = self.client.post(
+                    "/cnmaker/api/plans/abcdef123456/draft-complete"
+                )
+                loaded = json.loads(plan_file.read_text(encoding="utf-8"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(loaded["abcdef123456"]["low_res_generated"])
 
 
 class CoupangReferenceTest(unittest.IsolatedAsyncioTestCase):

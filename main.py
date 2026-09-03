@@ -4180,6 +4180,7 @@ def _cn_plan_prompt(data: dict) -> str:
 쿠팡 참고 링크: {data.get('coupang_url') or '없음'}
 판매 상품명: {direct.get('name') or '미입력'}
 색상: {direct.get('color') or '미입력'}
+색상·옵션명이 쉼표로 여러 개 입력되면 모두 실제 옵션으로 유지하고 하나로 합치지 마세요.
 사이즈: {direct.get('size') or '미입력'}
 수량·구성: {direct.get('composition') or '미입력'}
 추가 전달사항: {direct.get('notes') or '없음'}
@@ -4503,6 +4504,28 @@ async def cnmaker_generate_draft(project_id: str, request: Request):
         return JSONResponse(result, status_code=response.status_code)
     except Exception:
         return JSONResponse({"error": "시안 생성 서버에 연결하지 못했습니다."}, status_code=502)
+
+
+@app.post("/cnmaker/api/plans/{project_id}/draft-complete")
+async def cnmaker_draft_complete(project_id: str, request: Request):
+    if not _site_auth(request):
+        return JSONResponse({"error": "로그인이 필요합니다."}, status_code=401)
+    if not re.fullmatch(r"[a-f0-9]{12}", project_id):
+        return JSONResponse({"error": "기획안 번호가 올바르지 않습니다."}, status_code=400)
+    with CN_PLANS_LOCK:
+        plans = _cn_load_plans()
+        item = plans.get(project_id)
+        if not isinstance(item, dict):
+            return JSONResponse({"error": "기획안을 찾지 못했습니다."}, status_code=404)
+        item["low_res_generated"] = True
+        item["low_res_completed_at"] = datetime.now(
+            timezone(timedelta(hours=9))
+        ).strftime("%Y-%m-%d %H:%M:%S")
+        plans[project_id] = item
+        backup = _cn_save_plans(plans)
+    if not backup.get("ok"):
+        return JSONResponse({"error": "전체 편집 상태를 저장하지 못했습니다."}, status_code=502)
+    return JSONResponse({"ok": True, "low_res_generated": True})
 
 @app.get("/cnmaker")
 def cnmaker_page(request: Request):
