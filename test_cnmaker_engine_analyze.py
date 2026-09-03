@@ -31,6 +31,7 @@ class CnmakerEngineAnalyzeTest(unittest.TestCase):
         result = server.gptmaker._clean_product_title("반려동물 원형 방수매트 - 1688")
 
         self.assertEqual(result, "반려동물 원형 방수매트")
+        self.assertEqual(server.gptmaker._clean_product_title("CNINSIDER"), "")
 
     def test_detects_1688_access_denied_page(self):
         self.assertTrue(server.gptmaker._is_access_blocked("Access denied"))
