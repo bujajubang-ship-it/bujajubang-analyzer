@@ -30,6 +30,16 @@ class CnmakerEngineAnalyzeTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             server.analyze_product("not-a-url")
 
+    @patch.object(server.pipeline, "detect_source", return_value="other")
+    @patch.object(
+        server.gptmaker,
+        "login_and_scrape",
+        return_value={"title": "1688 상품", "main_imgs": ["https://example.com/1688.jpg"]},
+    )
+    def test_accepts_direct_1688_url(self, *_):
+        result = server.analyze_product("https://detail.1688.com/offer/998500353586.html")
+        self.assertEqual(result["title"], "1688 상품")
+
     def test_low_resolution_draft_uses_enabled_sections_only(self):
         buffer = io.BytesIO()
         Image.new("RGB", (1024, 1536), "white").save(buffer, "JPEG")

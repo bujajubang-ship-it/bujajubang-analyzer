@@ -140,8 +140,9 @@ def analyze_product(url):
     normalized = gptmaker.normalize_url((url or "").strip())
     if not normalized.startswith("http"):
         raise ValueError("1688 상품 링크가 필요합니다")
-    if pipeline.detect_source(normalized) != "cninsider":
-        raise ValueError("CN인사이더 상품 링크를 확인해 주세요")
+    source = pipeline.detect_source(normalized)
+    if source != "cninsider" and "1688.com/" not in normalized.lower():
+        raise ValueError("CN인사이더 또는 1688 상품 링크를 확인해 주세요")
     data = gptmaker.login_and_scrape(normalized)
     images = [src for src in data.get("main_imgs", []) if str(src).startswith("http")][:10]
     if not images:
