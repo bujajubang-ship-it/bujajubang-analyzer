@@ -15,6 +15,27 @@ import server  # noqa: E402
 
 
 class CnmakerEngineAnalyzeTest(unittest.TestCase):
+    def test_selects_lazy_loaded_1688_product_images(self):
+        items = [
+            {"src": "//cbu01.alicdn.com/img/ibank/O1CN_product_60x60.jpg", "w": 60, "h": 60},
+            {"src": "https://cbu01.alicdn.com/img/ibank/O1CN_product_400x400.jpg", "w": 400, "h": 400},
+            {"src": "https://cbu01.alicdn.com/img/ibank/O1CN_logo.jpg", "w": 500, "h": 500},
+            {"src": "https://example.com/not-a-product.jpg", "w": 800, "h": 800},
+        ]
+
+        result = server.gptmaker._select_product_image_urls(items)
+
+        self.assertEqual(result, ["https://cbu01.alicdn.com/img/ibank/O1CN_product.jpg"])
+
+    def test_cleans_1688_product_title(self):
+        result = server.gptmaker._clean_product_title("반려동물 원형 방수매트 - 1688")
+
+        self.assertEqual(result, "반려동물 원형 방수매트")
+
+    def test_detects_1688_access_denied_page(self):
+        self.assertTrue(server.gptmaker._is_access_blocked("Access denied"))
+        self.assertFalse(server.gptmaker._is_access_blocked("반려동물 원형 방수매트"))
+
     @patch.object(server.pipeline, "detect_source", return_value="cninsider")
     @patch.object(
         server.gptmaker,

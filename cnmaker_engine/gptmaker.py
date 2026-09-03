@@ -21,6 +21,97 @@ def normalize_url(url):
         if rd: return "https://www.cninsider.co.kr/mall/#"+rd
     return url
 
+def _select_product_image_urls(items):
+    """브라우저에서 모은 후보 중 1688 상품 사진으로 보이는 주소만 고른다."""
+    ranked = []
+    seen = set()
+    blocked = ("icon", "logo", "avatar", "banner", "sprite", "loading", "blank", "qr")
+    for item in items:
+        src = str(item.get("src") or "").strip().replace("\\u002F", "/")
+        if src.startswith("//"):
+            src = "https:" + src
+        if not src.startswith("http") or "alicdn" not in src.lower():
+            continue
+        clean = src.split("!!", 1)[0]
+        clean = re.sub(r"_[0-9]+x[0-9]+(?:q[0-9]+)?\.(jpg|jpeg|png|webp)$", r".\1", clean, flags=re.I)
+        key = clean.split("?", 1)[0]
+        if key in seen or any(word in key.lower() for word in blocked):
+            continue
+        width = int(item.get("w") or 0)
+        height = int(item.get("h") or 0)
+        if width and height and max(width, height) < 120:
+            continue
+        square = width and height and abs(width - height) <= max(width, height) * 0.25
+        score = (3 if square else 0) + (2 if max(width, height) >= 400 else 0)
+        if any(word in key.lower() for word in ("imgextra", "bao/uploaded", "offer")):
+            score += 2
+        seen.add(key)
+        ranked.append((score, clean))
+    ranked.sort(key=lambda pair: pair[0], reverse=True)
+    return [src for _, src in ranked[:16]]
+
+def _collect_product_images(pg):
+    """src 외 지연 로딩·srcset·배경·네트워크 이미지까지 함께 수집한다."""
+    for y in (700, 1400, 2200, 3200):
+        pg.evaluate("(y) => window.scrollTo(0, y)", y)
+        pg.wait_for_timeout(350)
+    items = pg.evaluate(r"""() => {
+        const out = [];
+        const add = (src, w=0, h=0) => {
+            if (!src) return;
+            String(src).split(',').forEach(part => {
+                const url = part.trim().split(/\s+/)[0];
+                if (url) out.push({src:url, w:Number(w)||0, h:Number(h)||0});
+            });
+        };
+        document.querySelectorAll('img').forEach(el => {
+            const w = el.naturalWidth || el.width, h = el.naturalHeight || el.height;
+            ['currentSrc','src','data-src','data-lazy-src','data-lazyload-src','data-original','srcset','data-srcset']
+                .forEach(name => add(el[name] || el.getAttribute(name), w, h));
+        });
+        document.querySelectorAll('source').forEach(el => add(el.srcset || el.getAttribute('srcset')));
+        document.querySelectorAll('[style*="background"]').forEach(el => {
+            const match = getComputedStyle(el).backgroundImage.match(/url\(["']?(.*?)["']?\)/);
+            if (match) add(match[1], el.clientWidth, el.clientHeight);
+        });
+        performance.getEntriesByType('resource')
+            .filter(entry => entry.initiatorType === 'img')
+            .forEach(entry => add(entry.name));
+        return out;
+    }""")
+    return _select_product_image_urls(items)
+
+def _clean_product_title(value):
+    title = re.sub(r"\s+", " ", str(value or "")).strip()
+    title = re.sub(r"\s*[-_|]\s*(?:1688|阿里巴巴).*$", "", title, flags=re.I)
+    return title[:200]
+
+def _is_access_blocked(title, body=""):
+    text = (str(title or "") + "\n" + str(body or "")[:1000]).lower()
+    return any(message in text for message in (
+        "access denied",
+        "访问被拒绝",
+        "页面无法访问",
+        "punish page",
+    ))
+
+def _collect_product_title(pg, body):
+    candidates = pg.evaluate(r"""() => [
+        document.querySelector('meta[property="og:title"]')?.content,
+        document.querySelector('meta[name="title"]')?.content,
+        document.querySelector('h1')?.innerText,
+        document.title
+    ].filter(Boolean)""")
+    for candidate in candidates:
+        title = _clean_product_title(candidate)
+        if len(title) >= 8:
+            return title
+    for line in body.split("\n"):
+        title = _clean_product_title(line)
+        if len(title) > 20 and re.search("[가-힣一-龥]", title):
+            return title
+    return ""
+
 def _solve_captcha(b64, mime):
     """캡차 판독 (Claude). 한글 설명 섞여도 영숫자만 추출."""
     txt=P._claude([{"type":"text","text":"이 이미지에 보이는 글자와 숫자를 그대로 읽어줘. 빨간 글씨이고 사선 노이즈가 있어. 추측이라도 4자 내외로 답해. 영문 대소문자와 숫자만."},
@@ -84,20 +175,16 @@ def login_and_scrape(url):
             pg.wait_for_timeout(4000)
         # 스크랩
         body=pg.inner_text("body")
-        imgs=pg.eval_on_selector_all("img","els=>els.map(e=>({w:e.naturalWidth,h:e.naturalHeight,src:e.src}))")
-        main=[]; seen=set()
-        for i in imgs:
-            src=i.get('src','')
-            if not src.startswith("http") or 'alicdn' not in src: continue
-            key=src.split('!!')[0]
-            if i['w']>=400 and abs(i['w']-i['h'])<60 and key not in seen:
-                seen.add(key); main.append(src)
-        title=""
-        for line in body.split("\n"):
+        main=_collect_product_images(pg)
+        title=_collect_product_title(pg, body)
+        if _is_access_blocked(title, body):
+            b.close()
+            raise RuntimeError("1688 direct access blocked; use a CN Insider link or uploaded images")
+        for line in []:
             if len(line)>20 and re.search("[가-힣]",line) and not any(x in line for x in ["CN인사이더","장바구니","고객","로그인","멤버","공지","환영"]):
                 title=line.strip(); break
         b.close()
-        return {"title":title, "main_imgs":main[:16]}
+        return {"title":title, "main_imgs":main}
 
 # ---------- OpenAI 이미지 생성 ----------
 def _oai_image(prompt, ref_imgs_b64=None, size="1024x1536", quality="high"):
