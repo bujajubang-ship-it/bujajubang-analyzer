@@ -4410,7 +4410,7 @@ async def cnmaker_plan(request: Request):
         content.append({
             "type": "input_image",
             "image_url": f"data:{match.group(1)};base64,{match.group(2)}",
-            "detail": "high",
+            "detail": "auto",
         })
     if total_image_bytes > 25 * 1024 * 1024:
         return JSONResponse({"error": "이미지 전체 용량을 25MB 이하로 줄여주세요."}, status_code=413)
@@ -4429,7 +4429,7 @@ async def cnmaker_plan(request: Request):
                 content.append({
                     "type": "input_image",
                     "image_url": f"data:{media_type};base64,{base64.b64encode(image_bytes).decode()}",
-                    "detail": "high",
+                    "detail": "auto",
                 })
             except Exception:
                 continue
