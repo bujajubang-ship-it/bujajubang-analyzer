@@ -111,7 +111,7 @@ button.go:disabled{background:#d1a0a3;cursor:not-allowed}
        <span>📦 <b>기타 제품</b> <span style="color:#9ca3af;font-size:12px">(원본 톤 살려 색만 변형, 로고 없음)</span></span>
      </label>
    </div>
-   <button class="go" id="go" onclick="go()" style="margin-top:14px">제품 분석·글·이미지 컷 기획하기 →</button>
+   <button class="go" id="go" onclick="go()" style="margin-top:14px">저해상도 이미지 만들기 →</button>
    <div id="err"></div>
  </div>
 
@@ -138,6 +138,7 @@ button.go:disabled{background:#d1a0a3;cursor:not-allowed}
    <div class="step" id="s1"><span class="ico">①</span> <span id="l1">확정 기획안과 제품사진 전송</span></div>
    <div class="step" id="s2"><span class="ico">②</span> <span id="l2">저해상도 이미지 생성 준비</span></div>
    <div class="step" id="s3"><span class="ico">③</span> <span id="l3">완성된 구간 표시 및 저장</span></div>
+   <div class="step" id="s4"><span class="ico">④</span> <span id="l4">저해상도 이미지 생성</span></div>
    <div class="note" id="pmsg" style="margin-top:10px"></div>
  </div>
 
@@ -178,7 +179,7 @@ document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
   document.getElementById('urlmode').style.display = mode==='url'?'':'none';
   document.getElementById('imgmode').style.display = mode==='img'?'':'none';
   document.getElementById('category-options').style.display = mode==='plan'?'none':'flex';
-  document.getElementById('go').textContent = mode==='plan'?'저해상도 시안 만들기 →':'상세페이지 만들기 🚀';
+  document.getElementById('go').textContent = mode==='plan'?'저해상도 이미지 만들기 →':'상세페이지 만들기 🚀';
   document.getElementById('urlnote').textContent = NOTES[src]||'';
   document.getElementById('l1').textContent = mode==='url'?'상품 수집':'이미지 분석';
 });
@@ -212,7 +213,7 @@ function renderRefThumbs(){document.getElementById('ref-thumbs').innerHTML=refFi
 
 const draftIds=['cn-url1688','cn-name','cn-color','cn-size','cn-composition'];
 function saveDraft(){const d={};draftIds.forEach(id=>d[id]=document.getElementById(id).value);localStorage.setItem(CN_DRAFT_KEY,JSON.stringify(d));const el=document.getElementById('autosave');el.textContent='자동 저장됨';}
-function loadDraft(){try{const d=JSON.parse(localStorage.getItem(CN_DRAFT_KEY)||'{}');draftIds.forEach(id=>document.getElementById(id).value=d[id]||'');currentPlan=JSON.parse(localStorage.getItem(CN_PLAN_KEY)||'null');currentProjectId=localStorage.getItem(CN_PROJECT_KEY)||'';}catch(e){}}
+function loadDraft(){localStorage.removeItem(CN_DRAFT_KEY);localStorage.removeItem(CN_PLAN_KEY);localStorage.removeItem(CN_PROJECT_KEY);draftIds.forEach(id=>document.getElementById(id).value='');currentPlan=null;currentProjectId='';cnFiles=[];refFiles=[];}
 draftIds.forEach(id=>document.getElementById(id).addEventListener('input',()=>{document.getElementById('autosave').textContent='저장 중…';clearTimeout(window._draftTimer);window._draftTimer=setTimeout(saveDraft,300);}));
 loadDraft();
 // 파일 업로드
@@ -248,9 +249,10 @@ function go(){
 function cnPayload(){return {url1688:document.getElementById('cn-url1688').value.trim(),image_count:cnFiles.length,images:cnFiles.map(f=>f.data),style_images:refFiles.map(f=>f.data),product:{name:document.getElementById('cn-name').value.trim(),color:document.getElementById('cn-color').value.trim(),size:document.getElementById('cn-size').value.trim(),composition:document.getElementById('cn-composition').value.trim()}};}
 async function createPlan(){
   const body=cnPayload();if(!body.url1688.startsWith('http'))return fail('CN인사이더 상품 링크를 넣어주세요.');
-  if(!confirm('제품 분석 → 글 기획 → 이미지 컷 기획을 진행할까요? 아직 이미지는 생성하지 않습니다.'))return;
-  saveDraft();begin();document.getElementById('go').textContent='제품·참고 이미지 분석 중…';document.getElementById('err').innerHTML='';document.getElementById('pmsg').textContent='제품 분석, 글 기획, 이미지 컷 기획을 순서대로 진행하는 중…';document.getElementById('progress').scrollIntoView({behavior:'smooth'});
-  try{const r=await fetch('/cnmaker/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(!r.ok||d.error)throw new Error(d.error||'기획을 만들지 못했습니다.');currentPlan=d.plan;currentProjectId=d.project_id||'';ensureCheckpoints();if(currentProjectId)localStorage.setItem(CN_PROJECT_KEY,currentProjectId);localStorage.setItem(CN_PLAN_KEY,JSON.stringify(currentPlan));document.getElementById('progress').style.display='none';document.getElementById('go').disabled=false;document.getElementById('go').textContent='제품 분석·글·이미지 컷 기획하기 →';renderPlan();document.getElementById('plan').scrollIntoView({behavior:'smooth'});}catch(e){fail(e.message||'기획을 만들지 못했습니다.');document.getElementById('go').disabled=false;document.getElementById('go').textContent='제품 분석·글·이미지 컷 기획하기 →';}
+  if(!confirm('제품 분석부터 저해상도 이미지 생성까지 진행할까요? 이미지 생성 비용이 발생합니다.'))return;
+  saveDraft();begin();document.getElementById('go').textContent='제품 분석 중…';document.getElementById('err').innerHTML='';document.getElementById('pmsg').textContent='CN인사이더와 제품 상세사진을 분석하는 중…';document.getElementById('progress').scrollIntoView({behavior:'smooth'});
+  const planningStages=[setTimeout(()=>{setStep(2);document.getElementById('go').textContent='글 기획 중…';document.getElementById('pmsg').textContent='확인된 제품 정보로 상세페이지 문구를 기획하는 중…';},18000),setTimeout(()=>{setStep(3);document.getElementById('go').textContent='이미지 컷 기획 중…';document.getElementById('pmsg').textContent='구간별 이미지 컷과 문구 여백을 기획하는 중…';},45000)];
+  try{const r=await fetch('/cnmaker/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});planningStages.forEach(clearTimeout);const d=await r.json();if(!r.ok||d.error)throw new Error(d.error||'기획을 만들지 못했습니다.');currentPlan=d.plan;currentProjectId=d.project_id||'';ensureCheckpoints();if(currentProjectId)localStorage.setItem(CN_PROJECT_KEY,currentProjectId);localStorage.setItem(CN_PLAN_KEY,JSON.stringify(currentPlan));const cr=await fetch('/cnmaker/api/plans/'+currentProjectId+'/confirm',{method:'POST'}),cd=await cr.json();if(!cr.ok)throw new Error(cd.error||'내부 기획 확정 실패');setStep(4);await startDraft(true);}catch(e){planningStages.forEach(clearTimeout);fail(e.message||'저해상도 이미지를 시작하지 못했습니다.');document.getElementById('go').disabled=false;document.getElementById('go').textContent='저해상도 이미지 만들기 →';}
 }
 function esc(v){return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');}
 const productLabels={name:'판매 상품명',summary:'제품 소개',material:'소재',color:'색상 혹은 옵션',size:'크기',composition:'구성',usage:'사용법',caution:'주의사항'};
@@ -277,23 +279,23 @@ async function confirmPlan(){if(!currentProjectId)return alert('먼저 텍스트
 async function startDraft(autoStart=false){const count=(currentPlan?.sections||[]).filter(s=>s.enabled!==false).length;if(!autoStart&&!confirm('저해상도 시안 '+count+'개를 생성할까요? 지금부터 이미지 생성 비용이 발생합니다.'))return;const btn=document.getElementById('draft-go');btn.disabled=true;if(!autoStart)begin();document.getElementById('draft-review-list').innerHTML='';document.getElementById('pmsg').textContent='제품사진과 참고사진을 역할별로 구분해 생성 서버로 보내는 중…';try{const r=await fetch('/cnmaker/api/plans/'+currentProjectId+'/generate-draft',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({images:cnFiles.map(f=>f.data),style_images:refFiles.map(f=>f.data)})}),d=await r.json();if(!r.ok||d.error)throw new Error(d.error||'시안 생성을 시작하지 못했습니다.');job=d.job_id;document.getElementById('go').textContent='저해상도 이미지 생성 중…';poll();document.getElementById('progress').scrollIntoView({behavior:'smooth'});}catch(e){fail(e.message||'시안 생성을 시작하지 못했습니다.');btn.disabled=false;throw e;}}
 async function restoreServerPlan(){if(!currentProjectId)return;try{const r=await fetch('/cnmaker/api/plans/'+currentProjectId),d=await r.json();if(r.ok&&d.item?.plan){if(!currentPlan){currentPlan=d.item.plan;localStorage.setItem(CN_PLAN_KEY,JSON.stringify(currentPlan));}ensureCheckpoints();renderPlan();if(d.item.status==='confirmed'){const s=document.getElementById('plan-status');s.textContent='확정본 v'+d.item.version;s.style.background='#dcfce7';s.style.color='#166534';showDraftAction();}}}catch(e){}}
 if(currentPlan)renderPlan();restoreServerPlan();
-function begin(){document.getElementById('go').disabled=true;document.getElementById('progress').style.display='block';document.getElementById('result').style.display='none';if(mode==='plan'){document.getElementById('plan').style.display='none';document.getElementById('l1').textContent='상품자료 수집 및 내부 기획';document.getElementById('l2').textContent='저해상도 이미지 생성 준비';document.getElementById('l3').textContent='완성된 구간 표시 및 저장';}else{document.getElementById('l1').textContent='상품정보 수집';document.getElementById('l2').textContent='상세페이지 이미지 생성';document.getElementById('l3').textContent='결과 표시 및 저장';}setStep(1);}
-function setStep(active){const nums=['','①','②','③'];for(let i=1;i<=3;i++){const e=document.getElementById('s'+i);e.className='step'+(i<active?' done':i===active?' active':'');e.querySelector('.ico').innerHTML=i<active?'✓':(i===active?'<span class="spin"></span>':nums[i]);}}
+function begin(){document.getElementById('go').disabled=true;document.getElementById('progress').style.display='block';document.getElementById('result').style.display='none';if(mode==='plan'){document.getElementById('plan').style.display='none';document.getElementById('l1').textContent='제품 분석';document.getElementById('l2').textContent='글 기획';document.getElementById('l3').textContent='이미지 컷 기획';document.getElementById('l4').textContent='저해상도 이미지 생성';}else{document.getElementById('l1').textContent='상품정보 수집';document.getElementById('l2').textContent='상세페이지 이미지 생성';document.getElementById('l3').textContent='결과 표시 및 저장';document.getElementById('s4').style.display='none';}setStep(1);}
+function setStep(active){const nums=['','①','②','③','④'];const max=mode==='plan'?4:3;for(let i=1;i<=max;i++){const e=document.getElementById('s'+i);e.style.display='';e.className='step'+(i<active?' done':i===active?' active':'');e.querySelector('.ico').innerHTML=i<active?'✓':(i===active?'<span class="spin"></span>':nums[i]);}}
 function poll(){timer=setInterval(()=>{fetch('/cnmaker/api/status?job='+job).then(r=>r.json()).then(d=>{
   const m=d.msg||'';document.getElementById('pmsg').textContent=m;
   if(d.status==='unknown'){clearInterval(timer);return fail('생성 작업을 찾지 못했습니다. 새로고침 후 다시 시작해 주세요.');}
   if(mode==='plan'){
     const total=(currentPlan?.sections||[]).filter(s=>s.enabled!==false).length,ready=d.ready_sections?.length||0;
-    if(d.status==='done'){document.getElementById('l2').textContent='저해상도 이미지 생성 ('+total+'/'+total+' 완료)';setStep(3);}
-    else{document.getElementById('l2').textContent='저해상도 이미지 생성 ('+ready+'/'+total+' 완료)';setStep(2);}
+    if(d.status==='done'){document.getElementById('l4').textContent='저해상도 이미지 생성 ('+total+'/'+total+' 완료)';setStep(4);}
+    else{document.getElementById('l4').textContent='저해상도 이미지 생성 ('+ready+'/'+total+' 완료)';setStep(4);}
     if(ready)renderDraftReview(d,Date.now(),d.ready_sections);
   }else if(m.includes('스크래핑')||m.includes('로그인')||m.includes('캡차')||m.includes('분석')||m.includes('시작'))setStep(1);else setStep(2);
   if(d.status==='done'){clearInterval(timer);done(d);}else if(d.status==='error'){clearInterval(timer);fail(d.error||'처리 실패');}
 }).catch(()=>{});},2500);}
 async function markDraftComplete(){if(!currentProjectId)return;try{await fetch('/cnmaker/api/plans/'+currentProjectId+'/draft-complete',{method:'POST'});}catch(e){}}
-function done(d){for(let i=1;i<=3;i++){const e=document.getElementById('s'+i);e.className='step done';e.querySelector('.ico').textContent='✓';}
+function done(d){for(let i=1;i<=(mode==='plan'?4:3);i++){const e=document.getElementById('s'+i);e.className='step done';e.querySelector('.ico').textContent='✓';}
   if(mode==='plan')markDraftComplete();
-  document.getElementById('go').disabled=false;document.getElementById('go').textContent=mode==='plan'?'저해상도 시안 만들기 →':'상세페이지 만들기 🚀';document.getElementById('result').style.display='block';
+  document.getElementById('go').disabled=false;document.getElementById('go').textContent=mode==='plan'?'저해상도 이미지 만들기 →':'상세페이지 만들기 🚀';document.getElementById('result').style.display='block';
   document.getElementById('rtitle').textContent='✅ '+(d.product_name||'완성!');
   const c=d.copy||{};
   let cb='';
