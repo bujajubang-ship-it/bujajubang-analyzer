@@ -4221,7 +4221,7 @@ sections는 반드시 다음 11개 순서로 작성하세요: 메인 배너, 제
 CHECK POINT 02 상세, CHECK POINT 03 상세, CHECK POINT 04 상세, PRODUCT INFO.
 각 section의 image_prompt에는 보여줄 제품 부위, 사용 상황, 인물 유무, 촬영 거리와 각도를 구체적으로 작성하세요.
 네 개의 체크포인트 상세 장면은 서로 다른 기능과 서로 다른 구도여야 하며 같은 이미지를 반복하지 마세요.
-기능 수가 부족한 상세 구간은 enabled를 false로 설정하세요."""
+11개 구간은 모두 enabled를 true로 설정하세요. 확인된 체크포인트가 3개뿐이면 CHECK POINT 04는 제품의 추가 활용 장면으로 작성하세요."""
 
 
 async def _cn_collect_product(url: str, allow_uploaded_fallback: bool = False) -> dict:

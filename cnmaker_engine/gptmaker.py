@@ -33,6 +33,17 @@ def _section_size(section_index, low=False):
     return (width // 2, height // 2) if low else (width, height)
 
 
+def _template_index(section, fallback_index):
+    """Keep template identity stable even when earlier sections are disabled."""
+    try:
+        number = int(section.get("number"))
+        if 1 <= number <= 11:
+            return number - 1
+    except (TypeError, ValueError, AttributeError):
+        pass
+    return fallback_index
+
+
 def _wrap_text(draw, text, font, max_width, max_lines=4):
     words = list(str(text or "").replace("\n", " ").strip())
     lines, current = [], ""
@@ -603,6 +614,7 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None,
     def generate_section(item):
         nonlocal completed
         index, section = item
+        template_index = _template_index(section, index)
         layout_notes = [
             "[메인 배너, 860×1920] 실제 제품을 착용하거나 사용하는 감성적인 대표 장면을 크게 보여주세요. 사람의 손, 착용한 다리, 실제 사용 모습처럼 사람이 조금이라도 나오는 장면이 좋습니다. 제품 형태는 상품 링크 사진과 동일하게 유지하되 색상과 옵션은 입력된 내용만 따르세요. 제품이 가장 먼저 보이게 하고 상단 중앙 35%는 보조문구·상품명·짧은 체크포인트 3개가 한 줄로 들어갈 수 있도록 깨끗하고 단순하게 비우세요.",
             "[제품 사용 만족도 설명, 860×860] 화면 중앙에 영문 보조제목, 실제 사용 시 만족할 수 있는 점, 제품 기획 시 고려한 점이 들어갈 넓고 단정한 여백을 만드세요. 배경은 미니멀한 단색 또는 은은한 질감으로 구성하세요.",
@@ -616,15 +628,16 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None,
             "[CHECK POINT 04 상세] 네 번째 체크포인트 또는 추가 활용법을 보여주는 제품 상세 컷과 실제 사용 장면을 구성하세요. 앞 구간들과 중복되지 않는 장소·포즈·카메라 각도를 사용하세요. 상단 30%는 제목과 설명용으로 깨끗하게 비우세요.",
             "[PRODUCT INFO] 제품의 전체 형태·구성품·색상 옵션을 한눈에 확인할 수 있는 깔끔한 누끼형 또는 정돈된 제품 사진을 화면 상단 중앙 영역에 배치하세요. 여러 실제 색상이 있으면 빠짐없이 모두 보여주세요. 최상단은 PRODUCT INFO 제목용, 화면 아래쪽 절반은 제품명·소재·색상·크기·구성·사용법·주의사항용으로 완전히 비우세요.",
         ]
-        rating_rule = "후기 상세 구간의 각 카드 왼쪽 위에 지정된 노란색 별 5개만 허용합니다." if index == 3 else "별점도 넣지 마세요."
+        rating_rule = "후기 상세 구간의 각 카드 왼쪽 위에 지정된 노란색 별 5개만 허용합니다." if template_index == 3 else "별점도 넣지 마세요."
         prompt = f"""CN인사이더 상품 링크 속 이미지와 참고 이미지를 바탕으로, 제품 상세사진의 실제 제품을 사용한 한국 쇼핑몰 상세페이지 배경 장면을 만드세요.
 제품명: {product.get('name') or '상품'}
 구간: {section.get('type') or section.get('number')}
-이미지 계획: {section.get('image_prompt') or section.get('body') or ''}
+추가 제품 컷 세부사항: {section.get('image_prompt') or section.get('body') or ''}
 실제 색상·옵션명: {option_names}
 배경색: {palette.get('background') or '아이보리'}
 포인트색: {palette.get('accent') or '차콜'}
-템플릿 배치: {layout_notes[min(index, len(layout_notes)-1)]}
+템플릿 배치: {layout_notes[min(template_index, len(layout_notes)-1)]}
+추가 제품 컷 세부사항이 구간의 목적이나 템플릿 배치와 충돌하면 반드시 템플릿 배치를 우선하세요.
 템플릿은 사진 영역과 문구 여백의 위치만 참고하세요. 안내용 검은 박스, 검은 테두리, 초록색 표시, 샘플 풍경, 임시 도형은 절대 따라 만들지 마세요.
 절대 규칙: 이미지 안에 글자, 숫자, 로고, 워터마크, 가짜 리뷰를 넣지 마세요. {rating_rule}
 제품의 색상, 형태, 구조, 구성품 수량을 바꾸지 마세요. 세로형 모바일 구도, 차분한 저채도 배경."""
@@ -638,13 +651,13 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None,
 여러 색상·옵션이 입력되었습니다. 첨부된 서로 다른 옵션의 실제 제품 사진을 구간마다 번갈아 참고하고,
 전체 상세페이지에는 입력된 여러 옵션이 고르게 등장하게 하세요. 한 제품에 옵션을 임의로 합치거나
 첨부 사진에 없는 색상·무늬·형태를 새로 만들지 마세요."""
-        raw = _oai_image(prompt, ref_imgs_b64=generation_refs, size="1024x1024" if index == 1 else "1024x1536", quality="low")
+        raw = _oai_image(prompt, ref_imgs_b64=generation_refs, size="1024x1024" if template_index == 1 else "1024x1536", quality="low")
         image = Image.open(io.BytesIO(raw)).convert("RGB")
-        image = image.resize(_section_size(index, low=True), Image.LANCZOS)
-        image = compose_plan_text(image, plan, section, index)
+        image = image.resize(_section_size(template_index, low=True), Image.LANCZOS)
+        image = compose_plan_text(image, plan, section, template_index)
         section_path = os.path.splitext(out_path)[0] + f"_section_{index}.jpg"
         base_path = os.path.splitext(out_path)[0] + f"_section_{index}_base.jpg"
-        Image.open(io.BytesIO(raw)).convert("RGB").resize(_section_size(index, low=True), Image.LANCZOS).save(base_path, "JPEG", quality=84)
+        Image.open(io.BytesIO(raw)).convert("RGB").resize(_section_size(template_index, low=True), Image.LANCZOS).save(base_path, "JPEG", quality=84)
         image.save(section_path, "JPEG", quality=84)
         if on_section:
             on_section(index, section_path)
@@ -676,7 +689,8 @@ def recompose_plan_section(job_base_path, plan, section_index, show_text=True):
         raise FileNotFoundError("글자 없는 원본 시안을 찾지 못했습니다")
     image = Image.open(base_path).convert("RGB")
     if show_text:
-        image = compose_plan_text(image, plan, sections[section_index], section_index)
+        template_index = _template_index(sections[section_index], section_index)
+        image = compose_plan_text(image, plan, sections[section_index], template_index)
     image.save(output_path, "JPEG", quality=84)
     return output_path
 
@@ -700,6 +714,7 @@ def run_plan_section_high(plan, section_index, image_paths, reference_urls, out_
         raise RuntimeError("고화질 생성에 필요한 제품 사진이 없습니다")
     generation_refs = product_refs + style_refs
     product, palette, section = plan.get("product") or {}, plan.get("palette") or {}, sections[section_index]
+    template_index = _template_index(section, section_index)
     prompt = f"""첨부 사진의 실제 제품을 그대로 유지한 한국 쇼핑몰 상세페이지 배경 장면을 만드세요.
 제품명: {product.get('name') or '상품'}
 구간: {section.get('type') or section.get('number')}
@@ -713,10 +728,10 @@ def run_plan_section_high(plan, section_index, image_paths, reference_urls, out_
         prompt += f"""
 첨부 이미지 중 앞의 {len(product_refs)}장은 제품 기준사진으로 제품을 동일하게 유지하세요.
 뒤의 {len(style_refs)}장은 연출 참고용입니다. 인물 얼굴·모델·포즈·몸 방향·카메라 각도·의상·소품·배경·구도를 복제하지 말고 명확히 다른 독창적인 장면을 만드세요."""
-    raw = _oai_image(prompt, ref_imgs_b64=generation_refs, size="1024x1024" if section_index == 1 else "1024x1536", quality=quality)
-    image = Image.open(io.BytesIO(raw)).convert("RGB").resize(output_size or _section_size(section_index), Image.LANCZOS)
+    raw = _oai_image(prompt, ref_imgs_b64=generation_refs, size="1024x1024" if template_index == 1 else "1024x1536", quality=quality)
+    image = Image.open(io.BytesIO(raw)).convert("RGB").resize(output_size or _section_size(template_index, low=quality != "high"), Image.LANCZOS)
     if compose_text:
-        image = compose_plan_text(image, plan, section, section_index)
+        image = compose_plan_text(image, plan, section, template_index)
     image.save(out_path, "JPEG", quality=92 if quality == "high" else 84)
     return {"product_name": product.get("name") or "상품"}
 
