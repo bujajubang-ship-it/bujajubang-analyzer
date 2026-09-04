@@ -107,8 +107,8 @@ def _prepare_text_safe_layout(image, section_index):
     y = lambda value: int(value * sy)
     background = _background_color(source)
     canvas = Image.new("RGB", source.size, background)
-    if section_index == 0:          # hero: copy top, product bottom
-        _paste_photo(canvas, source, (0, y(430), width, height))
+    if section_index == 0:          # hero: full-bleed photo; generator reserves a quiet copy area
+        return ImageOps.fit(source, source.size, method=Image.LANCZOS, centering=(0.5, 0.5))
     elif section_index == 1:        # editorial introduction: copy only
         return canvas
     elif section_index == 2:        # review banner
@@ -679,7 +679,7 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None,
         index, section = item
         template_index = _template_index(section, index)
         layout_notes = [
-            "[메인 배너, 860×1290] 실제 제품을 착용하거나 사용하는 감성적인 대표 장면을 크게 보여주세요. 사람의 손, 착용한 다리, 실제 사용 모습처럼 사람이 조금이라도 나오는 장면이 좋습니다. 제품 형태는 상품 링크 사진과 동일하게 유지하되 색상과 옵션은 입력된 내용만 따르세요. 제품이 가장 먼저 보이게 하고 상단 중앙 35%는 보조문구·상품명·짧은 체크포인트 3개가 한 줄로 들어갈 수 있도록 깨끗하고 단순하게 비우세요.",
+            "[메인 배너, 860×1290] 실제 제품을 착용하거나 사용하는 감성적인 대표 장면을 크게 보여주세요. 사람의 손, 착용한 다리, 실제 사용 모습처럼 사람이 조금이라도 나오는 장면이 좋습니다. 제품 형태는 상품 링크 사진과 동일하게 유지하되 색상과 옵션은 입력된 내용만 따르세요. 사진과 배경은 위에서 아래까지 화면 전체를 빈틈없이 채우는 하나의 연속된 장면이어야 합니다. 상단과 하단을 서로 다른 색면으로 나누거나 가로 경계선, 띠, 별도 패널, 접합부를 만들지 마세요. 제품이 가장 먼저 보이게 하고 상단 중앙 35%에는 보조문구·상품명·짧은 체크포인트 3개가 들어가므로, 같은 사진 배경을 자연스럽게 이어가면서 제품·인물·소품만 배치하지 않은 깨끗한 네거티브 스페이스로 비우세요.",
             "[제품 소개, 860×860] 이 구간에는 제품 사진, 제품 실루엣, 인물, 신체, 손, 착용 장면, 사용 장면, 소품을 절대 넣지 마세요. 밝은 화이트·아이보리 계열의 미니멀한 단색 또는 매우 은은한 종이 질감 배경만 만드세요. 화면 중앙에는 짧은 영문 소제목과 3~4줄의 한국어 제품 소개 문구가 들어갈 수 있도록 넓고 단정한 빈 공간을 확보하세요. 영문 소제목 위아래의 가는 수평선이 들어갈 공간을 고려하되 선이나 글자는 이미지 AI가 직접 만들지 마세요. 전체 분위기는 오른쪽 예시처럼 차분하고 고급스러운 편집 디자인이어야 합니다.",
             "[제품 후기 배너] 제품만 단독으로 선명하고 크게 보여주고 배경은 은은한 단색으로 구성하세요. 실제 옵션이 여러 개면 모두 함께 정돈해 보여주세요. 제품은 화면 중앙부터 아래쪽에 배치하고, 상단 오른쪽은 짧은 보조문구와 큰 후기 제목용으로 비우세요. 불필요한 소품은 최소화하세요.",
             "[제품 후기 상세내용] 2열×2행의 네 개 후기 카드에 사용할 서로 다른 실제 사용 장면 4컷을 한 화면에 구성하세요. 네 장면은 각각 체크포인트 1·2·3·4의 장점을 보여주고 실제 고객이 직접 촬영한 듯 자연스러워야 합니다. 같은 사진·포즈·카메라 각도를 반복하지 마세요. 각 카드 아래쪽 약 25%는 후기 제목과 짧은 설명용으로 비우고 각 카드 왼쪽 위에는 노란색 별 5개만 표시하세요. 글자·검은 박스·카드 테두리는 생성하지 마세요.",
