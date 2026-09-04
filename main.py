@@ -4252,6 +4252,25 @@ def _cn_copy_plan_prompt(data: dict, product_analysis: dict, reference_analysis:
 제품 분석: {json.dumps(product_analysis, ensure_ascii=False)}
 참고자료의 글 사용 방식 분석: {json.dumps(reference_analysis, ensure_ascii=False)}
 판매상품명, 제품소개, 체크포인트 3~4개와 각 상세 설명, 후기 형식의 장점 문구, 만족도 설명, 사용법, 주의사항, 11개 구간별 실제 삽입 문구를 작성하세요.
+1번 메인 배너의 body는 제품 사양을 나열하지 말고 사용자가 얻는 핵심 이점을 자연스러운 한국어 한 문장으로 작성하세요.
+메인 배너 보조문구는 약 10~20자로 짧게 쓰고 한 줄을 넘기지 마세요. 색상·옵션·구성·FREE 사이즈 같은 정보는 넣지 마세요.
+문체 예시: '어떤 스포츠에도 다리를 잘 잡아주는', '하루종일 신어도 편안한', '부위별 설계로 하루종일 편안하게'. 제품에 실제로 확인된 장점에 맞춰 새로 작성하세요.
+메인 배너 체크포인트명은 각각 3~6글자의 짧은 표현으로 작성하고, 사양을 길게 연결한 문장으로 쓰지 마세요.
+2번 제품 소개 구간의 title은 제품 장점을 함축한 자연스러운 영문 2~3단어로 작성하세요. 예: 'active support'.
+2번 제품 소개 구간의 body는 제품의 핵심 만족도와 체크포인트를 한국어 3~4줄로 간결하게 작성하세요. 각 줄은 짧고 읽기 쉬워야 하며 색상·구성만 나열하지 마세요.
+sections의 number와 type은 아래 순서를 절대 바꾸지 마세요:
+1 메인 배너 — title은 판매상품명, body는 짧은 효익형 보조문구
+2 제품 소개 — title은 영문 2~3단어, body는 제품 만족도와 기획 의도
+3 제품 후기 배너 — title은 '고객님들이 들려준 사용 후기', body는 '이런 점에 만족했어요'와 같은 짧은 도입
+4 제품 후기 상세내용 — title은 후기 영역 제목, body는 체크포인트 1~4를 각각 자연스럽게 칭찬하는 네 개의 후기형 문구
+5 체크포인트 배너 — title은 '타사 제품과 무엇이 다를까요?', body는 짧은 도입
+6 체크포인트 4개 정리 — title은 '가득 담았습니다', body는 체크포인트 1~4의 이름과 설명
+7 CHECK POINT 01 상세 — 첫 번째 체크포인트의 제목과 상세 설명
+8 CHECK POINT 02 상세 — 두 번째 체크포인트의 제목과 상세 설명
+9 CHECK POINT 03 상세 — 세 번째 체크포인트의 제목과 상세 설명
+10 CHECK POINT 04 상세 — 네 번째 체크포인트 또는 추가 활용 장면의 제목과 설명
+11 PRODUCT INFO — 확인된 제품 정보만 정리
+3번 제품 후기 배너에 CHECK POINT 문구를 넣지 말고, 7~10번 이외 구간을 CHECK POINT 상세로 작성하지 마세요.
 확인되지 않은 정보는 '확인 필요'로 표시하세요. JSON만 출력하세요:
 {{"product":{{"name":"","summary":"","material":"","color":"","size":"","composition":"","usage":"","caution":""}},"features":[{{"title":"","detail":""}}],"sections":[{{"number":1,"type":"메인 배너","enabled":true,"title":"실제 삽입 제목","body":"실제 삽입 본문"}}],"warnings":[]}}"""
 
@@ -4264,7 +4283,7 @@ def _cn_cut_plan_prompt(copy_plan: dict, product_analysis: dict, reference_analy
 제품 분석: {json.dumps(product_analysis, ensure_ascii=False)}
 참고 이미지 분석: {json.dumps(reference_analysis, ensure_ascii=False)}
 글 기획: {json.dumps(copy_plan, ensure_ascii=False)}
-순서는 메인 배너, 제품 사용 만족도 설명, 제품 후기 배너, 제품 후기 상세내용, 체크포인트 배너, 체크포인트 4개 정리, CHECK POINT 01~04 상세, PRODUCT INFO입니다.
+순서는 메인 배너, 제품 소개, 제품 후기 배너, 제품 후기 상세내용, 체크포인트 배너, 체크포인트 4개 정리, CHECK POINT 01~04 상세, PRODUCT INFO입니다.
 JSON만 출력하세요: {{"sections":[{{"number":1,"image_prompt":"목적; 장면; 보조 컷; 카메라; 인물; 배경·소품; 문구 여백"}}]}}"""
 
 
@@ -4273,6 +4292,13 @@ def _cn_json_result(raw: str) -> dict:
     if not match:
         raise ValueError("JSON 응답 없음")
     return json.loads(match.group(0))
+
+
+CN_SECTION_TYPES = [
+    "메인 배너", "제품 소개", "제품 후기 배너", "제품 후기 상세내용", "체크포인트 배너",
+    "체크포인트 4개 정리", "CHECK POINT 01 상세", "CHECK POINT 02 상세",
+    "CHECK POINT 03 상세", "CHECK POINT 04 상세", "PRODUCT INFO",
+]
 
 
 async def _cn_collect_product(url: str, allow_uploaded_fallback: bool = False) -> dict:
@@ -4509,12 +4535,25 @@ async def cnmaker_plan(request: Request):
             {"type": "input_text", "text": _cn_cut_plan_prompt(copy_plan, product_analysis, reference_analysis)}
         ]))
         plan = copy_plan
-        copy_sections = plan.get("sections") or []
+        raw_copy_sections = plan.get("sections") or []
+        by_number = {}
+        for index, section in enumerate(raw_copy_sections):
+            if isinstance(section, dict):
+                try:
+                    number = int(section.get("number") or index + 1)
+                except (TypeError, ValueError):
+                    number = index + 1
+                if 1 <= number <= 11 and number not in by_number:
+                    by_number[number] = section
+        copy_sections = []
+        for number, expected_type in enumerate(CN_SECTION_TYPES, 1):
+            section = by_number.get(number, {})
+            copy_sections.append({**section, "number": number, "type": expected_type, "enabled": True,
+                                  "title": str(section.get("title") or "확인 필요"),
+                                  "body": str(section.get("body") or "확인 필요")})
         cut_sections = cut_plan.get("sections") or []
         merged = {int(item.get("number") or 0): item.get("image_prompt") for item in cut_sections if isinstance(item, dict)}
-        for index, section in enumerate(copy_sections):
-            section["number"] = int(section.get("number") or index + 1)
-            section["enabled"] = True
+        for section in copy_sections:
             section["image_prompt"] = str(merged.get(section["number"]) or "")
         plan["sections"] = copy_sections
         plan["analysis"] = {"product": product_analysis, "reference": reference_analysis}
