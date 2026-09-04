@@ -69,8 +69,16 @@ class CnmakerPlanTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()["plan"]["sections"]), 11)
         self.assertEqual(response.json()["plan"]["sections"][2]["type"], "제품 후기 배너")
+        self.assertEqual(response.json()["plan"]["sections"][2]["title"], "고객님이 들려준 사용후기")
+        self.assertEqual(response.json()["plan"]["sections"][2]["body"], "이런점이 만족스러웠어요")
+        self.assertEqual(response.json()["plan"]["sections"][4]["title"], "타사 제품과 무엇이 다를까요?")
+        self.assertEqual(response.json()["plan"]["sections"][4]["body"], "")
         self.assertEqual(response.json()["plan"]["sections"][6]["type"], "CHECK POINT 01 상세")
-        self.assertEqual(len(response.json()["plan"]["features"]), 3)
+        reviews = response.json()["plan"]["sections"][3]["review_items"]
+        self.assertEqual(len(reviews), 4)
+        self.assertEqual(reviews[0]["title"], "후기1 제목")
+        self.assertEqual(reviews[3]["body"], "후기4 내용")
+        self.assertEqual(len(response.json()["plan"]["features"]), 4)
 
     @patch.object(main, "_site_auth", return_value=True)
     @patch.object(main, "_cn_collect_product", side_effect=fake_collect_product)
