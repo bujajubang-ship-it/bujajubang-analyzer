@@ -4268,7 +4268,7 @@ def _cn_copy_plan_prompt(data: dict, product_analysis: dict, reference_analysis:
 
 3번 제품 후기 배너:
 - 글을 새로 생성하거나 변형하지 마세요.
-- body는 정확히 '이런점이 만족스러웠어요', title은 정확히 '고객님이 들려준 사용후기'로 고정하세요.
+- body는 정확히 '이런 점이 만족스러워요', title은 정확히 '고객님이 들려준 사용후기'로 고정하세요.
 
 4번 제품 후기 상세내용:
 - review_items에 서로 다른 체크포인트를 자연스럽게 칭찬하는 후기 4개를 작성하고, 각 항목의 title과 body를 별도로 작성하세요.
@@ -4298,7 +4298,7 @@ def _cn_copy_plan_prompt(data: dict, product_analysis: dict, reference_analysis:
 sections의 number와 type은 아래 순서를 절대 바꾸지 마세요:
 1 메인 배너 — title은 판매상품명, body는 짧은 효익형 보조문구
 2 제품 소개 — title은 영문 2~3단어, body는 제품 만족도와 기획 의도
-3 제품 후기 배너 — title은 '고객님이 들려준 사용후기', body는 '이런점이 만족스러웠어요'로 고정
+3 제품 후기 배너 — title은 '고객님이 들려준 사용후기', body는 '이런 점이 만족스러워요'로 고정
 4 제품 후기 상세내용 — review_items에 체크포인트 1~4를 각각 자연스럽게 칭찬하는 후기 4개를 작성. 각 항목은 title과 body를 별도로 작성
 5 체크포인트 배너 — title은 '타사 제품과 무엇이 다를까요?'로 고정, body는 빈 문자열
 6 체크포인트 4개 정리 — title은 '가득 담았습니다', body는 체크포인트 1~4의 이름과 설명
@@ -4590,7 +4590,7 @@ async def cnmaker_plan(request: Request):
                           "body": str(section.get("body") or "확인 필요")}
             if number == 3:
                 normalized["title"] = "고객님이 들려준 사용후기"
-                normalized["body"] = "이런점이 만족스러웠어요"
+                normalized["body"] = "이런 점이 만족스러워요"
             if number == 4:
                 items = section.get("review_items") if isinstance(section.get("review_items"), list) else []
                 normalized["review_items"] = [
