@@ -3,7 +3,7 @@
 import os, json, io, re, base64, urllib.request, urllib.error, time
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageOps
 import pipeline as P   # 기존 모듈 재사용 (ensure_login, scrape, _claude, _json, log 등)
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -178,9 +178,11 @@ def compose_plan_text(image, plan, section, section_index):
             overlay_draw.line((0, row, image.width, row), fill=(*hero_tint, alpha))
         image = Image.alpha_composite(image.convert("RGBA"), overlay).convert("RGB")
         draw = ImageDraw.Draw(image)
-        _draw_box_text(draw, (sx(430), sx(105)), body or product.get("summary") or "추천 상품", small, sx(620), "ma", 1)
+        hero_subtitle_font = _fitted_font(BODY_FONT, body or product.get("summary") or "추천 상품", sx(31), sx(25), sx(650))
+        hero_feature_font = _font(BODY_FONT, sx(21))
+        _draw_box_text(draw, (sx(430), sx(105)), body or product.get("summary") or "추천 상품", hero_subtitle_font, sx(650), "ma", 1)
         _draw_box_text(draw, (sx(430), sx(190)), product.get("name") or title, big, sx(700), "ma", 2)
-        _draw_box_text(draw, (sx(430), sx(350)), " · ".join(features[:4]), body_font, sx(690), "ma", 2)
+        _draw_box_text(draw, (sx(430), sx(350)), " · ".join(features[:4]), hero_feature_font, sx(710), "ma", 2)
     elif section_index == 1:
         line_color = (45, 43, 40)
         draw.line((sx(260), sx(275), sx(600), sx(275)), fill=line_color, width=max(1, sx(2)))
@@ -188,18 +190,19 @@ def compose_plan_text(image, plan, section, section_index):
         _draw_box_text(draw, (sx(430), sx(292)), title, medium, sx(650), "ma", 2)
         _draw_box_text(draw, (sx(430), sx(425)), body, body_font, sx(680), "ma", 4)
     elif section_index == 2:
-        _draw_box_text(draw, (sx(790), sx(125)), body or "이런 점이 만족스러워요", body_font, sx(560), "ra", 1)
-        review_font = _fitted_font(MEDIUM_TITLE_FONT, title, sx(42), sx(28), sx(740))
+        review_subtitle_font = _fitted_font(BODY_FONT, body or "이런 점이 만족스러워요", sx(36), sx(30), sx(620))
+        _draw_box_text(draw, (sx(790), sx(120)), body or "이런 점이 만족스러워요", review_subtitle_font, sx(620), "ra", 1)
+        review_font = _fitted_font(MEDIUM_TITLE_FONT, title, sx(54), sx(38), sx(760))
         _draw_box_text(draw, (sx(790), sx(205)), title, review_font, sx(760), "ra", 1)
     elif section_index == 3:
-        _draw_box_text(draw, (sx(430), sx(65)), "POINT REVIEW", medium, sx(600), "ma", 1)
         items = section.get("review_items") if isinstance(section.get("review_items"), list) else []
         positions = [(45, 500), (465, 500), (45, 1010), (465, 1010)]
         for index, (left, top) in enumerate(positions):
             item = items[index] if index < len(items) and isinstance(items[index], dict) else {}
             review_title = str(item.get("title") or "후기%d 제목" % (index + 1)).strip()
             review_body = str(item.get("body") or "후기%d 내용" % (index + 1)).strip()
-            _draw_box_text(draw, (sx(left), sx(top)), review_title, small, sx(350), "la", 2)
+            review_title_font = _fitted_font(MEDIUM_TITLE_FONT, review_title, sx(25), sx(21), sx(350))
+            _draw_box_text(draw, (sx(left), sx(top)), review_title, review_title_font, sx(350), "la", 2)
             _draw_box_text(draw, (sx(left), sx(top + 62)), review_body, small, sx(350), "la", 4)
     elif section_index == 4:
         _draw_box_text(draw, (sx(95), sx(120)), "타사 제품과", big, sx(680), "la", 1)
@@ -216,11 +219,11 @@ def compose_plan_text(image, plan, section, section_index):
         feature = feature_items[feature_index] if feature_items else {}
         point = str(feature.get("title") or title).strip()
         detail = str(feature.get("detail") or body).strip()
-        _draw_box_text(draw, (sx(430), sx(90)), "CHECK POINT %02d" % (section_index - 5), small, sx(400), "ma", 1)
+        _draw_box_text(draw, (sx(430), sx(75)), "CHECK POINT %02d" % (section_index - 5), small, sx(400), "ma", 1)
         point_font = _font(MEDIUM_TITLE_FONT, sx(49))
         detail_font = _font(SMALL_FONT, sx(28))
-        _draw_box_text(draw, (sx(430), sx(195)), point or title, point_font, sx(720), "ma", 2)
-        _draw_box_text(draw, (sx(430), sx(315)), detail, detail_font, sx(680), "ma", 4)
+        _draw_box_text(draw, (sx(430), sx(150)), point or title, point_font, sx(720), "ma", 2)
+        _draw_box_text(draw, (sx(430), sx(245)), detail, detail_font, sx(680), "ma", 4)
     else:
         _draw_box_text(draw, (sx(430), sx(85)), "PRODUCT INFO", medium, sx(520), "ma", 1)
         info = [
@@ -735,19 +738,38 @@ def _section_product_refs(uploaded_refs, linked_refs, section, limit):
 
 
 def _product_info_base(product_refs, size=(860, 1290)):
-    """Place an untouched uploaded/CN product photo without AI regeneration."""
+    """Place all selected untouched product/color photos in the middle-upper area."""
     canvas = Image.new("RGB", size, (247, 245, 241))
     if not product_refs:
         return canvas
-    try:
-        product = Image.open(io.BytesIO(base64.b64decode(product_refs[0][1]))).convert("RGB")
-        max_box = (int(size[0] * 0.86), int(size[1] * 0.46))
-        product.thumbnail(max_box, Image.LANCZOS)
-        left = (size[0] - product.width) // 2
-        top = int(size[1] * 0.10) + (max_box[1] - product.height) // 2
+    products = []
+    for ref in product_refs[:4]:
+        try:
+            product = Image.open(io.BytesIO(base64.b64decode(ref[1]))).convert("RGB")
+            corner = product.getpixel((0, 0))
+            background = Image.new("RGB", product.size, corner)
+            difference = ImageChops.difference(product, background).convert("L").point(lambda value: 255 if value > 18 else 0)
+            bbox = difference.getbbox()
+            if bbox:
+                product = product.crop(bbox)
+            products.append(product)
+        except Exception:
+            continue
+    if not products:
+        return canvas
+    zone = (int(size[0] * 0.07), int(size[1] * 0.15), int(size[0] * 0.93), int(size[1] * 0.53))
+    count = len(products)
+    columns = 1 if count == 1 else 2
+    rows = (count + columns - 1) // columns
+    gap = 18
+    cell_width = (zone[2] - zone[0] - gap * (columns - 1)) // columns
+    cell_height = (zone[3] - zone[1] - gap * (rows - 1)) // rows
+    for index, product in enumerate(products):
+        product.thumbnail((cell_width, cell_height), Image.LANCZOS)
+        col, row = index % columns, index // columns
+        left = zone[0] + col * (cell_width + gap) + (cell_width - product.width) // 2
+        top = zone[1] + row * (cell_height + gap) + (cell_height - product.height) // 2
         canvas.paste(product, (left, top))
-    except Exception:
-        pass
     return canvas
 
 
@@ -763,9 +785,9 @@ def _section_layout_instruction(template_index, shot_mode=None):
         1: "제품·인물·소품 없이 860×860의 은은한 단색 또는 종이 질감 배경만 만드세요.",
         2: "사진 배경을 화면 전체에 끊김 없이 채우되 제품은 아래 2/3에 온전히 배치하고 위쪽 1/3은 피사체 없는 문구 여백으로 비우세요. 배경과 사진을 나누거나 제품을 자르지 마세요.",
         3: "서로 다른 실제 사용 장면 네 컷을 2열×2행으로 구성하고 각 카드 아래 25%를 문구용으로 비우세요.",
-        4: "사진 배경을 화면 전체에 끊김 없이 채우고 제품을 사용하는 사람의 전신 또는 필요한 신체 부위가 잘리지 않게 아래쪽에 온전히 보여주세요. 위쪽 1/3은 문구 여백으로 비우세요.",
+        4: "사진 배경은 화면 전체를 빈틈 없이 채우세요. 제품에 따라 착용 모습을 설명하는 데 모델 전신이 필요하면 전신을 온전히 보여주고, 그렇지 않으면 가장 적합한 뒷모습·옆모습 또는 신체 부위를 선택하세요. 위쪽 1/3은 문구 여백으로 비우되 아래 사진과 같은 장소·조명·색감이 끊김 없이 이어져야 합니다.",
         5: "서로 다른 클로즈업 네 컷을 왼쪽 세로열에 배치하고 오른쪽을 체크포인트 문구용으로 비우세요.",
-        10: "제품 전체와 구성품을 상단 중앙에 정돈하고 아래쪽 절반을 제품정보 문구용으로 비우세요. 여러 색상·옵션을 함께 보여주는 것은 이미지 컷 계획에 명시된 경우만 허용합니다.",
+        10: "CN인사이더와 업로드 원본에 확인된 제품 누끼컷만 사용하세요. 판매되는 모든 실제 색상 옵션의 제품 전체 모습을 중간보다 위쪽인 화면 15~53% 영역에 크게 정돈하고, 아래쪽은 제품정보 문구용으로 비우세요. 제품이나 색상을 임의로 생성하지 마세요.",
     }
     return notes.get(template_index, "제품이 선명한 세로형 상세페이지 장면을 만드세요.")
 
@@ -815,13 +837,13 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None,
             "[제품 소개, 860×860] 이 구간에는 제품 사진, 제품 실루엣, 인물, 신체, 손, 착용 장면, 사용 장면, 소품을 절대 넣지 마세요. 밝은 화이트·아이보리 계열의 미니멀한 단색 또는 매우 은은한 종이 질감 배경만 만드세요. 화면 중앙에는 짧은 영문 소제목과 3~4줄의 한국어 제품 소개 문구가 들어갈 수 있도록 넓고 단정한 빈 공간을 확보하세요. 영문 소제목 위아래의 가는 수평선이 들어갈 공간을 고려하되 선이나 글자는 이미지 AI가 직접 만들지 마세요. 전체 분위기는 오른쪽 예시처럼 차분하고 고급스러운 편집 디자인이어야 합니다.",
             "[제품 후기 배너] 사진 배경을 위에서 아래까지 화면 전체에 끊김 없이 채우세요. 제품은 한 가지 실제 색상만 사용해 아래 2/3에 잘리지 않도록 온전히 배치하고, 위쪽 1/3은 짧은 보조문구와 후기 제목이 들어갈 피사체 없는 여백으로 비우세요. 배경과 사진을 별도 색면으로 나누거나 가로 경계를 만들지 마세요.",
             "[제품 후기 상세내용] 2열×2행의 네 개 후기 카드에 사용할 서로 다른 실제 사용 장면 4컷을 한 화면에 구성하세요. 네 장면은 각각 체크포인트 1·2·3·4의 장점을 보여주고 실제 고객이 직접 촬영한 듯 자연스러워야 합니다. 같은 사진·포즈·카메라 각도를 반복하지 마세요. 각 카드 아래쪽 약 25%는 후기 제목과 짧은 설명용으로 비우고 각 카드 왼쪽 위에는 노란색 별 5개만 표시하세요. 글자·검은 박스·카드 테두리는 생성하지 마세요.",
-            "[체크포인트 배너] 사진 배경을 위에서 아래까지 화면 전체에 끊김 없이 채우세요. 사용자가 실제로 제품을 사용하는 뒷모습 또는 옆모습을 아래 2/3에 배치하고 전신이나 필요한 신체 부위가 잘리지 않게 온전히 보여주세요. 위쪽 1/3은 질문형 제목용으로 비우고 배경과 사진 사이의 가로 경계나 별도 패널을 만들지 마세요.",
+            "[체크포인트 배너] 사진 배경을 위에서 아래까지 화면 전체에 끊김 없이 채우세요. 제품의 실제 착용·사용 방식이 가장 잘 보이는 구도를 선택하세요. 제품 종류에 따라 뒷모습·옆모습뿐 아니라 모델 전신이 필요한 경우 전신을 온전히 보여줘도 됩니다. 모델이나 제품이 잘리지 않게 아래 2/3에 자연스럽게 배치하고, 위쪽 1/3은 질문형 제목용 여백으로 비우세요. 사진과 여백은 하나의 같은 장소와 조명으로 자연스럽게 이어져야 하며 가로 경계, 별도 패널, 서로 다른 배경색을 만들지 마세요.",
             "[체크포인트 정리] 제품의 핵심 체크포인트 4가지를 보여주는 상세 클로즈업 4컷을 왼쪽 세로열에 동일한 크기의 원형 크롭을 고려해 배치하세요. 각 사진 오른쪽에는 체크포인트명과 설명이 들어갈 넓은 흰 여백을 남기세요. 상단 중앙 약 22%도 보조문구와 큰 제목용으로 비우세요.",
             "[CHECK POINT 01 상세] 첫 번째 체크포인트가 실제로 드러나는 제품 클로즈업 한 컷과, 같은 장점이 사용 중에 보이는 착용·사용 장면 한 컷을 만드세요. 상단 30%는 체크포인트 번호·짧은 제목·설명용으로 비우고, 아래 큰 이미지 영역에서 제품이 선명하게 보이게 하세요.",
             "[CHECK POINT 02 상세] 두 번째 체크포인트의 구조·소재·기능을 확인할 수 있는 상세 클로즈업과 실제 사용 장면을 구성하세요. 앞 구간과 다른 촬영 각도와 구도를 사용하세요. 상단 30%는 제목과 설명용으로 깨끗하게 비우세요.",
             "[CHECK POINT 03 상세] 세 번째 체크포인트의 효과나 편의성을 확인할 수 있는 제품 상세 컷과 실제 사용 장면을 구성하세요. 앞 구간들과 다른 거리·방향·소품을 사용하세요. 상단 30%는 제목과 설명용으로 깨끗하게 비우세요.",
             "[CHECK POINT 04 상세] 네 번째 체크포인트 또는 추가 활용법을 보여주는 제품 상세 컷과 실제 사용 장면을 구성하세요. 앞 구간들과 중복되지 않는 장소·포즈·카메라 각도를 사용하세요. 상단 30%는 제목과 설명용으로 깨끗하게 비우세요.",
-            "[PRODUCT INFO] 제품의 전체 형태·구성품·색상 옵션을 한눈에 확인할 수 있는 깔끔한 누끼형 또는 정돈된 제품 사진을 화면 상단 중앙 영역에 배치하세요. 여러 실제 색상이 있으면 빠짐없이 모두 보여주세요. 최상단은 PRODUCT INFO 제목용, 화면 아래쪽 절반은 제품명·소재·색상·크기·구성·사용법·주의사항용으로 완전히 비우세요.",
+            "[PRODUCT INFO] CN인사이더와 업로드된 원본 제품사진만 사용하여 제품 누끼컷을 구성하세요. 실제 판매 색상이 여러 개면 모든 색상을 하나도 빠뜨리지 말고 각각 분리된 제품 전체 모습으로 보여주세요. 제품 사진들은 화면의 중간보다 위쪽인 약 15~53% 영역을 충분히 크게 차지하도록 정돈하세요. 최상단은 PRODUCT INFO 제목용으로 비우고, 화면 아래쪽은 제품명·소재·색상·크기·구성·사용법·주의사항용으로 완전히 비우세요. 임의의 제품 형태나 색상을 생성하지 마세요.",
         ]
         rating_rule = "후기 상세 구간의 각 카드 왼쪽 위에 지정된 노란색 별 5개만 허용합니다." if template_index == 3 else "별점도 넣지 마세요."
         layout_note = layout_notes[min(template_index, len(layout_notes)-1)]
