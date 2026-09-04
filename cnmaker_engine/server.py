@@ -204,7 +204,7 @@ def worker_plan_section_draft(job_id, target_job, plan, section_index, image_pat
         base = os.path.join(RESULT_DIR, target_job + f"_section_{section_index}_base.jpg")
         gptmaker.run_plan_section_high(
             plan, section_index, image_paths, reference_urls, base,
-            style_image_paths=style_paths or [], quality="low", output_size=(430, 645), compose_text=False,
+            style_image_paths=style_paths or [], quality="low", output_size=gptmaker._section_size(section_index, low=True), compose_text=False,
         )
         gptmaker.recompose_plan_section(os.path.join(RESULT_DIR, target_job), plan, section_index, True)
         JOBS[job_id] = {"status": "done", "msg": f"{section_index + 1}번 이미지 수정 완료", "target_job": target_job}

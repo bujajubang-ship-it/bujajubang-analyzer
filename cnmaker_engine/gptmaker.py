@@ -27,6 +27,12 @@ def _font(path, size):
         return ImageFont.load_default()
 
 
+def _section_size(section_index, low=False):
+    sizes = [(860, 1920), (860, 860)] + [(860, 1290)] * 9
+    width, height = sizes[min(max(section_index, 0), len(sizes) - 1)]
+    return (width // 2, height // 2) if low else (width, height)
+
+
 def _wrap_text(draw, text, font, max_width, max_lines=4):
     words = list(str(text or "").replace("\n", " ").strip())
     lines, current = [], ""
@@ -112,7 +118,8 @@ def compose_plan_text(image, plan, section, section_index):
         info = [
             product.get("name"), "소재  " + str(product.get("material") or "확인 필요"),
             "색상  " + str(product.get("color") or "확인 필요"), "크기  " + str(product.get("size") or "확인 필요"),
-            "구성  " + str(product.get("composition") or "확인 필요"), "사용법  " + str(product.get("usage") or "확인 필요"),
+            "구성  " + str(product.get("composition") or "확인 필요"), "제조국/수입원  중국/주식회사 부자홀딩스",
+            "사용법  " + str(product.get("usage") or "확인 필요"),
             "주의사항  " + str(product.get("caution") or "확인 필요"),
         ]
         _draw_box_text(draw, (sx(430), sx(790)), "\n".join(filter(None, info)), small, sx(680), "ma", 7)
@@ -597,19 +604,20 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None,
         nonlocal completed
         index, section = item
         layout_notes = [
-            "제품은 화면 중앙 아래쪽에 두고 위쪽 35%를 제목용으로 단순하게 비우세요.",
-            "제품 사용 장면은 화면 아래쪽에 두고 위쪽 30%를 제목과 설명용으로 비우세요.",
-            "제품은 화면 중앙 아래쪽에 크게 두고 위쪽과 오른쪽 상단을 문구용으로 비우세요.",
-            "제품 사용 장면을 중앙에 두고 위쪽 20%와 아래쪽 20%를 문구용으로 비우세요.",
-            "사용 중인 제품은 화면 중앙 아래쪽에 두고 왼쪽 위와 하단을 문구용으로 비우세요.",
-            "제품 상세 클로즈업들을 왼쪽 세로열에 배치하고 오른쪽 절반은 설명용으로 비우세요.",
-            "제품 상세사진은 화면 아래쪽 큰 영역에 두고 위쪽 30%는 설명용으로 비우세요.",
-            "제품 상세사진은 화면 아래쪽 큰 영역에 두고 위쪽 30%는 설명용으로 비우세요.",
-            "제품 상세사진은 화면 아래쪽 큰 영역에 두고 위쪽 30%는 설명용으로 비우세요.",
-            "제품 활용사진은 화면 아래쪽 큰 영역에 두고 위쪽 30%는 설명용으로 비우세요.",
-            "제품 전체와 옵션을 화면 상단 절반에 정돈하고 아래쪽 절반은 제품정보용으로 비우세요.",
+            "[메인 배너, 860×1920] 실제 제품을 착용하거나 사용하는 감성적인 대표 장면을 크게 보여주세요. 사람의 손, 착용한 다리, 실제 사용 모습처럼 사람이 조금이라도 나오는 장면이 좋습니다. 제품 형태는 상품 링크 사진과 동일하게 유지하되 색상과 옵션은 입력된 내용만 따르세요. 제품이 가장 먼저 보이게 하고 상단 중앙 35%는 보조문구·상품명·짧은 체크포인트 3개가 한 줄로 들어갈 수 있도록 깨끗하고 단순하게 비우세요.",
+            "[제품 사용 만족도 설명, 860×860] 화면 중앙에 영문 보조제목, 실제 사용 시 만족할 수 있는 점, 제품 기획 시 고려한 점이 들어갈 넓고 단정한 여백을 만드세요. 배경은 미니멀한 단색 또는 은은한 질감으로 구성하세요.",
+            "[제품 후기 배너] 제품만 단독으로 선명하고 크게 보여주고 배경은 은은한 단색으로 구성하세요. 실제 옵션이 여러 개면 모두 함께 정돈해 보여주세요. 제품은 화면 중앙부터 아래쪽에 배치하고, 상단 오른쪽은 짧은 보조문구와 큰 후기 제목용으로 비우세요. 불필요한 소품은 최소화하세요.",
+            "[제품 후기 상세내용] 2열×2행의 네 개 후기 카드에 사용할 서로 다른 실제 사용 장면 4컷을 한 화면에 구성하세요. 네 장면은 각각 체크포인트 1·2·3·4의 장점을 보여주고 실제 고객이 직접 촬영한 듯 자연스러워야 합니다. 같은 사진·포즈·카메라 각도를 반복하지 마세요. 각 카드 아래쪽 약 25%는 후기 제목과 짧은 설명용으로 비우고 각 카드 왼쪽 위에는 노란색 별 5개만 표시하세요. 글자·검은 박스·카드 테두리는 생성하지 마세요.",
+            "[체크포인트 배너] 사용자가 실제로 제품을 사용하는 뒷모습 또는 옆모습의 생활 장면을 크게 보여주세요. 제품의 사용 방식이 명확히 보여야 합니다. 화면 상단 왼쪽은 큰 질문형 제목용으로, 화면 하단은 이미지 설명용으로 비우세요.",
+            "[체크포인트 정리] 제품의 핵심 체크포인트 4가지를 보여주는 상세 클로즈업 4컷을 왼쪽 세로열에 동일한 크기의 원형 크롭을 고려해 배치하세요. 각 사진 오른쪽에는 체크포인트명과 설명이 들어갈 넓은 흰 여백을 남기세요. 상단 중앙 약 22%도 보조문구와 큰 제목용으로 비우세요.",
+            "[CHECK POINT 01 상세] 첫 번째 체크포인트가 실제로 드러나는 제품 클로즈업 한 컷과, 같은 장점이 사용 중에 보이는 착용·사용 장면 한 컷을 만드세요. 상단 30%는 체크포인트 번호·짧은 제목·설명용으로 비우고, 아래 큰 이미지 영역에서 제품이 선명하게 보이게 하세요.",
+            "[CHECK POINT 02 상세] 두 번째 체크포인트의 구조·소재·기능을 확인할 수 있는 상세 클로즈업과 실제 사용 장면을 구성하세요. 앞 구간과 다른 촬영 각도와 구도를 사용하세요. 상단 30%는 제목과 설명용으로 깨끗하게 비우세요.",
+            "[CHECK POINT 03 상세] 세 번째 체크포인트의 효과나 편의성을 확인할 수 있는 제품 상세 컷과 실제 사용 장면을 구성하세요. 앞 구간들과 다른 거리·방향·소품을 사용하세요. 상단 30%는 제목과 설명용으로 깨끗하게 비우세요.",
+            "[CHECK POINT 04 상세] 네 번째 체크포인트 또는 추가 활용법을 보여주는 제품 상세 컷과 실제 사용 장면을 구성하세요. 앞 구간들과 중복되지 않는 장소·포즈·카메라 각도를 사용하세요. 상단 30%는 제목과 설명용으로 깨끗하게 비우세요.",
+            "[PRODUCT INFO] 제품의 전체 형태·구성품·색상 옵션을 한눈에 확인할 수 있는 깔끔한 누끼형 또는 정돈된 제품 사진을 화면 상단 중앙 영역에 배치하세요. 여러 실제 색상이 있으면 빠짐없이 모두 보여주세요. 최상단은 PRODUCT INFO 제목용, 화면 아래쪽 절반은 제품명·소재·색상·크기·구성·사용법·주의사항용으로 완전히 비우세요.",
         ]
-        prompt = f"""첨부 사진의 실제 제품을 그대로 유지한 한국 쇼핑몰 상세페이지 배경 장면을 만드세요.
+        rating_rule = "후기 상세 구간의 각 카드 왼쪽 위에 지정된 노란색 별 5개만 허용합니다." if index == 3 else "별점도 넣지 마세요."
+        prompt = f"""CN인사이더 상품 링크 속 이미지와 참고 이미지를 바탕으로, 제품 상세사진의 실제 제품을 사용한 한국 쇼핑몰 상세페이지 배경 장면을 만드세요.
 제품명: {product.get('name') or '상품'}
 구간: {section.get('type') or section.get('number')}
 이미지 계획: {section.get('image_prompt') or section.get('body') or ''}
@@ -617,7 +625,8 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None,
 배경색: {palette.get('background') or '아이보리'}
 포인트색: {palette.get('accent') or '차콜'}
 템플릿 배치: {layout_notes[min(index, len(layout_notes)-1)]}
-절대 규칙: 이미지 안에 글자, 숫자, 로고, 워터마크, 가짜 리뷰, 별점을 넣지 마세요.
+템플릿은 사진 영역과 문구 여백의 위치만 참고하세요. 안내용 검은 박스, 검은 테두리, 초록색 표시, 샘플 풍경, 임시 도형은 절대 따라 만들지 마세요.
+절대 규칙: 이미지 안에 글자, 숫자, 로고, 워터마크, 가짜 리뷰를 넣지 마세요. {rating_rule}
 제품의 색상, 형태, 구조, 구성품 수량을 바꾸지 마세요. 세로형 모바일 구도, 차분한 저채도 배경."""
         if style_refs:
             prompt += f"""
@@ -629,13 +638,13 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None,
 여러 색상·옵션이 입력되었습니다. 첨부된 서로 다른 옵션의 실제 제품 사진을 구간마다 번갈아 참고하고,
 전체 상세페이지에는 입력된 여러 옵션이 고르게 등장하게 하세요. 한 제품에 옵션을 임의로 합치거나
 첨부 사진에 없는 색상·무늬·형태를 새로 만들지 마세요."""
-        raw = _oai_image(prompt, ref_imgs_b64=generation_refs, size="1024x1536", quality="low")
+        raw = _oai_image(prompt, ref_imgs_b64=generation_refs, size="1024x1024" if index == 1 else "1024x1536", quality="low")
         image = Image.open(io.BytesIO(raw)).convert("RGB")
-        image = image.resize((430, 645), Image.LANCZOS)
+        image = image.resize(_section_size(index, low=True), Image.LANCZOS)
         image = compose_plan_text(image, plan, section, index)
         section_path = os.path.splitext(out_path)[0] + f"_section_{index}.jpg"
         base_path = os.path.splitext(out_path)[0] + f"_section_{index}_base.jpg"
-        Image.open(io.BytesIO(raw)).convert("RGB").resize((430, 645), Image.LANCZOS).save(base_path, "JPEG", quality=84)
+        Image.open(io.BytesIO(raw)).convert("RGB").resize(_section_size(index, low=True), Image.LANCZOS).save(base_path, "JPEG", quality=84)
         image.save(section_path, "JPEG", quality=84)
         if on_section:
             on_section(index, section_path)
@@ -673,7 +682,7 @@ def recompose_plan_section(job_base_path, plan, section_index, show_text=True):
 
 
 def run_plan_section_high(plan, section_index, image_paths, reference_urls, out_path, style_image_paths=None,
-                          quality="high", output_size=(860, 1290), compose_text=True):
+                          quality="high", output_size=None, compose_text=True):
     """선택한 활성 구간 하나를 최종용 high 품질로 생성한다."""
     sections = [section for section in (plan.get("sections") or []) if section.get("enabled", True)]
     if section_index < 0 or section_index >= len(sections):
@@ -704,8 +713,8 @@ def run_plan_section_high(plan, section_index, image_paths, reference_urls, out_
         prompt += f"""
 첨부 이미지 중 앞의 {len(product_refs)}장은 제품 기준사진으로 제품을 동일하게 유지하세요.
 뒤의 {len(style_refs)}장은 연출 참고용입니다. 인물 얼굴·모델·포즈·몸 방향·카메라 각도·의상·소품·배경·구도를 복제하지 말고 명확히 다른 독창적인 장면을 만드세요."""
-    raw = _oai_image(prompt, ref_imgs_b64=generation_refs, size="1024x1536", quality=quality)
-    image = Image.open(io.BytesIO(raw)).convert("RGB").resize(output_size, Image.LANCZOS)
+    raw = _oai_image(prompt, ref_imgs_b64=generation_refs, size="1024x1024" if section_index == 1 else "1024x1536", quality=quality)
+    image = Image.open(io.BytesIO(raw)).convert("RGB").resize(output_size or _section_size(section_index), Image.LANCZOS)
     if compose_text:
         image = compose_plan_text(image, plan, section, section_index)
     image.save(out_path, "JPEG", quality=92 if quality == "high" else 84)
