@@ -908,7 +908,7 @@ def recompose_plan_section(job_base_path, plan, section_index, show_text=True):
 
 
 def run_plan_section_high(plan, section_index, image_paths, reference_urls, out_path, style_image_paths=None,
-                          quality="high", output_size=None, compose_text=True):
+                          quality="high", output_size=None, compose_text=True, revision_mode=False):
     """선택한 활성 구간 하나를 최종용 high 품질로 생성한다."""
     sections = [section for section in (plan.get("sections") or []) if section.get("enabled", True)]
     if section_index < 0 or section_index >= len(sections):
@@ -933,6 +933,7 @@ def run_plan_section_high(plan, section_index, image_paths, reference_urls, out_
 제품명: {product.get('name') or '상품'}
 구간: {section.get('type') or section.get('number')}
 이미지 계획: {section.get('image_prompt') or section.get('body') or ''}
+현재 이미지 수정 요청: {section.get('revision_prompt') or '없음'}
 실제 색상·옵션명: {product.get('color') or '단일 옵션'}
 색상·옵션 표시 규칙: {_option_display_instruction(section, product.get('color') or '단일 옵션')}
 배경색: {palette.get('background') or '아이보리'}
@@ -940,6 +941,9 @@ def run_plan_section_high(plan, section_index, image_paths, reference_urls, out_
 템플릿 배치: {_section_layout_instruction(template_index)}
 절대 규칙: 이미지 안에 글자, 숫자, 로고, 워터마크, 가짜 리뷰, 별점을 넣지 마세요.
 제품의 색상, 형태, 구조, 구성품 수량을 바꾸지 마세요. 세로형 모바일 구도, 차분한 저채도 배경."""
+    if revision_mode and section.get("revision_prompt"):
+        prompt += """
+첨부된 첫 번째 이미지는 사용자가 현재 보고 있는 기존 시안입니다. 수정 요청에 적힌 부분만 변경하고, 요청하지 않은 제품·인물·배경·구도·색감·카메라 각도는 최대한 그대로 유지하세요."""
     if style_refs:
         prompt += f"""
 첨부 이미지 중 앞의 {len(product_refs)}장은 제품 기준사진으로 제품을 동일하게 유지하세요.
