@@ -4224,6 +4224,57 @@ CHECK POINT 02 상세, CHECK POINT 03 상세, CHECK POINT 04 상세, PRODUCT INF
 11개 구간은 모두 enabled를 true로 설정하세요. 확인된 체크포인트가 3개뿐이면 CHECK POINT 04는 제품의 추가 활용 장면으로 작성하세요."""
 
 
+def _cn_product_analysis_prompt(data: dict) -> str:
+    direct = data.get("product") or {}
+    return f"""당신은 제품 사실 분석가입니다. 판매 문구와 이미지 생성 프롬프트를 만들지 마세요.
+첨부된 제품 상세사진과 CN인사이더 상품 이미지를 이미지 순서대로 high 정밀도로 분석하세요.
+중국어 원문을 보이는 그대로 추출하고 자연스러운 한국어로 정확히 번역하세요.
+제품 외형·구성품·소재·크기·색상·옵션·사용법과 각 이미지의 촬영 장면을 구분하세요.
+화면이나 문구로 확인된 사실과 추정·미확인 내용을 엄격히 분리하세요.
+사용자 입력은 최우선 사실입니다: 상품명={direct.get('name') or '미입력'}, 색상·옵션={direct.get('color') or '미입력'}, 크기={direct.get('size') or '미입력'}, 구성={direct.get('composition') or '미입력'}.
+JSON만 출력하세요:
+{{"images":[{{"image_number":1,"shot":"보이는 컷과 제품 부위","chinese_text":"중국어 원문 또는 없음","korean_translation":"한국어 번역 또는 없음","verified_facts":["확인된 사실"],"unverified":["미확인 내용"]}}],"product":{{"appearance":"","components":[],"material":"확인 필요","size":"확인 필요","colors_options":[],"usage":"확인 필요"}},"verified_facts":[],"unverified":[]}}"""
+
+
+def _cn_reference_analysis_prompt() -> str:
+    return """당신은 상세페이지 연출 참고자료 분석가입니다. 판매 문구나 새 이미지를 만들지 마세요.
+첨부된 참고 이미지를 순서대로 분석하세요. 이미지 속 중국어·외국어는 원문과 한국어 번역을 기록하세요.
+어떤 글에 어떤 이미지가 사용됐는지, 이미지의 역할·구도·인물·카메라 각도·문구 여백을 분석하세요.
+참고 이미지 속 제품 특징은 판매 제품의 사실로 취급하지 마세요. JSON만 출력하세요:
+{"images":[{"image_number":1,"original_text":"원문 또는 없음","korean_translation":"번역 또는 없음","text_purpose":"어떤 글인지","visual_role":"어떤 이미지가 쓰였는지","composition":"구도·인물·각도·여백"}]}"""
+
+
+def _cn_copy_plan_prompt(data: dict, product_analysis: dict, reference_analysis: dict) -> str:
+    direct = data.get("product") or {}
+    return f"""당신은 한국 쇼핑몰 상세페이지 글 기획자입니다. 이미지나 이미지 프롬프트를 만들지 마세요.
+아래 제품 분석 결과만 사용해 실제 삽입 문구를 작성하세요. 분석 결과에 없는 기능·소재·수치 생성 금지, 체크포인트 중복 금지입니다.
+사용자 입력은 최우선입니다: {json.dumps(direct, ensure_ascii=False)}
+제품 분석: {json.dumps(product_analysis, ensure_ascii=False)}
+참고자료의 글 사용 방식 분석: {json.dumps(reference_analysis, ensure_ascii=False)}
+판매상품명, 제품소개, 체크포인트 3~4개와 각 상세 설명, 후기 형식의 장점 문구, 만족도 설명, 사용법, 주의사항, 11개 구간별 실제 삽입 문구를 작성하세요.
+확인되지 않은 정보는 '확인 필요'로 표시하세요. JSON만 출력하세요:
+{{"product":{{"name":"","summary":"","material":"","color":"","size":"","composition":"","usage":"","caution":""}},"features":[{{"title":"","detail":""}}],"sections":[{{"number":1,"type":"메인 배너","enabled":true,"title":"실제 삽입 제목","body":"실제 삽입 본문"}}],"warnings":[]}}"""
+
+
+def _cn_cut_plan_prompt(copy_plan: dict, product_analysis: dict, reference_analysis: dict) -> str:
+    return f"""당신은 쇼핑몰 촬영 콘티를 만드는 이미지 컷 기획자입니다. 판매 문구를 새로 쓰거나 이미지를 생성하지 마세요.
+제품 분석과 확정된 글 기획을 바탕으로 각 문구를 어떤 사진으로 보여줄지 11개 구간의 촬영 계획만 작성하세요.
+제품 부위, 모델·손 필요 여부, 착용·사용 장면, 클로즈업 위치, 카메라 각도·거리, 배경·소품, 문구 여백을 모두 구체적으로 작성하세요.
+참고 이미지는 글과 사진의 대응 방식만 참고하고 모델·포즈·각도·패션·배경·구도를 복제하지 마세요.
+제품 분석: {json.dumps(product_analysis, ensure_ascii=False)}
+참고 이미지 분석: {json.dumps(reference_analysis, ensure_ascii=False)}
+글 기획: {json.dumps(copy_plan, ensure_ascii=False)}
+순서는 메인 배너, 제품 사용 만족도 설명, 제품 후기 배너, 제품 후기 상세내용, 체크포인트 배너, 체크포인트 4개 정리, CHECK POINT 01~04 상세, PRODUCT INFO입니다.
+JSON만 출력하세요: {{"sections":[{{"number":1,"image_prompt":"목적; 장면; 보조 컷; 카메라; 인물; 배경·소품; 문구 여백"}}]}}"""
+
+
+def _cn_json_result(raw: str) -> dict:
+    match = re.search(r"\{.*\}", raw, re.S)
+    if not match:
+        raise ValueError("JSON 응답 없음")
+    return json.loads(match.group(0))
+
+
 async def _cn_collect_product(url: str, allow_uploaded_fallback: bool = False) -> dict:
     """Lightsail에서 이미지 생성 없이 1688 상품자료만 가져온다."""
     async with httpx.AsyncClient(timeout=120) as client:
@@ -4398,6 +4449,7 @@ async def cnmaker_plan(request: Request):
     data = await request.json()
     url1688 = (data.get("url1688") or "").strip()
     images = data.get("images") or []
+    style_images = data.get("style_images") or []
     if not url1688.startswith("http"):
         return JSONResponse({"error": "CN인사이더 상품 링크를 넣어주세요."}, status_code=400)
     try:
@@ -4406,22 +4458,28 @@ async def cnmaker_plan(request: Request):
         return JSONResponse({"error": str(e)}, status_code=502)
     except Exception:
         return JSONResponse({"error": "1688 수집 서버에 연결하지 못했습니다."}, status_code=502)
-    content = [{"type": "input_text", "text": _cn_plan_prompt(data)}]
-    if len(images) > 10:
-        return JSONResponse({"error": "기준 이미지는 최대 10장까지 올릴 수 있습니다."}, status_code=400)
+    product_content = [{"type": "input_text", "text": _cn_product_analysis_prompt(data)}]
+    reference_content = [{"type": "input_text", "text": _cn_reference_analysis_prompt()}]
+    if len(images) > 10 or len(style_images) > 10:
+        return JSONResponse({"error": "제품사진과 참고사진은 각각 최대 10장까지 올릴 수 있습니다."}, status_code=400)
     total_image_bytes = 0
     for image in images:
         match = re.match(r"^data:(image/(?:jpeg|png|webp|gif));base64,(.+)$", str(image), re.S)
         if not match:
             return JSONResponse({"error": "읽을 수 없는 이미지가 포함되어 있습니다."}, status_code=400)
         total_image_bytes += len(match.group(2)) * 3 // 4
-        content.append({
+        product_content.append({
             "type": "input_image",
             "image_url": f"data:{match.group(1)};base64,{match.group(2)}",
             "detail": "high",
         })
     if total_image_bytes > 25 * 1024 * 1024:
         return JSONResponse({"error": "이미지 전체 용량을 25MB 이하로 줄여주세요."}, status_code=413)
+    for image in style_images:
+        match = re.match(r"^data:(image/(?:jpeg|png|webp|gif));base64,(.+)$", str(image), re.S)
+        if not match:
+            return JSONResponse({"error": "읽을 수 없는 참고 이미지가 포함되어 있습니다."}, status_code=400)
+        reference_content.append({"type": "input_image", "image_url": f"data:{match.group(1)};base64,{match.group(2)}", "detail": "high"})
     # 직접 올린 사진 다음에 1688 제품 사진을 보조 근거로 전달한다.
     async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
         for image_url in (data["collected"].get("images") or [])[:10]:
@@ -4434,7 +4492,7 @@ async def cnmaker_plan(request: Request):
                 media_type = (image_response.headers.get("content-type") or "image/jpeg").split(";", 1)[0]
                 if media_type not in ("image/jpeg", "image/png", "image/webp", "image/gif"):
                     continue
-                content.append({
+                product_content.append({
                     "type": "input_image",
                     "image_url": f"data:{media_type};base64,{base64.b64encode(image_bytes).decode()}",
                     "detail": "high",
@@ -4442,11 +4500,24 @@ async def cnmaker_plan(request: Request):
             except Exception:
                 continue
     try:
-        raw = await _cn_generate_plan_with_gpt(content)
-        match = re.search(r"\{.*\}", raw, re.S)
-        if not match:
-            raise ValueError("JSON 응답 없음")
-        plan = json.loads(match.group(0))
+        product_analysis = _cn_json_result(await _cn_generate_plan_with_gpt(product_content))
+        reference_analysis = _cn_json_result(await _cn_generate_plan_with_gpt(reference_content)) if style_images else {"images": []}
+        copy_plan = _cn_json_result(await _cn_generate_plan_with_gpt([
+            {"type": "input_text", "text": _cn_copy_plan_prompt(data, product_analysis, reference_analysis)}
+        ]))
+        cut_plan = _cn_json_result(await _cn_generate_plan_with_gpt([
+            {"type": "input_text", "text": _cn_cut_plan_prompt(copy_plan, product_analysis, reference_analysis)}
+        ]))
+        plan = copy_plan
+        copy_sections = plan.get("sections") or []
+        cut_sections = cut_plan.get("sections") or []
+        merged = {int(item.get("number") or 0): item.get("image_prompt") for item in cut_sections if isinstance(item, dict)}
+        for index, section in enumerate(copy_sections):
+            section["number"] = int(section.get("number") or index + 1)
+            section["enabled"] = True
+            section["image_prompt"] = str(merged.get(section["number"]) or "")
+        plan["sections"] = copy_sections
+        plan["analysis"] = {"product": product_analysis, "reference": reference_analysis}
         if len(plan.get("sections") or []) != 11:
             return JSONResponse({"error": "기획안 구간 수가 맞지 않습니다. 다시 시도해 주세요."}, status_code=502)
         if data["collected"].get("warning"):
@@ -4454,7 +4525,9 @@ async def cnmaker_plan(request: Request):
         features = plan.get("features") if isinstance(plan.get("features"), list) else []
         while len(features) < 3:
             features.append({"title": "확인 필요"})
-        plan["features"] = [{"title": str(item.get("title") or "확인 필요")} for item in features if isinstance(item, dict)]
+        plan["features"] = [{"title": str(item.get("title") or "확인 필요"),
+                             "detail": str(item.get("detail") or "")}
+                            for item in features if isinstance(item, dict)]
         project_id = uuid.uuid4().hex[:12]
         source = {
             "url1688": url1688,

@@ -111,20 +111,20 @@ button.go:disabled{background:#d1a0a3;cursor:not-allowed}
        <span>📦 <b>기타 제품</b> <span style="color:#9ca3af;font-size:12px">(원본 톤 살려 색만 변형, 로고 없음)</span></span>
      </label>
    </div>
-   <button class="go" id="go" onclick="go()" style="margin-top:14px">텍스트 기획안 만들기 →</button>
+   <button class="go" id="go" onclick="go()" style="margin-top:14px">제품 분석·글·이미지 컷 기획하기 →</button>
    <div id="err"></div>
  </div>
 
  <div class="card" id="plan" style="display:none">
-   <div class="plan-head"><h2 style="margin:0">📝 텍스트 기획안 검토</h2><span id="plan-status" style="font-size:12px;background:#fef3c7;color:#92400e;padding:4px 8px;border-radius:6px">수정 중</span><span class="autosave" id="plan-save">수정 내용 자동 저장</span></div>
-   <div class="note">상품정보와 체크포인트를 확인한 뒤 저화질 상세페이지를 만드세요.</div>
+   <div class="plan-head"><h2 style="margin:0">📝 삽입 문구와 이미지 컷 기획 검토</h2><span id="plan-status" style="font-size:12px;background:#fef3c7;color:#92400e;padding:4px 8px;border-radius:6px">수정 중</span><span class="autosave" id="plan-save">수정 내용 자동 저장</span></div>
+   <div class="note">실제 삽입 문구와 이미지 컷 기획을 모두 수정한 뒤 확정하세요. 확정 전에는 이미지가 생성되지 않습니다.</div>
    <div id="plan-warnings"></div>
    <div id="plan-product"></div>
    <div id="plan-sections"></div>
    <div class="plan-actions">
      <button class="secondary" onclick="showInput()">← 자료 입력 수정</button>
      <button class="secondary" onclick="clearPlanAndRetry()">기획안 다시 만들기</button>
-     <button class="go" onclick="confirmPlan()">기획안 확정하기 ✓</button>
+     <button class="go" onclick="confirmPlan()">문구와 이미지 컷 확정하기 ✓</button>
    </div>
    <div id="draft-actions" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px;margin-top:12px">
      <b>다음 단계: 저해상도 시안</b>
@@ -248,9 +248,9 @@ function go(){
 function cnPayload(){return {url1688:document.getElementById('cn-url1688').value.trim(),image_count:cnFiles.length,images:cnFiles.map(f=>f.data),style_images:refFiles.map(f=>f.data),product:{name:document.getElementById('cn-name').value.trim(),color:document.getElementById('cn-color').value.trim(),size:document.getElementById('cn-size').value.trim(),composition:document.getElementById('cn-composition').value.trim()}};}
 async function createPlan(){
   const body=cnPayload();if(!body.url1688.startsWith('http'))return fail('CN인사이더 상품 링크를 넣어주세요.');
-  if(!confirm('내부 기획 후 저해상도 시안을 바로 생성할까요? 이미지 생성 비용이 발생합니다.'))return;
-  saveDraft();begin();document.getElementById('go').textContent='상품 분석과 내부 기획 중…';document.getElementById('err').innerHTML='';document.getElementById('pmsg').textContent='상품 자료를 수집하고 저해상도 제작안을 준비하는 중…';document.getElementById('progress').scrollIntoView({behavior:'smooth'});
-  try{const r=await fetch('/cnmaker/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(!r.ok||d.error)throw new Error(d.error||'내부 기획을 만들지 못했습니다.');currentPlan=d.plan;currentProjectId=d.project_id||'';ensureCheckpoints();if(currentProjectId)localStorage.setItem(CN_PROJECT_KEY,currentProjectId);localStorage.setItem(CN_PLAN_KEY,JSON.stringify(currentPlan));const cr=await fetch('/cnmaker/api/plans/'+currentProjectId+'/confirm',{method:'POST'}),cd=await cr.json();if(!cr.ok)throw new Error(cd.error||'내부 기획 확정 실패');await startDraft(true);}catch(e){fail(e.message||'저해상도 시안을 시작하지 못했습니다.');document.getElementById('go').disabled=false;document.getElementById('go').textContent='저해상도 시안 만들기 →';}
+  if(!confirm('제품 분석 → 글 기획 → 이미지 컷 기획을 진행할까요? 아직 이미지는 생성하지 않습니다.'))return;
+  saveDraft();begin();document.getElementById('go').textContent='제품·참고 이미지 분석 중…';document.getElementById('err').innerHTML='';document.getElementById('pmsg').textContent='제품 분석, 글 기획, 이미지 컷 기획을 순서대로 진행하는 중…';document.getElementById('progress').scrollIntoView({behavior:'smooth'});
+  try{const r=await fetch('/cnmaker/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(!r.ok||d.error)throw new Error(d.error||'기획을 만들지 못했습니다.');currentPlan=d.plan;currentProjectId=d.project_id||'';ensureCheckpoints();if(currentProjectId)localStorage.setItem(CN_PROJECT_KEY,currentProjectId);localStorage.setItem(CN_PLAN_KEY,JSON.stringify(currentPlan));document.getElementById('progress').style.display='none';document.getElementById('go').disabled=false;document.getElementById('go').textContent='제품 분석·글·이미지 컷 기획하기 →';renderPlan();document.getElementById('plan').scrollIntoView({behavior:'smooth'});}catch(e){fail(e.message||'기획을 만들지 못했습니다.');document.getElementById('go').disabled=false;document.getElementById('go').textContent='제품 분석·글·이미지 컷 기획하기 →';}
 }
 function esc(v){return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');}
 const productLabels={name:'판매 상품명',summary:'제품 소개',material:'소재',color:'색상 혹은 옵션',size:'크기',composition:'구성',usage:'사용법',caution:'주의사항'};
@@ -260,7 +260,7 @@ function renderPlan(){
   const warnings=currentPlan.warnings||[];document.getElementById('plan-warnings').innerHTML=warnings.length?`<details class="warn"><summary><b>확인이 필요한 내용 ${warnings.length}개</b></summary><div style="margin-top:8px">${warnings.map(esc).join('<br>')}</div></details>`:'';
   const p=currentPlan.product||{};ensureCheckpoints();const features=currentPlan.features;
   document.getElementById('plan-product').innerHTML=`<h3>상품정보</h3><div class="field-grid">${Object.entries(productLabels).map(([k,l])=>`<div class="field ${k==='summary'||k==='caution'?'full':''}"><label>${l}</label>${k==='summary'||k==='caution'?`<textarea oninput="updateProduct('${k}',this.value)">${esc(p[k])}</textarea>`:`<input value="${esc(p[k])}" oninput="updateProduct('${k}',this.value)">`}</div>`).join('')}</div><h3>체크포인트 <span class="required">3개 필수</span></h3><div id="feature-list">${features.map((f,i)=>`<div class="checkpoint"><b>체크포인트 ${i+1}</b><input value="${esc(f.title)}" placeholder="체크포인트명" oninput="updateFeature(${i},'title',this.value)">${i>=3?`<button class="secondary" onclick="removeFeature(${i})">삭제</button>`:''}</div>`).join('')}</div><button class="secondary" onclick="addFeature()">+ 체크포인트 추가</button>`;
-  document.getElementById('plan-sections').innerHTML='';
+  document.getElementById('plan-sections').innerHTML=`<h3>구간별 실제 삽입 문구와 이미지 컷 기획</h3>${(currentPlan.sections||[]).map((s,i)=>`<div id="section-${i}" style="border:1px solid #e5e7eb;border-radius:10px;padding:12px;margin:10px 0"><b>${s.number||i+1}. ${esc(s.type||'상세 구간')}</b><div class="field-grid"><div class="field full"><label>실제 삽입 제목</label><input value="${esc(s.title||'')}" oninput="updateSection(${i},'title',this.value)"></div><div class="field full"><label>실제 삽입 설명</label><textarea oninput="updateSection(${i},'body',this.value)">${esc(s.body||'')}</textarea></div><div class="field full"><label>이미지 컷 기획</label><textarea style="min-height:110px" oninput="updateSection(${i},'image_prompt',this.value)">${esc(s.image_prompt||'')}</textarea></div></div></div>`).join('')}`;
 }
 function updateProduct(k,v){currentPlan.product[k]=v;savePlan();}
 function updatePalette(k,v){currentPlan.palette=currentPlan.palette||{};currentPlan.palette[k]=v;savePlan();}
