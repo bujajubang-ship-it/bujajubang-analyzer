@@ -40,6 +40,13 @@ class CnmakerEngineAnalyzeTest(unittest.TestCase):
     def test_template_slot_uses_original_section_number_after_disabled_sections(self):
         self.assertEqual(server.gptmaker._template_index({"number": 6}, 2), 5)
         self.assertEqual(server.gptmaker._section_size(5, low=True), (430, 645))
+        self.assertEqual(server.gptmaker._section_size(6, low=True), (430, 800))
+
+    def test_multiple_options_are_used_only_when_cut_plan_requests_them(self):
+        one = server.gptmaker._option_display_instruction({"image_prompt": "제품 착용 장면"}, "블랙, 화이트")
+        all_options = server.gptmaker._option_display_instruction({"image_prompt": "모든 색상 정리"}, "블랙, 화이트")
+        self.assertIn("한 가지", one)
+        self.assertIn("함께", all_options)
 
     def test_selects_lazy_loaded_1688_product_images(self):
         items = [
@@ -118,7 +125,7 @@ class CnmakerEngineAnalyzeTest(unittest.TestCase):
         self.assertEqual(result["section_count"], 1)
         self.assertEqual(image_api.call_count, 1)
         self.assertIn("상어, 돌고래", image_api.call_args.args[0])
-        self.assertIn("여러 색상·옵션", image_api.call_args.args[0])
+        self.assertIn("한 가지 색상·옵션만", image_api.call_args.args[0])
         self.assertEqual(size, (430, 645))
 
     def test_generates_one_high_quality_final_section(self):
