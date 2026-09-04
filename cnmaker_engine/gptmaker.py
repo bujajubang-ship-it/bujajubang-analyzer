@@ -3,7 +3,7 @@
 import os, json, io, re, base64, urllib.request, urllib.error, time
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 import pipeline as P   # 기존 모듈 재사용 (ensure_login, scrape, _claude, _json, log 등)
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -13,6 +13,97 @@ HDR = P.HDR
 IMG_MODEL = "gpt-image-2"   # 최신 최고급 — 로고제거·한글 우수 (gpt-image-1 대비 검증완료)
 PLAN_MODEL = os.getenv("CN_PLAN_MODEL", "gpt-5.6-terra").strip()
 log = P.log
+FONT_DIR = os.path.join(BASE, "fonts")
+TITLE_FONT = os.path.join(FONT_DIR, "BlackHanSans-Regular.ttf")
+BODY_FONT = os.path.join(FONT_DIR, "NotoSansKR-Variable.ttf")
+
+
+def _font(path, size):
+    try:
+        return ImageFont.truetype(path, max(8, int(size)))
+    except Exception:
+        return ImageFont.load_default()
+
+
+def _wrap_text(draw, text, font, max_width, max_lines=4):
+    words = list(str(text or "").replace("\n", " ").strip())
+    lines, current = [], ""
+    for char in words:
+        candidate = current + char
+        if current and draw.textbbox((0, 0), candidate, font=font)[2] > max_width:
+            lines.append(current.strip()); current = char
+            if len(lines) >= max_lines:
+                break
+        else:
+            current = candidate
+    if current and len(lines) < max_lines:
+        lines.append(current.strip())
+    return lines
+
+
+def _draw_box_text(draw, xy, text, font, max_width, anchor="la", max_lines=3, padding=8):
+    lines = _wrap_text(draw, text, font, max_width - padding * 2, max_lines)
+    if not lines:
+        return
+    line_height = draw.textbbox((0, 0), "가A", font=font)[3] + max(3, font.size // 7)
+    widths = [draw.textbbox((0, 0), line, font=font)[2] for line in lines]
+    x, y = xy
+    for line, width in zip(lines, widths):
+        left = x - width // 2 - padding if anchor == "ma" else x - padding
+        draw.rectangle((left, y - padding // 2, left + width + padding * 2, y + line_height), fill=(8, 8, 8))
+        draw.text((x, y), line, font=font, fill="white", anchor=anchor)
+        y += line_height + max(2, padding // 2)
+
+
+def compose_plan_text(image, plan, section, section_index):
+    """Overlay Korean copy using the supplied 11-section 860x1290 template."""
+    image = image.convert("RGB")
+    draw = ImageDraw.Draw(image)
+    scale = image.width / 860.0
+    sx = lambda value: int(value * scale)
+    title = str(section.get("title") or "").strip()
+    body = str(section.get("body") or "").strip()
+    product = plan.get("product") or {}
+    features = [str(item.get("title") or "").strip() for item in (plan.get("features") or []) if isinstance(item, dict)]
+    big = _font(TITLE_FONT, sx(68)); medium = _font(TITLE_FONT, sx(42))
+    body_font = _font(BODY_FONT, sx(29)); small = _font(BODY_FONT, sx(23))
+
+    if section_index == 0:
+        _draw_box_text(draw, (sx(430), sx(105)), product.get("summary") or "추천 상품", small, sx(620), "ma", 1)
+        _draw_box_text(draw, (sx(430), sx(190)), product.get("name") or title, big, sx(700), "ma", 2)
+        _draw_box_text(draw, (sx(430), sx(350)), " · ".join(features[:4]), body_font, sx(690), "ma", 2)
+    elif section_index == 1:
+        _draw_box_text(draw, (sx(430), sx(110)), title, medium, sx(650), "ma", 2)
+        _draw_box_text(draw, (sx(430), sx(245)), body, body_font, sx(680), "ma", 3)
+    elif section_index == 2:
+        _draw_box_text(draw, (sx(760), sx(135)), "이런 점이 만족스러워요", small, sx(400), "ma", 1)
+        _draw_box_text(draw, (sx(760), sx(215)), title, big, sx(650), "ma", 2)
+    elif section_index == 3:
+        _draw_box_text(draw, (sx(430), sx(85)), "POINT REVIEW", medium, sx(600), "ma", 1)
+        _draw_box_text(draw, (sx(430), sx(180)), title, body_font, sx(690), "ma", 2)
+        _draw_box_text(draw, (sx(430), sx(1030)), body, small, sx(700), "ma", 3)
+    elif section_index == 4:
+        _draw_box_text(draw, (sx(95), sx(150)), title, big, sx(680), "la", 2)
+        _draw_box_text(draw, (sx(115), sx(880)), body, body_font, sx(650), "la", 3)
+    elif section_index == 5:
+        _draw_box_text(draw, (sx(430), sx(80)), title, big, sx(720), "ma", 2)
+        for i, feature in enumerate(features[:4]):
+            _draw_box_text(draw, (sx(440), sx(350 + i * 205)), feature, body_font, sx(360), "la", 2)
+    elif 6 <= section_index <= 9:
+        point = features[min(section_index - 6, max(0, len(features) - 1))] if features else title
+        _draw_box_text(draw, (sx(430), sx(90)), "CHECK POINT %02d" % (section_index - 5), small, sx(400), "ma", 1)
+        _draw_box_text(draw, (sx(430), sx(205)), point or title, medium, sx(720), "ma", 2)
+        _draw_box_text(draw, (sx(430), sx(325)), body, small, sx(640), "ma", 4)
+    else:
+        _draw_box_text(draw, (sx(430), sx(85)), "PRODUCT INFO", medium, sx(520), "ma", 1)
+        info = [
+            product.get("name"), "소재  " + str(product.get("material") or "확인 필요"),
+            "색상  " + str(product.get("color") or "확인 필요"), "크기  " + str(product.get("size") or "확인 필요"),
+            "구성  " + str(product.get("composition") or "확인 필요"), "사용법  " + str(product.get("usage") or "확인 필요"),
+            "주의사항  " + str(product.get("caution") or "확인 필요"),
+        ]
+        _draw_box_text(draw, (sx(430), sx(790)), "\n".join(filter(None, info)), small, sx(680), "ma", 7)
+    return image
 
 
 def create_text_plan(content):
@@ -470,6 +561,19 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None)
     def generate_section(item):
         nonlocal completed
         index, section = item
+        layout_notes = [
+            "제품은 화면 중앙 아래쪽에 두고 위쪽 35%를 제목용으로 단순하게 비우세요.",
+            "제품 사용 장면은 화면 아래쪽에 두고 위쪽 30%를 제목과 설명용으로 비우세요.",
+            "제품은 화면 중앙 아래쪽에 크게 두고 위쪽과 오른쪽 상단을 문구용으로 비우세요.",
+            "제품 사용 장면을 중앙에 두고 위쪽 20%와 아래쪽 20%를 문구용으로 비우세요.",
+            "사용 중인 제품은 화면 중앙 아래쪽에 두고 왼쪽 위와 하단을 문구용으로 비우세요.",
+            "제품 상세 클로즈업들을 왼쪽 세로열에 배치하고 오른쪽 절반은 설명용으로 비우세요.",
+            "제품 상세사진은 화면 아래쪽 큰 영역에 두고 위쪽 30%는 설명용으로 비우세요.",
+            "제품 상세사진은 화면 아래쪽 큰 영역에 두고 위쪽 30%는 설명용으로 비우세요.",
+            "제품 상세사진은 화면 아래쪽 큰 영역에 두고 위쪽 30%는 설명용으로 비우세요.",
+            "제품 활용사진은 화면 아래쪽 큰 영역에 두고 위쪽 30%는 설명용으로 비우세요.",
+            "제품 전체와 옵션을 화면 상단 절반에 정돈하고 아래쪽 절반은 제품정보용으로 비우세요.",
+        ]
         prompt = f"""첨부 사진의 실제 제품을 그대로 유지한 한국 쇼핑몰 상세페이지 배경 장면을 만드세요.
 제품명: {product.get('name') or '상품'}
 구간: {section.get('type') or section.get('number')}
@@ -477,6 +581,7 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None)
 실제 색상·옵션명: {option_names}
 배경색: {palette.get('background') or '아이보리'}
 포인트색: {palette.get('accent') or '차콜'}
+템플릿 배치: {layout_notes[min(index, len(layout_notes)-1)]}
 절대 규칙: 이미지 안에 글자, 숫자, 로고, 워터마크, 가짜 리뷰, 별점을 넣지 마세요.
 제품의 색상, 형태, 구조, 구성품 수량을 바꾸지 마세요. 세로형 모바일 구도, 차분한 저채도 배경."""
         if multi_option:
@@ -487,6 +592,7 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None)
         raw = _oai_image(prompt, ref_imgs_b64=refs, size="1024x1536", quality="low")
         image = Image.open(io.BytesIO(raw)).convert("RGB")
         image = image.resize((430, 645), Image.LANCZOS)
+        image = compose_plan_text(image, plan, section, index)
         section_path = os.path.splitext(out_path)[0] + f"_section_{index}.jpg"
         image.save(section_path, "JPEG", quality=84)
         if on_section:
@@ -540,7 +646,8 @@ def run_plan_section_high(plan, section_index, image_paths, reference_urls, out_
 절대 규칙: 이미지 안에 글자, 숫자, 로고, 워터마크, 가짜 리뷰, 별점을 넣지 마세요.
 제품의 색상, 형태, 구조, 구성품 수량을 바꾸지 마세요. 세로형 모바일 구도, 차분한 저채도 배경."""
     raw = _oai_image(prompt, ref_imgs_b64=refs, size="1024x1536", quality="medium")
-    Image.open(io.BytesIO(raw)).convert("RGB").save(out_path, "JPEG", quality=92)
+    image = Image.open(io.BytesIO(raw)).convert("RGB").resize((860, 1290), Image.LANCZOS)
+    compose_plan_text(image, plan, section, section_index).save(out_path, "JPEG", quality=92)
     return {"product_name": product.get("name") or "상품"}
 
 # ---------- 메인: 상세페이지 생성 ----------
