@@ -4251,19 +4251,56 @@ def _cn_copy_plan_prompt(data: dict, product_analysis: dict, reference_analysis:
 사용자 입력은 최우선입니다: {json.dumps(direct, ensure_ascii=False)}
 제품 분석: {json.dumps(product_analysis, ensure_ascii=False)}
 참고자료의 글 사용 방식 분석: {json.dumps(reference_analysis, ensure_ascii=False)}
-판매상품명, 제품소개, 체크포인트 3~4개와 각 상세 설명, 후기 형식의 장점 문구, 만족도 설명, 사용법, 주의사항, 11개 구간별 실제 삽입 문구를 작성하세요.
-1번 메인 배너의 body는 제품 사양을 나열하지 말고 사용자가 얻는 핵심 이점을 자연스러운 한국어 한 문장으로 작성하세요.
-메인 배너 보조문구는 약 10~20자로 짧게 쓰고 한 줄을 넘기지 마세요. 색상·옵션·구성·FREE 사이즈 같은 정보는 넣지 마세요.
-문체 예시: '어떤 스포츠에도 다리를 잘 잡아주는', '하루종일 신어도 편안한', '부위별 설계로 하루종일 편안하게'. 제품에 실제로 확인된 장점에 맞춰 새로 작성하세요.
-메인 배너 체크포인트명은 각각 3~6글자의 짧은 표현으로 작성하고, 사양을 길게 연결한 문장으로 쓰지 마세요.
-2번 제품 소개 구간의 title은 제품 장점을 함축한 자연스러운 영문 2~3단어로 작성하세요. 예: 'active support'.
-2번 제품 소개 구간의 body는 제품의 핵심 만족도와 체크포인트를 한국어 3~4줄로 간결하게 작성하세요. 각 줄은 짧고 읽기 쉬워야 하며 색상·구성만 나열하지 마세요.
+판매상품명, 제품소개, 체크포인트 4개와 각 상세 설명, 후기 형식의 장점 문구, 만족도 설명, 사용법, 주의사항, 11개 구간별 실제 삽입 문구를 작성하세요.
+아래 예시는 문장 길이·말투·구조를 보여주는 참고용입니다. 예시의 양말 관련 표현을 다른 제품에 그대로 복사하지 말고, 제품 분석에서 확인된 사실에 맞춰 작성하세요.
+
+1번 메인 배너:
+- body 보조문구는 제품 사양이 아니라 사용자가 얻는 핵심 이점을 약 10~20자의 자연스러운 한국어 한 문장으로 작성하고 한 줄을 넘기지 마세요.
+- 보조문구 예시: '어떤 스포츠에도 다리를 잘 잡아주는', '하루 종일 신어도 편안한', '부위별 설계로 편안하게'.
+- 보조문구에 '블랙·화이트 2컬러 구성', 'FREE 사이즈', 긴 기능 나열을 넣지 마세요.
+- title 판매상품명은 제품 종류와 핵심 특성이 바로 이해되게 간결하게 작성하세요. 예: '압박 스포츠양말 니삭스'.
+- features의 체크포인트명은 각각 짧고 분명한 효익형 표현으로 작성하세요. 예: '탄탄한 지지력', '편안한 착용감', '부위별 니트 설계'.
+
+2번 제품 소개:
+- title은 제품 장점을 함축한 자연스러운 영문 2~3단어로 작성하세요. 예: 'active support', 'premium quality', 'allday wearable'.
+- body는 핵심 만족도와 기획 의도를 한국어 3~4줄로 간결하게 작성하세요. 각 줄은 짧고 읽기 쉬워야 하며 색상·구성만 나열하지 마세요.
+- 문체와 구성 예시: '움직일수록 느껴지는 탄탄한 서포트 / 종아리부터 발바닥까지 안정적으로 잡아주는 스포츠 니삭스 / 부위별 압박 설계, 쿠션 바닥, 통기 조직 / 운동 내내 흔들림은 줄이고 편안함을 더했습니다.'
+
+3번 제품 후기 배너:
+- 글을 새로 생성하거나 변형하지 마세요.
+- body는 정확히 '이런점이 만족스러웠어요', title은 정확히 '고객님이 들려준 사용후기'로 고정하세요.
+
+4번 제품 후기 상세내용:
+- review_items에 서로 다른 체크포인트를 자연스럽게 칭찬하는 후기 4개를 작성하고, 각 항목의 title과 body를 별도로 작성하세요.
+- 실제 구매자가 일상적으로 쓴 것처럼 자연스럽되, 제품 분석에서 확인되지 않은 경험·효능·수치·과장 표현은 만들지 마세요.
+- 제목 예시: '뛰어도 안 흘러내려요', '발바닥 쿠션이 완전 도톰함', '통기성이 좋아서'.
+- 내용 예시: '러닝할 때 신는데 오래 뛰어도 안 흘러내리고 짱짱하게 잘 잡아줘서 좋아요!', '골프 라운딩에 신어도 편안해요. 다리도 안 붓고 오래 신고 있기 좋습니다.', '땀이 차도 덜 답답하고 쾌적해요~ 운동 중에도 발과 종아리가 가볍게 느껴집니다. 여름에도 추천!!'.
+- 위 예시는 해당 사실이 제품 분석에서 확인된 경우에만 참고하세요. 네 후기의 제목과 내용은 서로 중복하지 마세요.
+
+5번 체크포인트 배너:
+- 글을 새로 생성하거나 변형하지 마세요.
+- title은 정확히 '타사 제품과 무엇이 다를까요?'로 고정하고 body는 비워 두세요.
+
+6번 체크포인트 4개 정리:
+- features에 체크포인트 4개를 만들고, 각 체크포인트의 title과 detail을 별도로 작성하세요.
+- 제목 예시: '부위별 압박설계', '발바닥 쿠션 조직', '통기 니트 구조'.
+- 설명 예시: '발목부터 종아리 상단까지 짜임과 밀도를 다르게 설계해 러닝 중에도 흔들림 없이 다리에 밀착되도록 도와줍니다.', '착지 시 힘이 집중되는 부분에 도톰한 쿠션을 더해 운동 중 발바닥이 느끼는 부담을 덜어줍니다.', '세로 골지와 미세한 니트 조직이 열기와 습기를 빠르게 분산해 땀이 나는 순간에도 쾌적함을 유지합니다.'.
+- 기능·효과는 제품 분석에서 확인된 범위만 사용하고 네 체크포인트를 중복하지 마세요.
+
+7~10번 CHECK POINT 0X 상세:
+- 각 section의 title은 해당 체크포인트의 좋은 점을 짧은 문장으로 표현하고, body는 그 근거가 되는 구조·소재·사용상 장점을 설명하세요.
+- title 예시: '종아리를 탄탄하게 잡아줍니다'.
+- body 예시: '부위별 압박 짜임으로 종아리를 안정적으로 감싸며, 반복적인 움직임에도 니삭스가 쉽게 밀려 내려가지 않도록 도와줍니다.'.
+- 7~10번은 각각 features 1~4와 같은 순서로 정확히 대응해야 합니다.
+
+11번 PRODUCT INFO:
+- 제품 분석이나 사용자 입력으로 확실하게 확인된 정보만 기재하고, 확인되지 않은 정보는 '확인 필요'로 표시하세요.
 sections의 number와 type은 아래 순서를 절대 바꾸지 마세요:
 1 메인 배너 — title은 판매상품명, body는 짧은 효익형 보조문구
 2 제품 소개 — title은 영문 2~3단어, body는 제품 만족도와 기획 의도
-3 제품 후기 배너 — title은 '고객님들이 들려준 사용 후기', body는 '이런 점에 만족했어요'와 같은 짧은 도입
-4 제품 후기 상세내용 — title은 후기 영역 제목, body는 체크포인트 1~4를 각각 자연스럽게 칭찬하는 네 개의 후기형 문구
-5 체크포인트 배너 — title은 '타사 제품과 무엇이 다를까요?', body는 짧은 도입
+3 제품 후기 배너 — title은 '고객님이 들려준 사용후기', body는 '이런점이 만족스러웠어요'로 고정
+4 제품 후기 상세내용 — review_items에 체크포인트 1~4를 각각 자연스럽게 칭찬하는 후기 4개를 작성. 각 항목은 title과 body를 별도로 작성
+5 체크포인트 배너 — title은 '타사 제품과 무엇이 다를까요?'로 고정, body는 빈 문자열
 6 체크포인트 4개 정리 — title은 '가득 담았습니다', body는 체크포인트 1~4의 이름과 설명
 7 CHECK POINT 01 상세 — 첫 번째 체크포인트의 제목과 상세 설명
 8 CHECK POINT 02 상세 — 두 번째 체크포인트의 제목과 상세 설명
@@ -4272,7 +4309,7 @@ sections의 number와 type은 아래 순서를 절대 바꾸지 마세요:
 11 PRODUCT INFO — 확인된 제품 정보만 정리
 3번 제품 후기 배너에 CHECK POINT 문구를 넣지 말고, 7~10번 이외 구간을 CHECK POINT 상세로 작성하지 마세요.
 확인되지 않은 정보는 '확인 필요'로 표시하세요. JSON만 출력하세요:
-{{"product":{{"name":"","summary":"","material":"","color":"","size":"","composition":"","usage":"","caution":""}},"features":[{{"title":"","detail":""}}],"sections":[{{"number":1,"type":"메인 배너","enabled":true,"title":"실제 삽입 제목","body":"실제 삽입 본문"}}],"warnings":[]}}"""
+{{"product":{{"name":"","summary":"","material":"","color":"","size":"","composition":"","usage":"","caution":""}},"features":[{{"title":"","detail":""}}],"sections":[{{"number":1,"type":"메인 배너","enabled":true,"title":"실제 삽입 제목","body":"실제 삽입 본문","review_items":[{{"title":"후기1 제목","body":"후기1 내용"}}]}}],"warnings":[]}}"""
 
 
 def _cn_cut_plan_prompt(copy_plan: dict, product_analysis: dict, reference_analysis: dict) -> str:
@@ -4548,9 +4585,23 @@ async def cnmaker_plan(request: Request):
         copy_sections = []
         for number, expected_type in enumerate(CN_SECTION_TYPES, 1):
             section = by_number.get(number, {})
-            copy_sections.append({**section, "number": number, "type": expected_type, "enabled": True,
-                                  "title": str(section.get("title") or "확인 필요"),
-                                  "body": str(section.get("body") or "확인 필요")})
+            normalized = {**section, "number": number, "type": expected_type, "enabled": True,
+                          "title": str(section.get("title") or "확인 필요"),
+                          "body": str(section.get("body") or "확인 필요")}
+            if number == 3:
+                normalized["title"] = "고객님이 들려준 사용후기"
+                normalized["body"] = "이런점이 만족스러웠어요"
+            if number == 4:
+                items = section.get("review_items") if isinstance(section.get("review_items"), list) else []
+                normalized["review_items"] = [
+                    {"title": str((items[i] if i < len(items) and isinstance(items[i], dict) else {}).get("title") or f"후기{i + 1} 제목"),
+                     "body": str((items[i] if i < len(items) and isinstance(items[i], dict) else {}).get("body") or f"후기{i + 1} 내용")}
+                    for i in range(4)
+                ]
+            if number == 5:
+                normalized["title"] = "타사 제품과 무엇이 다를까요?"
+                normalized["body"] = ""
+            copy_sections.append(normalized)
         cut_sections = cut_plan.get("sections") or []
         merged = {int(item.get("number") or 0): item.get("image_prompt") for item in cut_sections if isinstance(item, dict)}
         for section in copy_sections:
@@ -4562,7 +4613,7 @@ async def cnmaker_plan(request: Request):
         if data["collected"].get("warning"):
             plan.setdefault("warnings", []).append(data["collected"]["warning"])
         features = plan.get("features") if isinstance(plan.get("features"), list) else []
-        while len(features) < 3:
+        while len(features) < 4:
             features.append({"title": "확인 필요"})
         plan["features"] = [{"title": str(item.get("title") or "확인 필요"),
                              "detail": str(item.get("detail") or "")}

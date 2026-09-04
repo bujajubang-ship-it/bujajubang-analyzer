@@ -113,8 +113,18 @@ def _prepare_text_safe_layout(image, section_index):
         return canvas
     elif section_index == 2:        # review banner
         _paste_photo(canvas, source, (0, y(400), width, height))
-    elif section_index == 3:        # four review visuals, copy strips above/below
-        _paste_photo(canvas, source, (x(30), y(260), x(830), y(1010)))
+    elif section_index == 3:        # four independent review cards
+        sw, sh = source.size
+        quadrants = [
+            (0, 0, sw // 2, sh // 2), (sw // 2, 0, sw, sh // 2),
+            (0, sh // 2, sw // 2, sh), (sw // 2, sh // 2, sw, sh),
+        ]
+        photo_boxes = [
+            (x(25), y(190), x(415), y(480)), (x(445), y(190), x(835), y(480)),
+            (x(25), y(700), x(415), y(990)), (x(445), y(700), x(835), y(990)),
+        ]
+        for crop_box, photo_box in zip(quadrants, photo_boxes):
+            _paste_photo(canvas, source.crop(crop_box), photo_box)
     elif section_index == 4:        # checkpoint banner
         _paste_photo(canvas, source, (0, y(390), width, height))
     elif section_index == 5:        # close-ups left, descriptions right
@@ -135,7 +145,8 @@ def compose_plan_text(image, plan, section, section_index):
     title = str(section.get("title") or "").strip()
     body = str(section.get("body") or "").strip()
     product = plan.get("product") or {}
-    features = [str(item.get("title") or "").strip() for item in (plan.get("features") or []) if isinstance(item, dict)]
+    feature_items = [item for item in (plan.get("features") or []) if isinstance(item, dict)]
+    features = [str(item.get("title") or "").strip() for item in feature_items]
     big = _font(TITLE_FONT, sx(68)); medium = _font(MEDIUM_TITLE_FONT, sx(42))
     body_font = _font(BODY_FONT, sx(29)); small = _font(SMALL_FONT, sx(23))
 
@@ -153,16 +164,24 @@ def compose_plan_text(image, plan, section, section_index):
         _draw_box_text(draw, (sx(790), sx(135)), "이런 점이 만족스러워요", small, sx(400), "ra", 1)
         _draw_box_text(draw, (sx(790), sx(215)), title, big, sx(700), "ra", 2)
     elif section_index == 3:
-        _draw_box_text(draw, (sx(430), sx(85)), "POINT REVIEW", medium, sx(600), "ma", 1)
-        _draw_box_text(draw, (sx(430), sx(180)), title, body_font, sx(690), "ma", 2)
-        _draw_box_text(draw, (sx(430), sx(1030)), body, small, sx(700), "ma", 3)
+        _draw_box_text(draw, (sx(430), sx(65)), "POINT REVIEW", medium, sx(600), "ma", 1)
+        items = section.get("review_items") if isinstance(section.get("review_items"), list) else []
+        positions = [(45, 500), (465, 500), (45, 1010), (465, 1010)]
+        for index, (left, top) in enumerate(positions):
+            item = items[index] if index < len(items) and isinstance(items[index], dict) else {}
+            review_title = str(item.get("title") or "후기%d 제목" % (index + 1)).strip()
+            review_body = str(item.get("body") or "후기%d 내용" % (index + 1)).strip()
+            _draw_box_text(draw, (sx(left), sx(top)), review_title, small, sx(350), "la", 2)
+            _draw_box_text(draw, (sx(left), sx(top + 62)), review_body, small, sx(350), "la", 4)
     elif section_index == 4:
         _draw_box_text(draw, (sx(95), sx(150)), title, big, sx(680), "la", 2)
         _draw_box_text(draw, (sx(115), sx(880)), body, body_font, sx(650), "la", 3)
     elif section_index == 5:
         _draw_box_text(draw, (sx(430), sx(80)), title, big, sx(720), "ma", 2)
-        for i, feature in enumerate(features[:4]):
-            _draw_box_text(draw, (sx(440), sx(350 + i * 205)), feature, body_font, sx(360), "la", 2)
+        for i, feature in enumerate(feature_items[:4]):
+            top = 325 + i * 220
+            _draw_box_text(draw, (sx(440), sx(top)), str(feature.get("title") or ""), body_font, sx(360), "la", 2)
+            _draw_box_text(draw, (sx(440), sx(top + 68)), str(feature.get("detail") or ""), small, sx(360), "la", 4)
     elif 6 <= section_index <= 9:
         point = features[min(section_index - 6, max(0, len(features) - 1))] if features else title
         _draw_box_text(draw, (sx(430), sx(90)), "CHECK POINT %02d" % (section_index - 5), small, sx(400), "ma", 1)
