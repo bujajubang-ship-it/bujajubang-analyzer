@@ -17,14 +17,15 @@ import server  # noqa: E402
 
 
 class CnmakerEngineAnalyzeTest(unittest.TestCase):
-    def test_text_safe_layout_keeps_hero_photo_out_of_copy_area(self):
+    def test_text_safe_layout_keeps_hero_photo_full_bleed(self):
         image = Image.new("RGB", (860, 1290), "white")
         for px in range(100, 760):
             for py in range(100, 1190):
                 image.putpixel((px, py), (180, 30, 30))
         safe = server.gptmaker._prepare_text_safe_layout(image, 0)
-        self.assertEqual(safe.getpixel((430, 200)), (255, 255, 255))
-        self.assertNotEqual(safe.getpixel((430, 800)), (255, 255, 255))
+        self.assertEqual(safe.size, image.size)
+        self.assertEqual(safe.getpixel((430, 200)), (180, 30, 30))
+        self.assertEqual(safe.getpixel((430, 800)), (180, 30, 30))
 
     def test_template_slot_uses_original_section_number_after_disabled_sections(self):
         self.assertEqual(server.gptmaker._template_index({"number": 6}, 2), 5)
