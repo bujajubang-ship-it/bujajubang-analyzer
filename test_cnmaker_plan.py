@@ -31,7 +31,8 @@ def sample_gpt_plan():
 async def fake_generate_plan(content):
     assert content[0]["type"] == "input_text"
     for item in content[1:]:
-        assert item["detail"] == "high"
+        if item["type"] == "input_image":
+            assert item["detail"] == "high"
     return json.dumps(sample_gpt_plan(), ensure_ascii=False)
 
 
