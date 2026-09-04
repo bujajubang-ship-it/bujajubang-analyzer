@@ -525,7 +525,7 @@ def make_thumbnail(form, refs, out_path):
     return out_path
 
 
-def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None):
+def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None, style_image_paths=None):
     """확정된 기획안으로 글자 없는 저해상도 구간 시안을 만든다."""
     refs = []
     for path in image_paths[:4]:
@@ -547,6 +547,16 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None)
             pass
     if not refs:
         raise RuntimeError("시안에 사용할 제품 사진이 없습니다")
+    style_refs = []
+    for path in (style_image_paths or [])[:2]:
+        try:
+            with open(path, "rb") as image_file:
+                raw = image_file.read()
+            style_refs.append(("image/png" if raw[:4] == b"\x89PNG" else "image/jpeg", base64.b64encode(raw).decode()))
+        except Exception:
+            pass
+    product_refs = refs[:2] if style_refs else refs[:4]
+    generation_refs = product_refs + style_refs
 
     product = plan.get("product") or {}
     palette = plan.get("palette") or {}
@@ -584,12 +594,17 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None)
 템플릿 배치: {layout_notes[min(index, len(layout_notes)-1)]}
 절대 규칙: 이미지 안에 글자, 숫자, 로고, 워터마크, 가짜 리뷰, 별점을 넣지 마세요.
 제품의 색상, 형태, 구조, 구성품 수량을 바꾸지 마세요. 세로형 모바일 구도, 차분한 저채도 배경."""
+        if style_refs:
+            prompt += f"""
+첨부 이미지 중 앞의 {len(product_refs)}장은 제품 기준사진이며 제품은 이 사진과 동일해야 합니다.
+뒤의 {len(style_refs)}장은 연출 참고사진일 뿐입니다. 참고사진의 인물 얼굴·모델·포즈·몸의 방향·카메라 각도·의상·소품·배경·구도를 그대로 복제하지 마세요.
+참고사진과 명확히 구별되는 새로운 모델, 새로운 포즈, 다른 촬영 각도와 패션, 독창적인 장면으로 만드세요."""
         if multi_option:
             prompt += """
 여러 색상·옵션이 입력되었습니다. 첨부된 서로 다른 옵션의 실제 제품 사진을 구간마다 번갈아 참고하고,
 전체 상세페이지에는 입력된 여러 옵션이 고르게 등장하게 하세요. 한 제품에 옵션을 임의로 합치거나
 첨부 사진에 없는 색상·무늬·형태를 새로 만들지 마세요."""
-        raw = _oai_image(prompt, ref_imgs_b64=refs, size="1024x1536", quality="low")
+        raw = _oai_image(prompt, ref_imgs_b64=generation_refs, size="1024x1536", quality="low")
         image = Image.open(io.BytesIO(raw)).convert("RGB")
         image = image.resize((430, 645), Image.LANCZOS)
         image = compose_plan_text(image, plan, section, index)
@@ -632,7 +647,7 @@ def recompose_plan_section(job_base_path, plan, section_index, show_text=True):
     return output_path
 
 
-def run_plan_section_high(plan, section_index, image_paths, reference_urls, out_path):
+def run_plan_section_high(plan, section_index, image_paths, reference_urls, out_path, style_image_paths=None):
     """선택한 활성 구간 하나를 최종용 medium 품질로 생성한다."""
     refs = []
     for path in image_paths[:4]:
@@ -653,6 +668,16 @@ def run_plan_section_high(plan, section_index, image_paths, reference_urls, out_
     sections = [section for section in (plan.get("sections") or []) if section.get("enabled", True)]
     if not refs or section_index < 0 or section_index >= len(sections):
         raise RuntimeError("고화질 생성에 필요한 제품 사진 또는 구간이 없습니다")
+    style_refs = []
+    for path in (style_image_paths or [])[:2]:
+        try:
+            with open(path, "rb") as image_file:
+                raw = image_file.read()
+            style_refs.append(("image/png" if raw[:4] == b"\x89PNG" else "image/jpeg", base64.b64encode(raw).decode()))
+        except Exception:
+            pass
+    product_refs = refs[:2] if style_refs else refs[:4]
+    generation_refs = product_refs + style_refs
     product, palette, section = plan.get("product") or {}, plan.get("palette") or {}, sections[section_index]
     prompt = f"""첨부 사진의 실제 제품을 그대로 유지한 한국 쇼핑몰 상세페이지 배경 장면을 만드세요.
 제품명: {product.get('name') or '상품'}
@@ -663,7 +688,11 @@ def run_plan_section_high(plan, section_index, image_paths, reference_urls, out_
 포인트색: {palette.get('accent') or '차콜'}
 절대 규칙: 이미지 안에 글자, 숫자, 로고, 워터마크, 가짜 리뷰, 별점을 넣지 마세요.
 제품의 색상, 형태, 구조, 구성품 수량을 바꾸지 마세요. 세로형 모바일 구도, 차분한 저채도 배경."""
-    raw = _oai_image(prompt, ref_imgs_b64=refs, size="1024x1536", quality="medium")
+    if style_refs:
+        prompt += f"""
+첨부 이미지 중 앞의 {len(product_refs)}장은 제품 기준사진으로 제품을 동일하게 유지하세요.
+뒤의 {len(style_refs)}장은 연출 참고용입니다. 인물 얼굴·모델·포즈·몸 방향·카메라 각도·의상·소품·배경·구도를 복제하지 말고 명확히 다른 독창적인 장면을 만드세요."""
+    raw = _oai_image(prompt, ref_imgs_b64=generation_refs, size="1024x1536", quality="medium")
     image = Image.open(io.BytesIO(raw)).convert("RGB").resize((860, 1290), Image.LANCZOS)
     compose_plan_text(image, plan, section, section_index).save(out_path, "JPEG", quality=92)
     return {"product_name": product.get("name") or "상품"}

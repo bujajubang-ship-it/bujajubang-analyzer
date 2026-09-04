@@ -4479,12 +4479,14 @@ async def cnmaker_generate_draft(project_id: str, request: Request):
         return JSONResponse({"error": "기획안을 먼저 확정해 주세요."}, status_code=409)
     data = await request.json()
     images = data.get("images") or []
-    if len(images) > 10:
-        return JSONResponse({"error": "기준 이미지는 최대 10장까지 올릴 수 있습니다."}, status_code=400)
+    style_images = data.get("style_images") or []
+    if len(images) > 10 or len(style_images) > 10:
+        return JSONResponse({"error": "제품사진과 참고사진은 각각 최대 10장까지 올릴 수 있습니다."}, status_code=400)
     payload = {
         "project_id": project_id,
         "plan": item["confirmed_plan"],
         "images": images,
+        "style_images": style_images,
         "reference_urls": (item.get("source") or {}).get("collected_images") or [],
     }
     try:
@@ -4512,10 +4514,12 @@ async def cnmaker_generate_section_high(project_id: str, section_index: int, req
         return JSONResponse({"error": "고화질로 만들 구간을 확인해 주세요."}, status_code=400)
     data = await request.json()
     images = data.get("images") or []
-    if len(images) > 10:
-        return JSONResponse({"error": "기준 이미지는 최대 10장까지 올릴 수 있습니다."}, status_code=400)
+    style_images = data.get("style_images") or []
+    if len(images) > 10 or len(style_images) > 10:
+        return JSONResponse({"error": "제품사진과 참고사진은 각각 최대 10장까지 올릴 수 있습니다."}, status_code=400)
     payload = {"project_id": project_id, "plan": item["confirmed_plan"], "section_index": section_index,
-               "images": images, "reference_urls": (item.get("source") or {}).get("collected_images") or []}
+               "images": images, "style_images": style_images,
+               "reference_urls": (item.get("source") or {}).get("collected_images") or []}
     try:
         async with httpx.AsyncClient(timeout=60) as client:
             response = await client.post(f"{CNMAKER_BASE}/cnmaker/start_plan_high", json=payload,

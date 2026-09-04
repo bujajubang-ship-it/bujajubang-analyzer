@@ -119,7 +119,7 @@ class CnmakerEngineAnalyzeTest(unittest.TestCase):
             result_dir.mkdir()
             history_file = pathlib.Path(directory) / "history.json"
 
-            def fake_draft(plan, image_paths, reference_urls, output, on_section=None):
+            def fake_draft(plan, image_paths, reference_urls, output, on_section=None, style_image_paths=None):
                 pathlib.Path(output).write_bytes(b"draft")
                 if on_section:
                     for index in range(3):
