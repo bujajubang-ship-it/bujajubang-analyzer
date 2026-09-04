@@ -3,7 +3,7 @@
 import os, json, io, re, base64, urllib.request, urllib.error, time
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 import pipeline as P   # 기존 모듈 재사용 (ensure_login, scrape, _claude, _json, log 등)
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -85,9 +85,50 @@ def _draw_box_text(draw, xy, text, font, max_width, anchor="la", max_lines=3, pa
         y += line_height + max(2, padding // 2)
 
 
+def _background_color(image):
+    """Estimate a quiet panel color from image corners."""
+    points = [(0, 0), (image.width - 1, 0), (0, image.height - 1), (image.width - 1, image.height - 1)]
+    colors = [image.getpixel(point) for point in points]
+    return tuple(int(sum(color[channel] for color in colors) / len(colors)) for channel in range(3))
+
+
+def _paste_photo(canvas, source, box):
+    left, top, right, bottom = box
+    photo = ImageOps.fit(source, (right - left, bottom - top), method=Image.LANCZOS, centering=(0.5, 0.5))
+    canvas.paste(photo, (left, top))
+
+
+def _prepare_text_safe_layout(image, section_index):
+    """Build deterministic photo/text zones so generated products never sit under copy."""
+    source = image.convert("RGB")
+    width, height = source.size
+    sx, sy = width / 860.0, height / 1290.0
+    x = lambda value: int(value * sx)
+    y = lambda value: int(value * sy)
+    background = _background_color(source)
+    canvas = Image.new("RGB", source.size, background)
+    if section_index == 0:          # hero: copy top, product bottom
+        _paste_photo(canvas, source, (0, y(430), width, height))
+    elif section_index == 1:        # editorial introduction: copy only
+        return canvas
+    elif section_index == 2:        # review banner
+        _paste_photo(canvas, source, (0, y(400), width, height))
+    elif section_index == 3:        # four review visuals, copy strips above/below
+        _paste_photo(canvas, source, (x(30), y(260), x(830), y(1010)))
+    elif section_index == 4:        # checkpoint banner
+        _paste_photo(canvas, source, (0, y(390), width, height))
+    elif section_index == 5:        # close-ups left, descriptions right
+        _paste_photo(canvas, source, (x(35), y(285), x(390), y(1250)))
+    elif 6 <= section_index <= 9:   # checkpoint detail
+        _paste_photo(canvas, source, (x(30), y(410), x(830), y(1260)))
+    else:                           # product info: photo center-top, specs below
+        _paste_photo(canvas, source, (x(145), y(190), x(715), y(690)))
+    return canvas
+
+
 def compose_plan_text(image, plan, section, section_index):
     """Overlay Korean copy using the supplied 11-section 860x1290 template."""
-    image = image.convert("RGB")
+    image = _prepare_text_safe_layout(image, section_index)
     draw = ImageDraw.Draw(image)
     scale = image.width / 860.0
     sx = lambda value: int(value * scale)
