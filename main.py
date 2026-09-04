@@ -4227,13 +4227,14 @@ CHECK POINT 02 상세, CHECK POINT 03 상세, CHECK POINT 04 상세, PRODUCT INF
 def _cn_product_analysis_prompt(data: dict) -> str:
     direct = data.get("product") or {}
     return f"""당신은 제품 사실 분석가입니다. 판매 문구와 이미지 생성 프롬프트를 만들지 마세요.
-첨부된 제품 상세사진과 CN인사이더 상품 이미지를 이미지 순서대로 high 정밀도로 분석하세요.
-중국어 원문을 보이는 그대로 추출하고 자연스러운 한국어로 정확히 번역하세요.
+첨부된 제품 상세사진과 CN인사이더 상품 이미지를 이미지 순서대로 빠짐없이 high 정밀도로 분석하세요.
+각 이미지 앞에 표시된 출처와 번호를 그대로 유지하세요. 중국어가 있는 이미지는 중국어 원문을 보이는 그대로 모두 추출하고, 쇼핑몰 문맥에 맞는 자연스러운 한국어로 정확히 번역하세요.
+중국어 문구가 이미지의 어떤 사진·제품 부위·사용 장면을 설명하는지 반드시 같은 항목에 기록하세요.
 제품 외형·구성품·소재·크기·색상·옵션·사용법과 각 이미지의 촬영 장면을 구분하세요.
 화면이나 문구로 확인된 사실과 추정·미확인 내용을 엄격히 분리하세요.
 사용자 입력은 최우선 사실입니다: 상품명={direct.get('name') or '미입력'}, 색상·옵션={direct.get('color') or '미입력'}, 크기={direct.get('size') or '미입력'}, 구성={direct.get('composition') or '미입력'}.
 JSON만 출력하세요:
-{{"images":[{{"image_number":1,"shot":"보이는 컷과 제품 부위","chinese_text":"중국어 원문 또는 없음","korean_translation":"한국어 번역 또는 없음","verified_facts":["확인된 사실"],"unverified":["미확인 내용"]}}],"product":{{"appearance":"","components":[],"material":"확인 필요","size":"확인 필요","colors_options":[],"usage":"확인 필요"}},"verified_facts":[],"unverified":[]}}"""
+{{"images":[{{"source":"cninsider 또는 upload","source_number":1,"shot":"사진에 보이는 전체 장면","product_part":"보이는 제품 부위","text_visual_relation":"중국어 문구가 어떤 사진·기능을 설명하는지","chinese_text":"중국어 원문 전체 또는 없음","korean_translation":"자연스러운 한국어 번역 또는 없음","verified_facts":["번역과 화면으로 확인된 사실"],"unverified":["미확인 내용"]}}],"product":{{"appearance":"","components":[],"material":"확인 필요","size":"확인 필요","colors_options":[],"usage":"확인 필요"}},"verified_facts":[],"unverified":[]}}"""
 
 
 def _cn_reference_analysis_prompt() -> str:
@@ -4322,7 +4323,8 @@ def _cn_cut_plan_prompt(copy_plan: dict, product_analysis: dict, reference_analy
 글 기획: {json.dumps(copy_plan, ensure_ascii=False)}
 순서는 메인 배너, 제품 소개, 제품 후기 배너, 제품 후기 상세내용, 체크포인트 배너, 체크포인트 4개 정리, CHECK POINT 01~04 상세, PRODUCT INFO입니다.
 7~10번에는 image_prompt_closeup에 상세 클로즈업 계획, image_prompt_use에 착용·사용 장면 계획을 서로 겹치지 않게 따로 작성하세요.
-JSON만 출력하세요: {{"sections":[{{"number":1,"image_prompt":"공통 이미지 계획","image_prompt_closeup":"7~10번 상세 클로즈업 계획","image_prompt_use":"7~10번 착용·사용 장면 계획"}}]}}"""
+각 구간의 source_image_numbers에는 그 장면과 제품 형태를 만들 때 참고할 CN인사이더 이미지 번호만 지정하세요. 번역문과 사진 장면이 해당 구간 문구의 근거가 되는 이미지를 우선 선택하세요.
+JSON만 출력하세요: {{"sections":[{{"number":1,"source_image_numbers":[1,3],"image_prompt":"공통 이미지 계획","image_prompt_closeup":"7~10번 상세 클로즈업 계획","image_prompt_use":"7~10번 착용·사용 장면 계획"}}]}}"""
 
 
 def _cn_json_result(raw: str) -> dict:
@@ -4527,11 +4529,12 @@ async def cnmaker_plan(request: Request):
     if len(images) > 10 or len(style_images) > 10:
         return JSONResponse({"error": "제품사진과 참고사진은 각각 최대 10장까지 올릴 수 있습니다."}, status_code=400)
     total_image_bytes = 0
-    for image in images:
+    for upload_number, image in enumerate(images, 1):
         match = re.match(r"^data:(image/(?:jpeg|png|webp|gif));base64,(.+)$", str(image), re.S)
         if not match:
             return JSONResponse({"error": "읽을 수 없는 이미지가 포함되어 있습니다."}, status_code=400)
         total_image_bytes += len(match.group(2)) * 3 // 4
+        product_content.append({"type": "input_text", "text": f"[직접 업로드 제품사진 {upload_number}]"})
         product_content.append({
             "type": "input_image",
             "image_url": f"data:{match.group(1)};base64,{match.group(2)}",
@@ -4545,8 +4548,9 @@ async def cnmaker_plan(request: Request):
             return JSONResponse({"error": "읽을 수 없는 참고 이미지가 포함되어 있습니다."}, status_code=400)
         reference_content.append({"type": "input_image", "image_url": f"data:{match.group(1)};base64,{match.group(2)}", "detail": "high"})
     # 직접 올린 사진 다음에 1688 제품 사진을 보조 근거로 전달한다.
+    cn_image_numbers_attached = []
     async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-        for image_url in (data["collected"].get("images") or [])[:10]:
+        for cn_number, image_url in enumerate((data["collected"].get("images") or [])[:10], 1):
             try:
                 image_response = await client.get(image_url, headers={"User-Agent": "Mozilla/5.0"})
                 image_response.raise_for_status()
@@ -4556,15 +4560,28 @@ async def cnmaker_plan(request: Request):
                 media_type = (image_response.headers.get("content-type") or "image/jpeg").split(";", 1)[0]
                 if media_type not in ("image/jpeg", "image/png", "image/webp", "image/gif"):
                     continue
+                product_content.append({"type": "input_text", "text": f"[CN인사이더 이미지 {cn_number}]"})
                 product_content.append({
                     "type": "input_image",
                     "image_url": f"data:{media_type};base64,{base64.b64encode(image_bytes).decode()}",
                     "detail": "high",
                 })
+                cn_image_numbers_attached.append(cn_number)
             except Exception:
                 continue
     try:
         product_analysis = _cn_json_result(await _cn_generate_plan_with_gpt(product_content))
+        analyzed_cn = {
+            int(item.get("source_number") or 0) for item in (product_analysis.get("images") or [])
+            if isinstance(item, dict) and str(item.get("source") or "").lower() == "cninsider"
+        }
+        missing_cn = [number for number in cn_image_numbers_attached if number not in analyzed_cn]
+        if missing_cn:
+            retry_content = product_content + [{
+                "type": "input_text",
+                "text": f"검사 결과 CN인사이더 이미지 번호 {missing_cn}가 누락되었습니다. 첨부된 모든 CN인사이더 이미지를 번호별로 각각 하나의 images 항목으로 빠짐없이 다시 분석하고 JSON 전체를 다시 출력하세요.",
+            }]
+            product_analysis = _cn_json_result(await _cn_generate_plan_with_gpt(retry_content))
         reference_analysis = _cn_json_result(await _cn_generate_plan_with_gpt(reference_content)) if style_images else {"images": []}
         copy_plan = _cn_json_result(await _cn_generate_plan_with_gpt([
             {"type": "input_text", "text": _cn_copy_plan_prompt(data, product_analysis, reference_analysis)}
@@ -4608,6 +4625,10 @@ async def cnmaker_plan(request: Request):
         for section in copy_sections:
             cut = merged.get(section["number"]) or {}
             section["image_prompt"] = str(cut.get("image_prompt") or "")
+            section["source_image_numbers"] = [
+                int(value) for value in (cut.get("source_image_numbers") or [])
+                if str(value).isdigit() and 1 <= int(value) <= 10
+            ][:4]
             if 7 <= section["number"] <= 10:
                 section["image_prompt_closeup"] = str(cut.get("image_prompt_closeup") or section["image_prompt"])
                 section["image_prompt_use"] = str(cut.get("image_prompt_use") or section["image_prompt"])

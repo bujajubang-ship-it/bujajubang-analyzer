@@ -687,6 +687,38 @@ def _load_product_refs(image_paths, reference_urls, limit):
     return selected
 
 
+def _load_linked_refs(reference_urls):
+    refs = {}
+    for number, url in enumerate(reference_urls[:10], 1):
+        try:
+            raw = urllib.request.urlopen(urllib.request.Request(url, headers=HDR), timeout=20).read()
+            refs[number] = ("image/png" if raw[:4] == b"\x89PNG" else "image/jpeg", base64.b64encode(raw).decode())
+        except Exception:
+            pass
+    return refs
+
+
+def _section_product_refs(uploaded_refs, linked_refs, section, limit):
+    """Prefer the CN images explicitly selected by the cut planner for this section."""
+    selected = list(uploaded_refs[:1])
+    numbers = section.get("source_image_numbers") if isinstance(section, dict) else []
+    for value in numbers if isinstance(numbers, list) else []:
+        try:
+            ref = linked_refs[int(value)]
+        except (ValueError, TypeError, IndexError):
+            continue
+        if ref not in selected:
+            selected.append(ref)
+        if len(selected) >= limit:
+            return selected
+    for ref in list(linked_refs.values()) + list(uploaded_refs[1:]):
+        if ref not in selected:
+            selected.append(ref)
+        if len(selected) >= limit:
+            break
+    return selected
+
+
 def _product_info_base(product_refs, size=(860, 1290)):
     """Place an untouched uploaded/CN product photo without AI regeneration."""
     canvas = Image.new("RGB", size, (247, 245, 241))
@@ -742,10 +774,10 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None,
             style_refs.append(("image/png" if raw[:4] == b"\x89PNG" else "image/jpeg", base64.b64encode(raw).decode()))
         except Exception:
             pass
-    product_refs = _load_product_refs(image_paths, reference_urls, 3 if style_refs else 4)
-    if not product_refs:
+    uploaded_refs = _load_product_refs(image_paths, [], 10)
+    linked_refs = _load_linked_refs(reference_urls)
+    if not uploaded_refs and not linked_refs:
         raise RuntimeError("시안에 사용할 제품 사진이 없습니다")
-    generation_refs = product_refs + style_refs
 
     product = plan.get("product") or {}
     palette = plan.get("palette") or {}
@@ -761,6 +793,8 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None,
         nonlocal completed
         index, section = item
         template_index = _template_index(section, index)
+        product_refs = _section_product_refs(uploaded_refs, linked_refs, section, 3 if style_refs else 4)
+        generation_refs = product_refs + style_refs
         layout_notes = [
             "[메인 배너, 860×1290] 실제 제품을 착용하거나 사용하는 감성적인 대표 장면을 크게 보여주세요. 사람의 손, 착용한 다리, 실제 사용 모습처럼 사람이 조금이라도 나오는 장면이 좋습니다. 제품 형태는 상품 링크 사진과 동일하게 유지하되 색상과 옵션은 입력된 내용만 따르세요. 사진과 배경은 위에서 아래까지 화면 전체를 빈틈없이 채우는 하나의 연속된 장면이어야 합니다. 상단과 하단을 서로 다른 색면으로 나누거나 가로 경계선, 띠, 별도 패널, 접합부를 만들지 마세요. 제품이 가장 먼저 보이게 하고 상단 중앙 35%에는 보조문구·상품명·짧은 체크포인트 3개가 들어가므로, 같은 사진 배경을 자연스럽게 이어가면서 제품·인물·소품만 배치하지 않은 깨끗한 네거티브 스페이스로 비우세요.",
             "[제품 소개, 860×860] 이 구간에는 제품 사진, 제품 실루엣, 인물, 신체, 손, 착용 장면, 사용 장면, 소품을 절대 넣지 마세요. 밝은 화이트·아이보리 계열의 미니멀한 단색 또는 매우 은은한 종이 질감 배경만 만드세요. 화면 중앙에는 짧은 영문 소제목과 3~4줄의 한국어 제품 소개 문구가 들어갈 수 있도록 넓고 단정한 빈 공간을 확보하세요. 영문 소제목 위아래의 가는 수평선이 들어갈 공간을 고려하되 선이나 글자는 이미지 AI가 직접 만들지 마세요. 전체 분위기는 오른쪽 예시처럼 차분하고 고급스러운 편집 디자인이어야 합니다.",
@@ -872,11 +906,13 @@ def run_plan_section_high(plan, section_index, image_paths, reference_urls, out_
             style_refs.append(("image/png" if raw[:4] == b"\x89PNG" else "image/jpeg", base64.b64encode(raw).decode()))
         except Exception:
             pass
-    product_refs = _load_product_refs(image_paths, reference_urls, 3 if style_refs else 4)
-    if not product_refs:
+    uploaded_refs = _load_product_refs(image_paths, [], 10)
+    linked_refs = _load_linked_refs(reference_urls)
+    if not uploaded_refs and not linked_refs:
         raise RuntimeError("고화질 생성에 필요한 제품 사진이 없습니다")
-    generation_refs = product_refs + style_refs
     product, palette, section = plan.get("product") or {}, plan.get("palette") or {}, sections[section_index]
+    product_refs = _section_product_refs(uploaded_refs, linked_refs, section, 3 if style_refs else 4)
+    generation_refs = product_refs + style_refs
     template_index = _template_index(section, section_index)
     prompt = f"""첨부 사진의 실제 제품을 그대로 유지한 한국 쇼핑몰 상세페이지 배경 장면을 만드세요.
 제품명: {product.get('name') or '상품'}
