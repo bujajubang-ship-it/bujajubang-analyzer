@@ -39,7 +39,10 @@ def _fitted_font(path, text, preferred_size, minimum_size, max_width):
 
 
 def _section_size(section_index, low=False):
-    sizes = [(860, 1290), (860, 860)] + [(860, 1290)] * 9
+    sizes = [
+        (860, 1290), (860, 860), (860, 1290), (860, 1290), (860, 1290), (860, 1290),
+        (860, 1600), (860, 1600), (860, 1600), (860, 1600), (860, 1290),
+    ]
     width, height = sizes[min(max(section_index, 0), len(sizes) - 1)]
     return (width // 2, height // 2) if low else (width, height)
 
@@ -113,7 +116,7 @@ def _prepare_text_safe_layout(image, section_index):
     """Build deterministic photo/text zones so generated products never sit under copy."""
     source = image.convert("RGB")
     width, height = source.size
-    sx, sy = width / 860.0, height / 1290.0
+    sx, sy = width / 860.0, height / (1600.0 if 6 <= section_index <= 9 else 1290.0)
     x = lambda value: int(value * sx)
     y = lambda value: int(value * sy)
     background = _background_color(source)
@@ -143,9 +146,9 @@ def _prepare_text_safe_layout(image, section_index):
     elif 6 <= section_index <= 9:   # checkpoint detail: close-up + use scene
         midpoint = source.height // 2
         _paste_photo(canvas, source.crop((0, 0, source.width, midpoint)),
-                     (x(30), y(405), x(830), y(805)))
+                     (x(30), y(400), x(830), y(975)))
         _paste_photo(canvas, source.crop((0, midpoint, source.width, source.height)),
-                     (x(30), y(835), x(830), y(1235)))
+                     (x(30), y(1005), x(830), y(1575)))
     else:                           # product info: photo center-top, specs below
         _paste_photo(canvas, source, (x(145), y(190), x(715), y(690)))
     return canvas
@@ -691,9 +694,18 @@ def _section_layout_instruction(template_index, shot_mode=None):
         3: "서로 다른 실제 사용 장면 네 컷을 2열×2행으로 구성하고 각 카드 아래 25%를 문구용으로 비우세요.",
         4: "제품을 사용하는 뒷모습 또는 옆모습을 크게 보여주고 상단 왼쪽과 하단을 문구용으로 비우세요.",
         5: "서로 다른 클로즈업 네 컷을 왼쪽 세로열에 배치하고 오른쪽을 체크포인트 문구용으로 비우세요.",
-        10: "제품 전체·구성품·실제 옵션을 상단 중앙에 정돈하고 아래쪽 절반을 제품정보 문구용으로 비우세요.",
+        10: "제품 전체와 구성품을 상단 중앙에 정돈하고 아래쪽 절반을 제품정보 문구용으로 비우세요. 여러 색상·옵션을 함께 보여주는 것은 이미지 컷 계획에 명시된 경우만 허용합니다.",
     }
     return notes.get(template_index, "제품이 선명한 세로형 상세페이지 장면을 만드세요.")
+
+
+def _option_display_instruction(section, option_names):
+    plan_text = " ".join(str(section.get(key) or "") for key in
+                         ("image_prompt", "image_prompt_closeup", "image_prompt_use"))
+    show_all = bool(re.search(r"모든\s*(색상|옵션)|전체\s*(색상|옵션)|여러\s*(색상|옵션)", plan_text))
+    if show_all:
+        return f"이 구간은 이미지 컷 계획에 여러 옵션 표시가 명시되었습니다. 실제 옵션({option_names})만 함께 보여주세요."
+    return f"이 이미지에는 실제 옵션({option_names}) 중 한 가지 색상·옵션만 선택해 보여주세요. 여러 색상이나 옵션을 한 사진에 함께 넣지 마세요."
 
 
 def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None, style_image_paths=None):
@@ -747,6 +759,7 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None,
 구간: {section.get('type') or section.get('number')}
 추가 제품 컷 세부사항: {section.get('image_prompt') or section.get('body') or ''}
 실제 색상·옵션명: {option_names}
+색상·옵션 표시 규칙: {_option_display_instruction(section, option_names)}
 배경색: {palette.get('background') or '아이보리'}
 포인트색: {palette.get('accent') or '차콜'}
 템플릿 배치: {layout_note}
@@ -760,11 +773,6 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None,
 첨부 이미지 중 앞의 {len(product_refs)}장은 제품 기준사진이며 제품은 이 사진과 동일해야 합니다.
 뒤의 {len(style_refs)}장은 연출 참고사진일 뿐입니다. 참고사진의 인물 얼굴·모델·포즈·몸의 방향·카메라 각도·의상·소품·배경·구도를 그대로 복제하지 마세요.
 참고사진과 명확히 구별되는 새로운 모델, 새로운 포즈, 다른 촬영 각도와 패션, 독창적인 장면으로 만드세요."""
-        if multi_option:
-            prompt += """
-여러 색상·옵션이 입력되었습니다. 첨부된 서로 다른 옵션의 실제 제품 사진을 구간마다 번갈아 참고하고,
-전체 상세페이지에는 입력된 여러 옵션이 고르게 등장하게 하세요. 한 제품에 옵션을 임의로 합치거나
-첨부 사진에 없는 색상·무늬·형태를 새로 만들지 마세요."""
         if 6 <= template_index <= 9:
             log(f"{section.get('number')}번 상세 클로즈업 생성 중 (1/2)")
             closeup_raw = _oai_image(
@@ -849,6 +857,7 @@ def run_plan_section_high(plan, section_index, image_paths, reference_urls, out_
 구간: {section.get('type') or section.get('number')}
 이미지 계획: {section.get('image_prompt') or section.get('body') or ''}
 실제 색상·옵션명: {product.get('color') or '단일 옵션'}
+색상·옵션 표시 규칙: {_option_display_instruction(section, product.get('color') or '단일 옵션')}
 배경색: {palette.get('background') or '아이보리'}
 포인트색: {palette.get('accent') or '차콜'}
 템플릿 배치: {_section_layout_instruction(template_index)}
