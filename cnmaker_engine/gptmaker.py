@@ -11,7 +11,7 @@ ENV = P.ENV
 OKEY = (os.getenv("OPENAI_API_KEY") or P.ENV.get("OPENAI_API_KEY") or "").strip()
 HDR = P.HDR
 IMG_MODEL = "gpt-image-2"   # 최신 최고급 — 로고제거·한글 우수 (gpt-image-1 대비 검증완료)
-PLAN_MODEL = os.getenv("CN_PLAN_MODEL", "gpt-5.6-sol").strip()
+PLAN_MODEL = os.getenv("CN_PLAN_MODEL", "gpt-5.6-terra").strip()
 log = P.log
 
 
@@ -32,6 +32,8 @@ def create_text_plan(content):
         data=json.dumps(body).encode("utf-8"),
         headers={"Authorization": "Bearer " + OKEY, "Content-Type": "application/json"},
     )
+    log("GPT 내부 기획 시작 (%s)" % PLAN_MODEL)
+    started_at = time.time()
     try:
         response = json.loads(urllib.request.urlopen(request, timeout=180).read())
     except urllib.error.HTTPError as exc:
@@ -47,6 +49,7 @@ def create_text_plan(content):
     text = "".join(parts).strip()
     if not text:
         raise RuntimeError("GPT 기획안 응답이 비어 있습니다")
+    log("GPT 내부 기획 완료 (%d초)" % max(1, int(time.time() - started_at)))
     return text
 
 def normalize_url(url):
@@ -506,7 +509,7 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None)
 
 
 def run_plan_section_high(plan, section_index, image_paths, reference_urls, out_path):
-    """선택한 활성 구간 하나를 고화질로 생성한다."""
+    """선택한 활성 구간 하나를 최종용 medium 품질로 생성한다."""
     refs = []
     for path in image_paths[:4]:
         try:
@@ -536,8 +539,8 @@ def run_plan_section_high(plan, section_index, image_paths, reference_urls, out_
 포인트색: {palette.get('accent') or '차콜'}
 절대 규칙: 이미지 안에 글자, 숫자, 로고, 워터마크, 가짜 리뷰, 별점을 넣지 마세요.
 제품의 색상, 형태, 구조, 구성품 수량을 바꾸지 마세요. 세로형 모바일 구도, 차분한 저채도 배경."""
-    raw = _oai_image(prompt, ref_imgs_b64=refs, size="1024x1536", quality="high")
-    Image.open(io.BytesIO(raw)).convert("RGB").save(out_path, "JPEG", quality=94)
+    raw = _oai_image(prompt, ref_imgs_b64=refs, size="1024x1536", quality="medium")
+    Image.open(io.BytesIO(raw)).convert("RGB").save(out_path, "JPEG", quality=92)
     return {"product_name": product.get("name") or "상품"}
 
 # ---------- 메인: 상세페이지 생성 ----------
