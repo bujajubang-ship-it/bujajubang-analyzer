@@ -4170,6 +4170,9 @@ def _cn_plan_prompt(data: dict) -> str:
 - 확인되지 않은 소재, 규격, 수치, 효능은 만들지 말고 반드시 '확인 필요'라고 쓰세요.
 - 브랜드명과 로고를 새로 만들지 마세요.
 - 체크포인트는 제품에서 확인할 수 있는 기능명만 최소 3개 작성하세요.
+- 첨부된 링크 이미지마다 화면에 보이는 장면과 제품 부위를 정확히 구분하세요.
+- 이미지 속 중국어를 빠뜨리지 말고 원문과 자연스러운 한국어 번역을 기록하세요.
+- 체크포인트는 번역문 또는 이미지에서 직접 확인된 사실만 사용하고, 서로 다른 구매 장점으로 작성하세요.
 - 디자인은 저채도 배경 1~2개와 포인트색 1개만 사용하세요.
 - 결과는 설명 없이 JSON 객체 하나만 출력하세요.
 
@@ -4202,6 +4205,9 @@ CN인사이더 상품 링크: {data.get('url1688') or '없음'}
     {{"title":"체크포인트명"}},
     {{"title":"체크포인트명"}},
     {{"title":"체크포인트명"}}
+  ],
+  "image_analysis": [
+    {{"image_number":1, "shot":"이미지에 보이는 제품·부위·사용 장면", "chinese_text":"읽힌 중국어 원문 또는 없음", "korean_translation":"정확한 한국어 번역 또는 없음", "verified_features":["번역이나 화면에서 확인된 사실"]}}
   ],
   "palette": {{"background":"아이보리", "secondary":"연베이지", "accent":"다크 브라운"}},
   "sections": [
@@ -4410,13 +4416,13 @@ async def cnmaker_plan(request: Request):
         content.append({
             "type": "input_image",
             "image_url": f"data:{match.group(1)};base64,{match.group(2)}",
-            "detail": "auto",
+            "detail": "high",
         })
     if total_image_bytes > 25 * 1024 * 1024:
         return JSONResponse({"error": "이미지 전체 용량을 25MB 이하로 줄여주세요."}, status_code=413)
     # 직접 올린 사진 다음에 1688 제품 사진을 보조 근거로 전달한다.
     async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-        for image_url in (data["collected"].get("images") or [])[:3]:
+        for image_url in (data["collected"].get("images") or [])[:10]:
             try:
                 image_response = await client.get(image_url, headers={"User-Agent": "Mozilla/5.0"})
                 image_response.raise_for_status()
@@ -4429,7 +4435,7 @@ async def cnmaker_plan(request: Request):
                 content.append({
                     "type": "input_image",
                     "image_url": f"data:{media_type};base64,{base64.b64encode(image_bytes).decode()}",
-                    "detail": "auto",
+                    "detail": "high",
                 })
             except Exception:
                 continue
@@ -4550,6 +4556,27 @@ async def cnmaker_compose_section(job_id: str, section_index: int, request: Requ
         return JSONResponse(response.json(), status_code=response.status_code)
     except Exception:
         return JSONResponse({"error": "글자 합성 서버에 연결하지 못했습니다."}, status_code=502)
+
+
+@app.post("/cnmaker/api/jobs/{job_id}/sections/{section_index}/regenerate")
+async def cnmaker_regenerate_section(job_id: str, section_index: int, request: Request):
+    if not _site_auth(request):
+        return JSONResponse({"error": "로그인이 필요합니다."}, status_code=401)
+    data = await request.json()
+    plan, project_id = data.get("plan"), str(data.get("project_id") or "")
+    item = _cn_load_plans().get(project_id)
+    if not re.fullmatch(r"[a-f0-9]{12}", job_id) or not isinstance(plan, dict) or not item:
+        return JSONResponse({"error": "수정할 시안 정보를 확인해 주세요."}, status_code=400)
+    payload = {"target_job": job_id, "section_index": section_index, "plan": plan,
+               "images": data.get("images") or [], "style_images": data.get("style_images") or [],
+               "reference_urls": (item.get("source") or {}).get("collected_images") or []}
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.post(f"{CNMAKER_BASE}/cnmaker/start_plan_section_draft", json=payload,
+                                         headers={"x-secret": CNMAKER_SECRET})
+        return JSONResponse(response.json(), status_code=response.status_code)
+    except Exception:
+        return JSONResponse({"error": "이미지 수정 서버에 연결하지 못했습니다."}, status_code=502)
 
 
 @app.post("/cnmaker/api/plans/{project_id}/draft-complete")

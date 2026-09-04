@@ -185,17 +185,18 @@ def _select_product_image_urls(items):
         if width and height and max(width, height) < 120:
             continue
         square = width and height and abs(width - height) <= max(width, height) * 0.25
-        score = (3 if square else 0) + (2 if max(width, height) >= 400 else 0)
+        tall_detail = width and height and height >= width * 1.3
+        score = (3 if square else 0) + (4 if tall_detail else 0) + (2 if max(width, height) >= 400 else 0)
         if any(word in key.lower() for word in ("imgextra", "bao/uploaded", "offer")):
             score += 2
         seen.add(key)
         ranked.append((score, clean))
     ranked.sort(key=lambda pair: pair[0], reverse=True)
-    return [src for _, src in ranked[:16]]
+    return [src for _, src in ranked[:24]]
 
 def _collect_product_images(pg):
     """src 외 지연 로딩·srcset·배경·네트워크 이미지까지 함께 수집한다."""
-    for y in (700, 1400, 2200, 3200):
+    for y in (700, 1400, 2200, 3200, 4500, 6000, 8000, 10000, 12000):
         pg.evaluate("(y) => window.scrollTo(0, y)", y)
         pg.wait_for_timeout(350)
     items = pg.evaluate(r"""() => {
@@ -669,7 +670,8 @@ def recompose_plan_section(job_base_path, plan, section_index, show_text=True):
     return output_path
 
 
-def run_plan_section_high(plan, section_index, image_paths, reference_urls, out_path, style_image_paths=None):
+def run_plan_section_high(plan, section_index, image_paths, reference_urls, out_path, style_image_paths=None,
+                          quality="high", output_size=(860, 1290), compose_text=True):
     """선택한 활성 구간 하나를 최종용 high 품질로 생성한다."""
     sections = [section for section in (plan.get("sections") or []) if section.get("enabled", True)]
     if section_index < 0 or section_index >= len(sections):
@@ -700,9 +702,11 @@ def run_plan_section_high(plan, section_index, image_paths, reference_urls, out_
         prompt += f"""
 첨부 이미지 중 앞의 {len(product_refs)}장은 제품 기준사진으로 제품을 동일하게 유지하세요.
 뒤의 {len(style_refs)}장은 연출 참고용입니다. 인물 얼굴·모델·포즈·몸 방향·카메라 각도·의상·소품·배경·구도를 복제하지 말고 명확히 다른 독창적인 장면을 만드세요."""
-    raw = _oai_image(prompt, ref_imgs_b64=generation_refs, size="1024x1536", quality="high")
-    image = Image.open(io.BytesIO(raw)).convert("RGB").resize((860, 1290), Image.LANCZOS)
-    compose_plan_text(image, plan, section, section_index).save(out_path, "JPEG", quality=92)
+    raw = _oai_image(prompt, ref_imgs_b64=generation_refs, size="1024x1536", quality=quality)
+    image = Image.open(io.BytesIO(raw)).convert("RGB").resize(output_size, Image.LANCZOS)
+    if compose_text:
+        image = compose_plan_text(image, plan, section, section_index)
+    image.save(out_path, "JPEG", quality=92 if quality == "high" else 84)
     return {"product_name": product.get("name") or "상품"}
 
 # ---------- 메인: 상세페이지 생성 ----------
