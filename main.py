@@ -4216,9 +4216,11 @@ CN인사이더 상품 링크: {data.get('url1688') or '없음'}
   "warnings": ["확인이 필요한 사실"]
 }}
 
-sections는 반드시 다음 11개 순서로 작성하세요: 메인 배너, 상품 핵심 소개, POINT REVIEW 도입,
-POINT REVIEW 카드, 핵심 기능 요약, 제품 차별점, 핵심 기능 1 상세, 핵심 기능 2 상세,
-핵심 기능 3 상세, 핵심 기능 4 및 활용 장면, PRODUCT INFO.
+sections는 반드시 다음 11개 순서로 작성하세요: 메인 배너, 제품 사용 만족도 설명, 제품 후기 배너,
+제품 후기 상세내용, 체크포인트 배너, 체크포인트 4개 정리, CHECK POINT 01 상세,
+CHECK POINT 02 상세, CHECK POINT 03 상세, CHECK POINT 04 상세, PRODUCT INFO.
+각 section의 image_prompt에는 보여줄 제품 부위, 사용 상황, 인물 유무, 촬영 거리와 각도를 구체적으로 작성하세요.
+네 개의 체크포인트 상세 장면은 서로 다른 기능과 서로 다른 구도여야 하며 같은 이미지를 반복하지 마세요.
 기능 수가 부족한 상세 구간은 enabled를 false로 설정하세요."""
 
 
