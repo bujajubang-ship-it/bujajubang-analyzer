@@ -270,6 +270,15 @@ class H(BaseHTTPRequestHandler):
             except Exception as e:
                 print("[cnmaker/analyze] "+str(e)[:200], flush=True)
                 return self._send(502,{"error":"1688 상품정보를 가져오지 못했습니다. 링크와 로그인을 확인해 주세요."})
+        if self.path=="/cnmaker/plan":
+            content=body.get("content") or []
+            if not isinstance(content,list) or not content:
+                return self._send(400,{"error":"기획안 입력자료가 필요합니다"})
+            try:
+                return self._send(200,{"ok":True,"text":gptmaker.create_text_plan(content)})
+            except Exception as e:
+                print("[cnmaker/plan] "+str(e)[:500], flush=True)
+                return self._send(502,{"error":"GPT 기획안을 만들지 못했습니다"})
         if self.path=="/cnmaker/start_plan_draft":
             import uuid, base64
             project_id=(body.get("project_id") or "").strip()
