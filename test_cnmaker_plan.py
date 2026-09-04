@@ -68,6 +68,8 @@ class CnmakerPlanTest(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()["plan"]["sections"]), 11)
+        self.assertEqual(response.json()["plan"]["sections"][2]["type"], "제품 후기 배너")
+        self.assertEqual(response.json()["plan"]["sections"][6]["type"], "CHECK POINT 01 상세")
         self.assertEqual(len(response.json()["plan"]["features"]), 3)
 
     @patch.object(main, "_site_auth", return_value=True)

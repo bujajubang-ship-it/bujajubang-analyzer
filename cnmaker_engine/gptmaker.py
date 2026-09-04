@@ -99,10 +99,13 @@ def compose_plan_text(image, plan, section, section_index):
     body_font = _font(BODY_FONT, sx(29)); small = _font(SMALL_FONT, sx(23))
 
     if section_index == 0:
-        _draw_box_text(draw, (sx(430), sx(105)), product.get("summary") or "추천 상품", small, sx(620), "ma", 1)
+        _draw_box_text(draw, (sx(430), sx(105)), body or product.get("summary") or "추천 상품", small, sx(620), "ma", 1)
         _draw_box_text(draw, (sx(430), sx(190)), product.get("name") or title, big, sx(700), "ma", 2)
         _draw_box_text(draw, (sx(430), sx(350)), " · ".join(features[:4]), body_font, sx(690), "ma", 2)
     elif section_index == 1:
+        line_color = (45, 43, 40)
+        draw.line((sx(260), sx(92), sx(600), sx(92)), fill=line_color, width=max(1, sx(2)))
+        draw.line((sx(260), sx(180), sx(600), sx(180)), fill=line_color, width=max(1, sx(2)))
         _draw_box_text(draw, (sx(430), sx(110)), title, medium, sx(650), "ma", 2)
         _draw_box_text(draw, (sx(430), sx(245)), body, body_font, sx(680), "ma", 3)
     elif section_index == 2:
@@ -617,7 +620,7 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None,
         template_index = _template_index(section, index)
         layout_notes = [
             "[메인 배너, 860×1290] 실제 제품을 착용하거나 사용하는 감성적인 대표 장면을 크게 보여주세요. 사람의 손, 착용한 다리, 실제 사용 모습처럼 사람이 조금이라도 나오는 장면이 좋습니다. 제품 형태는 상품 링크 사진과 동일하게 유지하되 색상과 옵션은 입력된 내용만 따르세요. 제품이 가장 먼저 보이게 하고 상단 중앙 35%는 보조문구·상품명·짧은 체크포인트 3개가 한 줄로 들어갈 수 있도록 깨끗하고 단순하게 비우세요.",
-            "[제품 사용 만족도 설명, 860×860] 화면 중앙에 영문 보조제목, 실제 사용 시 만족할 수 있는 점, 제품 기획 시 고려한 점이 들어갈 넓고 단정한 여백을 만드세요. 배경은 미니멀한 단색 또는 은은한 질감으로 구성하세요.",
+            "[제품 소개, 860×860] 이 구간에는 제품 사진, 제품 실루엣, 인물, 신체, 손, 착용 장면, 사용 장면, 소품을 절대 넣지 마세요. 밝은 화이트·아이보리 계열의 미니멀한 단색 또는 매우 은은한 종이 질감 배경만 만드세요. 화면 중앙에는 짧은 영문 소제목과 3~4줄의 한국어 제품 소개 문구가 들어갈 수 있도록 넓고 단정한 빈 공간을 확보하세요. 영문 소제목 위아래의 가는 수평선이 들어갈 공간을 고려하되 선이나 글자는 이미지 AI가 직접 만들지 마세요. 전체 분위기는 오른쪽 예시처럼 차분하고 고급스러운 편집 디자인이어야 합니다.",
             "[제품 후기 배너] 제품만 단독으로 선명하고 크게 보여주고 배경은 은은한 단색으로 구성하세요. 실제 옵션이 여러 개면 모두 함께 정돈해 보여주세요. 제품은 화면 중앙부터 아래쪽에 배치하고, 상단 오른쪽은 짧은 보조문구와 큰 후기 제목용으로 비우세요. 불필요한 소품은 최소화하세요.",
             "[제품 후기 상세내용] 2열×2행의 네 개 후기 카드에 사용할 서로 다른 실제 사용 장면 4컷을 한 화면에 구성하세요. 네 장면은 각각 체크포인트 1·2·3·4의 장점을 보여주고 실제 고객이 직접 촬영한 듯 자연스러워야 합니다. 같은 사진·포즈·카메라 각도를 반복하지 마세요. 각 카드 아래쪽 약 25%는 후기 제목과 짧은 설명용으로 비우고 각 카드 왼쪽 위에는 노란색 별 5개만 표시하세요. 글자·검은 박스·카드 테두리는 생성하지 마세요.",
             "[체크포인트 배너] 사용자가 실제로 제품을 사용하는 뒷모습 또는 옆모습의 생활 장면을 크게 보여주세요. 제품의 사용 방식이 명확히 보여야 합니다. 화면 상단 왼쪽은 큰 질문형 제목용으로, 화면 하단은 이미지 설명용으로 비우세요.",
