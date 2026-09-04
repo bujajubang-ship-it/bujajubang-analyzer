@@ -4321,7 +4321,8 @@ def _cn_cut_plan_prompt(copy_plan: dict, product_analysis: dict, reference_analy
 참고 이미지 분석: {json.dumps(reference_analysis, ensure_ascii=False)}
 글 기획: {json.dumps(copy_plan, ensure_ascii=False)}
 순서는 메인 배너, 제품 소개, 제품 후기 배너, 제품 후기 상세내용, 체크포인트 배너, 체크포인트 4개 정리, CHECK POINT 01~04 상세, PRODUCT INFO입니다.
-JSON만 출력하세요: {{"sections":[{{"number":1,"image_prompt":"목적; 장면; 보조 컷; 카메라; 인물; 배경·소품; 문구 여백"}}]}}"""
+7~10번에는 image_prompt_closeup에 상세 클로즈업 계획, image_prompt_use에 착용·사용 장면 계획을 서로 겹치지 않게 따로 작성하세요.
+JSON만 출력하세요: {{"sections":[{{"number":1,"image_prompt":"공통 이미지 계획","image_prompt_closeup":"7~10번 상세 클로즈업 계획","image_prompt_use":"7~10번 착용·사용 장면 계획"}}]}}"""
 
 
 def _cn_json_result(raw: str) -> dict:
@@ -4603,9 +4604,13 @@ async def cnmaker_plan(request: Request):
                 normalized["body"] = ""
             copy_sections.append(normalized)
         cut_sections = cut_plan.get("sections") or []
-        merged = {int(item.get("number") or 0): item.get("image_prompt") for item in cut_sections if isinstance(item, dict)}
+        merged = {int(item.get("number") or 0): item for item in cut_sections if isinstance(item, dict)}
         for section in copy_sections:
-            section["image_prompt"] = str(merged.get(section["number"]) or "")
+            cut = merged.get(section["number"]) or {}
+            section["image_prompt"] = str(cut.get("image_prompt") or "")
+            if 7 <= section["number"] <= 10:
+                section["image_prompt_closeup"] = str(cut.get("image_prompt_closeup") or section["image_prompt"])
+                section["image_prompt_use"] = str(cut.get("image_prompt_use") or section["image_prompt"])
         plan["sections"] = copy_sections
         plan["analysis"] = {"product": product_analysis, "reference": reference_analysis}
         if len(plan.get("sections") or []) != 11:

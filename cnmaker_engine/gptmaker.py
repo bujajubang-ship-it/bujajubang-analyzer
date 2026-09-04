@@ -27,6 +27,17 @@ def _font(path, size):
         return ImageFont.load_default()
 
 
+def _fitted_font(path, text, preferred_size, minimum_size, max_width):
+    """Return the largest font that keeps a required single-line label intact."""
+    probe = Image.new("RGB", (1, 1))
+    draw = ImageDraw.Draw(probe)
+    for size in range(max(8, int(preferred_size)), max(7, int(minimum_size)) - 1, -1):
+        font = _font(path, size)
+        if draw.textbbox((0, 0), str(text or ""), font=font)[2] <= max_width:
+            return font
+    return _font(path, minimum_size)
+
+
 def _section_size(section_index, low=False):
     sizes = [(860, 1290), (860, 860)] + [(860, 1290)] * 9
     width, height = sizes[min(max(section_index, 0), len(sizes) - 1)]
@@ -155,6 +166,15 @@ def compose_plan_text(image, plan, section, section_index):
     body_font = _font(BODY_FONT, sx(29)); small = _font(SMALL_FONT, sx(23))
 
     if section_index == 0:
+        overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
+        overlay_draw = ImageDraw.Draw(overlay)
+        hero_tint = _background_color(image)
+        fade_height = max(1, sx(430))
+        for row in range(fade_height):
+            alpha = int(105 * (1 - row / fade_height))
+            overlay_draw.line((0, row, image.width, row), fill=(*hero_tint, alpha))
+        image = Image.alpha_composite(image.convert("RGBA"), overlay).convert("RGB")
+        draw = ImageDraw.Draw(image)
         _draw_box_text(draw, (sx(430), sx(105)), body or product.get("summary") or "추천 상품", small, sx(620), "ma", 1)
         _draw_box_text(draw, (sx(430), sx(190)), product.get("name") or title, big, sx(700), "ma", 2)
         _draw_box_text(draw, (sx(430), sx(350)), " · ".join(features[:4]), body_font, sx(690), "ma", 2)
@@ -166,7 +186,8 @@ def compose_plan_text(image, plan, section, section_index):
         _draw_box_text(draw, (sx(430), sx(245)), body, body_font, sx(680), "ma", 3)
     elif section_index == 2:
         _draw_box_text(draw, (sx(790), sx(125)), body or "이런 점이 만족스러워요", body_font, sx(560), "ra", 1)
-        _draw_box_text(draw, (sx(790), sx(205)), title, medium, sx(760), "ra", 1)
+        review_font = _fitted_font(MEDIUM_TITLE_FONT, title, sx(42), sx(28), sx(740))
+        _draw_box_text(draw, (sx(790), sx(205)), title, review_font, sx(760), "ra", 1)
     elif section_index == 3:
         _draw_box_text(draw, (sx(430), sx(65)), "POINT REVIEW", medium, sx(600), "ma", 1)
         items = section.get("review_items") if isinstance(section.get("review_items"), list) else []
@@ -187,10 +208,13 @@ def compose_plan_text(image, plan, section, section_index):
             _draw_box_text(draw, (sx(440), sx(top)), str(feature.get("title") or ""), body_font, sx(360), "la", 2)
             _draw_box_text(draw, (sx(440), sx(top + 68)), str(feature.get("detail") or ""), small, sx(360), "la", 4)
     elif 6 <= section_index <= 9:
-        point = features[min(section_index - 6, max(0, len(features) - 1))] if features else title
+        feature_index = min(section_index - 6, max(0, len(feature_items) - 1))
+        feature = feature_items[feature_index] if feature_items else {}
+        point = str(feature.get("title") or title).strip()
+        detail = str(feature.get("detail") or body).strip()
         _draw_box_text(draw, (sx(430), sx(90)), "CHECK POINT %02d" % (section_index - 5), small, sx(400), "ma", 1)
         _draw_box_text(draw, (sx(430), sx(205)), point or title, medium, sx(720), "ma", 2)
-        _draw_box_text(draw, (sx(430), sx(325)), body, small, sx(640), "ma", 4)
+        _draw_box_text(draw, (sx(430), sx(325)), detail, small, sx(640), "ma", 4)
     else:
         _draw_box_text(draw, (sx(430), sx(85)), "PRODUCT INFO", medium, sx(520), "ma", 1)
         info = [
@@ -653,17 +677,36 @@ def _load_product_refs(image_paths, reference_urls, limit):
     return selected
 
 
+def _section_layout_instruction(template_index, shot_mode=None):
+    if 6 <= template_index <= 9:
+        if shot_mode == "closeup":
+            return "제품의 해당 체크포인트 구조·소재가 선명한 상세 클로즈업 한 컷만 생성하세요. 글자와 프레임은 넣지 마세요."
+        if shot_mode == "use":
+            return "해당 체크포인트가 분명히 보이는 실제 착용·사용 장면 한 컷만 생성하세요. 클로즈업 컷과 구도·거리·각도를 다르게 하고 글자와 프레임은 넣지 마세요."
+        return "최종 화면은 상단 문구 영역과 아래의 독립 이미지 박스 두 개로 조립됩니다. 개별 생성 규칙을 우선하세요."
+    notes = {
+        0: "860×1290 전체를 하나의 연속된 사진으로 채우고 상단 35%는 피사체 없는 문구 여백으로 비우세요. 색면 분할과 가로 경계는 금지합니다.",
+        1: "제품·인물·소품 없이 860×860의 은은한 단색 또는 종이 질감 배경만 만드세요.",
+        2: "제품은 중앙 아래에 크게 배치하고 상단 오른쪽은 후기 문구용으로 비우세요.",
+        3: "서로 다른 실제 사용 장면 네 컷을 2열×2행으로 구성하고 각 카드 아래 25%를 문구용으로 비우세요.",
+        4: "제품을 사용하는 뒷모습 또는 옆모습을 크게 보여주고 상단 왼쪽과 하단을 문구용으로 비우세요.",
+        5: "서로 다른 클로즈업 네 컷을 왼쪽 세로열에 배치하고 오른쪽을 체크포인트 문구용으로 비우세요.",
+        10: "제품 전체·구성품·실제 옵션을 상단 중앙에 정돈하고 아래쪽 절반을 제품정보 문구용으로 비우세요.",
+    }
+    return notes.get(template_index, "제품이 선명한 세로형 상세페이지 장면을 만드세요.")
+
+
 def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None, style_image_paths=None):
     """확정된 기획안으로 글자 없는 저해상도 구간 시안을 만든다."""
     style_refs = []
-    for path in (style_image_paths or [])[:2]:
+    for path in (style_image_paths or [])[:1]:
         try:
             with open(path, "rb") as image_file:
                 raw = image_file.read()
             style_refs.append(("image/png" if raw[:4] == b"\x89PNG" else "image/jpeg", base64.b64encode(raw).decode()))
         except Exception:
             pass
-    product_refs = _load_product_refs(image_paths, reference_urls, 2 if style_refs else 4)
+    product_refs = _load_product_refs(image_paths, reference_urls, 3 if style_refs else 4)
     if not product_refs:
         raise RuntimeError("시안에 사용할 제품 사진이 없습니다")
     generation_refs = product_refs + style_refs
@@ -696,6 +739,9 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None,
             "[PRODUCT INFO] 제품의 전체 형태·구성품·색상 옵션을 한눈에 확인할 수 있는 깔끔한 누끼형 또는 정돈된 제품 사진을 화면 상단 중앙 영역에 배치하세요. 여러 실제 색상이 있으면 빠짐없이 모두 보여주세요. 최상단은 PRODUCT INFO 제목용, 화면 아래쪽 절반은 제품명·소재·색상·크기·구성·사용법·주의사항용으로 완전히 비우세요.",
         ]
         rating_rule = "후기 상세 구간의 각 카드 왼쪽 위에 지정된 노란색 별 5개만 허용합니다." if template_index == 3 else "별점도 넣지 마세요."
+        layout_note = layout_notes[min(template_index, len(layout_notes)-1)]
+        if 6 <= template_index <= 9:
+            layout_note = "최종 화면은 상단 문구 영역과 아래의 독립 이미지 박스 두 개로 조립됩니다. 이번 호출에서는 개별 생성 규칙의 한 장면만 만드세요."
         prompt = f"""CN인사이더 상품 링크 속 이미지와 참고 이미지를 바탕으로, 제품 상세사진의 실제 제품을 사용한 한국 쇼핑몰 상세페이지 배경 장면을 만드세요.
 제품명: {product.get('name') or '상품'}
 구간: {section.get('type') or section.get('number')}
@@ -703,7 +749,7 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None,
 실제 색상·옵션명: {option_names}
 배경색: {palette.get('background') or '아이보리'}
 포인트색: {palette.get('accent') or '차콜'}
-템플릿 배치: {layout_notes[min(template_index, len(layout_notes)-1)]}
+템플릿 배치: {layout_note}
 추가 제품 컷 세부사항이 구간의 목적이나 템플릿 배치와 충돌하면 반드시 템플릿 배치를 우선하세요.
 템플릿은 사진 영역과 문구 여백의 위치만 참고하세요. 안내용 검은 박스, 검은 테두리, 초록색 표시, 샘플 풍경, 임시 도형은 절대 따라 만들지 마세요.
 문구 여백에는 제품, 인물, 손, 소품이 절대 들어오지 않게 하여 나중에 합성되는 글자와 겹치지 않도록 하세요.
@@ -720,11 +766,13 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None,
 전체 상세페이지에는 입력된 여러 옵션이 고르게 등장하게 하세요. 한 제품에 옵션을 임의로 합치거나
 첨부 사진에 없는 색상·무늬·형태를 새로 만들지 마세요."""
         if 6 <= template_index <= 9:
+            log(f"{section.get('number')}번 상세 클로즈업 생성 중 (1/2)")
             closeup_raw = _oai_image(
-                prompt + "\n이 첫 번째 이미지는 제품의 해당 체크포인트 구조와 소재가 선명한 상세 클로즈업 한 컷만 만드세요.",
+                prompt + "\n클로즈업 컷 계획: " + str(section.get("image_prompt_closeup") or "") + "\n개별 생성 규칙: " + _section_layout_instruction(template_index, "closeup"),
                 ref_imgs_b64=generation_refs, size="1024x1024", quality="low")
+            log(f"{section.get('number')}번 착용·사용 장면 생성 중 (2/2)")
             use_raw = _oai_image(
-                prompt + "\n이 두 번째 이미지는 같은 체크포인트가 분명히 보이는 실제 착용·사용 장면 한 컷만 만드세요. 첫 번째 이미지와 구도·거리·각도를 다르게 하세요.",
+                prompt + "\n착용·사용 컷 계획: " + str(section.get("image_prompt_use") or "") + "\n개별 생성 규칙: " + _section_layout_instruction(template_index, "use"),
                 ref_imgs_b64=generation_refs, size="1024x1024", quality="low")
             closeup = Image.open(io.BytesIO(closeup_raw)).convert("RGB")
             use_scene = Image.open(io.BytesIO(use_raw)).convert("RGB")
@@ -783,14 +831,14 @@ def run_plan_section_high(plan, section_index, image_paths, reference_urls, out_
     if section_index < 0 or section_index >= len(sections):
         raise RuntimeError("고화질 생성에 필요한 제품 사진 또는 구간이 없습니다")
     style_refs = []
-    for path in (style_image_paths or [])[:2]:
+    for path in (style_image_paths or [])[:1]:
         try:
             with open(path, "rb") as image_file:
                 raw = image_file.read()
             style_refs.append(("image/png" if raw[:4] == b"\x89PNG" else "image/jpeg", base64.b64encode(raw).decode()))
         except Exception:
             pass
-    product_refs = _load_product_refs(image_paths, reference_urls, 2 if style_refs else 4)
+    product_refs = _load_product_refs(image_paths, reference_urls, 3 if style_refs else 4)
     if not product_refs:
         raise RuntimeError("고화질 생성에 필요한 제품 사진이 없습니다")
     generation_refs = product_refs + style_refs
@@ -803,6 +851,7 @@ def run_plan_section_high(plan, section_index, image_paths, reference_urls, out_
 실제 색상·옵션명: {product.get('color') or '단일 옵션'}
 배경색: {palette.get('background') or '아이보리'}
 포인트색: {palette.get('accent') or '차콜'}
+템플릿 배치: {_section_layout_instruction(template_index)}
 절대 규칙: 이미지 안에 글자, 숫자, 로고, 워터마크, 가짜 리뷰, 별점을 넣지 마세요.
 제품의 색상, 형태, 구조, 구성품 수량을 바꾸지 마세요. 세로형 모바일 구도, 차분한 저채도 배경."""
     if style_refs:
@@ -810,11 +859,13 @@ def run_plan_section_high(plan, section_index, image_paths, reference_urls, out_
 첨부 이미지 중 앞의 {len(product_refs)}장은 제품 기준사진으로 제품을 동일하게 유지하세요.
 뒤의 {len(style_refs)}장은 연출 참고용입니다. 인물 얼굴·모델·포즈·몸 방향·카메라 각도·의상·소품·배경·구도를 복제하지 말고 명확히 다른 독창적인 장면을 만드세요."""
     if 6 <= template_index <= 9:
+        log(f"{section.get('number')}번 상세 클로즈업 생성 중 (1/2)")
         closeup_raw = _oai_image(
-            prompt + "\n첫 번째 이미지는 제품의 해당 체크포인트 구조와 소재가 선명한 상세 클로즈업 한 컷만 만드세요.",
+            prompt + "\n클로즈업 컷 계획: " + str(section.get("image_prompt_closeup") or "") + "\n개별 생성 규칙: " + _section_layout_instruction(template_index, "closeup"),
             ref_imgs_b64=generation_refs, size="1024x1024", quality=quality)
+        log(f"{section.get('number')}번 착용·사용 장면 생성 중 (2/2)")
         use_raw = _oai_image(
-            prompt + "\n두 번째 이미지는 같은 체크포인트가 분명히 보이는 실제 착용·사용 장면 한 컷만 만드세요. 첫 번째 이미지와 구도·거리·각도를 다르게 하세요.",
+            prompt + "\n착용·사용 컷 계획: " + str(section.get("image_prompt_use") or "") + "\n개별 생성 규칙: " + _section_layout_instruction(template_index, "use"),
             ref_imgs_b64=generation_refs, size="1024x1024", quality=quality)
         closeup = Image.open(io.BytesIO(closeup_raw)).convert("RGB")
         use_scene = Image.open(io.BytesIO(use_raw)).convert("RGB")
