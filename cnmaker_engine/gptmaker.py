@@ -14,8 +14,10 @@ IMG_MODEL = "gpt-image-2"   # 최신 최고급 — 로고제거·한글 우수 (
 PLAN_MODEL = os.getenv("CN_PLAN_MODEL", "gpt-5.6-terra").strip()
 log = P.log
 FONT_DIR = os.path.join(BASE, "fonts")
-TITLE_FONT = os.path.join(FONT_DIR, "BlackHanSans-Regular.ttf")
-BODY_FONT = os.path.join(FONT_DIR, "NotoSansKR-Variable.ttf")
+TITLE_FONT = os.path.join(FONT_DIR, "Pretendard-Black.otf")
+MEDIUM_TITLE_FONT = os.path.join(FONT_DIR, "Pretendard-ExtraBold.otf")
+BODY_FONT = os.path.join(FONT_DIR, "Pretendard-Regular.otf")
+SMALL_FONT = os.path.join(FONT_DIR, "Pretendard-Medium.otf")
 
 
 def _font(path, size):
@@ -76,8 +78,8 @@ def compose_plan_text(image, plan, section, section_index):
     body = str(section.get("body") or "").strip()
     product = plan.get("product") or {}
     features = [str(item.get("title") or "").strip() for item in (plan.get("features") or []) if isinstance(item, dict)]
-    big = _font(TITLE_FONT, sx(68)); medium = _font(TITLE_FONT, sx(42))
-    body_font = _font(BODY_FONT, sx(29)); small = _font(BODY_FONT, sx(23))
+    big = _font(TITLE_FONT, sx(68)); medium = _font(MEDIUM_TITLE_FONT, sx(42))
+    body_font = _font(BODY_FONT, sx(29)); small = _font(SMALL_FONT, sx(23))
 
     if section_index == 0:
         _draw_box_text(draw, (sx(430), sx(105)), product.get("summary") or "추천 상품", small, sx(620), "ma", 1)
