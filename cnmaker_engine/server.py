@@ -154,7 +154,7 @@ def analyze_product(url):
     return {"title": (data.get("title") or "").strip(), "images": images}
 
 
-def worker_plan_draft(job_id, plan, image_paths, reference_urls):
+def worker_plan_draft(job_id, plan, image_paths, reference_urls, style_paths=None):
     JOBS[job_id] = {"status": "running", "msg": "저해상도 시안 준비", "ready_sections": []}
     started_at = time.time()
     try:
@@ -169,7 +169,7 @@ def worker_plan_draft(job_id, plan, image_paths, reference_urls):
                 ready.append(index)
                 ready.sort()
             JOBS[job_id]["msg"] = f"저해상도 시안 {len(ready)}개 화면에 표시"
-        result = gptmaker.run_plan_draft(plan, image_paths, reference_urls, out, on_section=section_ready)
+        result = gptmaker.run_plan_draft(plan, image_paths, reference_urls, out, on_section=section_ready, style_image_paths=style_paths or [])
         JOBS[job_id] = {
             "status": "done", "msg": "저해상도 시안 완성",
             "product_name": result["product_name"], "result": job_id + ".jpg",
@@ -187,11 +187,11 @@ def worker_plan_draft(job_id, plan, image_paths, reference_urls):
         JOBS[job_id] = {"status": "error", "error": str(e)[:200], "msg": "시안 생성 실패"}
 
 
-def worker_plan_high(job_id, plan, section_index, image_paths, reference_urls):
+def worker_plan_high(job_id, plan, section_index, image_paths, reference_urls, style_paths=None):
     JOBS[job_id] = {"status": "running", "msg": "선택 구간 고화질 생성"}
     try:
         out = os.path.join(RESULT_DIR, job_id + ".jpg")
-        result = gptmaker.run_plan_section_high(plan, section_index, image_paths, reference_urls, out)
+        result = gptmaker.run_plan_section_high(plan, section_index, image_paths, reference_urls, out, style_image_paths=style_paths or [])
         JOBS[job_id] = {"status": "done", "msg": "고화질 구간 완성", "product_name": result["product_name"], "result": job_id + ".jpg", "high_quality": True}
     except Exception as e:
         traceback.print_exc()
@@ -282,13 +282,13 @@ class H(BaseHTTPRequestHandler):
         if self.path=="/cnmaker/start_plan_draft":
             import uuid, base64
             project_id=(body.get("project_id") or "").strip()
-            plan=body.get("plan") or {}; images=body.get("images") or []
+            plan=body.get("plan") or {}; images=body.get("images") or []; style_images=body.get("style_images") or []
             reference_urls=[url for url in (body.get("reference_urls") or []) if str(url).startswith("http")][:10]
             if len(project_id)!=12 or any(char not in "0123456789abcdef" for char in project_id) or len(plan.get("sections") or []) != 11:
                 return self._send(400,{"error":"확정된 기획안을 확인해 주세요"})
-            if len(images)>10:
-                return self._send(400,{"error":"기준 이미지는 최대 10장입니다"})
-            jid=uuid.uuid4().hex[:12]; paths=[]
+            if len(images)>10 or len(style_images)>10:
+                return self._send(400,{"error":"제품사진과 참고사진은 각각 최대 10장입니다"})
+            jid=uuid.uuid4().hex[:12]; paths=[]; style_paths=[]
             updir=os.path.join(RESULT_DIR,"up",project_id); os.makedirs(updir,exist_ok=True)
             try:
                 for i,value in enumerate(images):
@@ -296,27 +296,36 @@ class H(BaseHTTPRequestHandler):
                     raw=base64.b64decode(encoded,validate=True)
                     if len(raw)>5*1024*1024: return self._send(413,{"error":"이미지 한 장은 5MB 이하여야 합니다"})
                     path=os.path.join(updir,str(i)+".jpg"); open(path,"wb").write(raw); paths.append(path)
+                for i,value in enumerate(style_images):
+                    encoded=value.split(",",1)[1] if "," in value else value
+                    raw=base64.b64decode(encoded,validate=True)
+                    if len(raw)>5*1024*1024: return self._send(413,{"error":"참고 이미지 한 장은 5MB 이하여야 합니다"})
+                    path=os.path.join(updir,"style_"+str(i)+".jpg"); open(path,"wb").write(raw); style_paths.append(path)
             except Exception:
                 return self._send(400,{"error":"기준 이미지를 읽지 못했습니다"})
-            threading.Thread(target=worker_plan_draft,args=(jid,plan,paths,reference_urls),daemon=True).start()
+            threading.Thread(target=worker_plan_draft,args=(jid,plan,paths,reference_urls,style_paths),daemon=True).start()
             return self._send(200,{"job_id":jid})
         if self.path=="/cnmaker/start_plan_high":
             import uuid, base64
             project_id=(body.get("project_id") or "").strip(); plan=body.get("plan") or {}
-            section_index=body.get("section_index"); images=body.get("images") or []
+            section_index=body.get("section_index"); images=body.get("images") or []; style_images=body.get("style_images") or []
             reference_urls=[url for url in (body.get("reference_urls") or []) if str(url).startswith("http")][:10]
             active=[section for section in (plan.get("sections") or []) if section.get("enabled",True)]
             if len(project_id)!=12 or not isinstance(section_index,int) or section_index<0 or section_index>=len(active):
                 return self._send(400,{"error":"고화질로 만들 구간을 확인해 주세요"})
-            if len(images)>10: return self._send(400,{"error":"기준 이미지는 최대 10장입니다"})
-            jid=uuid.uuid4().hex[:12]; paths=[]; updir=os.path.join(RESULT_DIR,"up",project_id); os.makedirs(updir,exist_ok=True)
+            if len(images)>10 or len(style_images)>10: return self._send(400,{"error":"제품사진과 참고사진은 각각 최대 10장입니다"})
+            jid=uuid.uuid4().hex[:12]; paths=[]; style_paths=[]; updir=os.path.join(RESULT_DIR,"up",project_id); os.makedirs(updir,exist_ok=True)
             try:
                 for i,value in enumerate(images):
                     raw=base64.b64decode(value.split(",",1)[1] if "," in value else value,validate=True)
                     if len(raw)>5*1024*1024: return self._send(413,{"error":"이미지 한 장은 5MB 이하여야 합니다"})
                     path=os.path.join(updir,"high_"+str(i)+".jpg"); open(path,"wb").write(raw); paths.append(path)
+                for i,value in enumerate(style_images):
+                    raw=base64.b64decode(value.split(",",1)[1] if "," in value else value,validate=True)
+                    if len(raw)>5*1024*1024: return self._send(413,{"error":"참고 이미지 한 장은 5MB 이하여야 합니다"})
+                    path=os.path.join(updir,"high_style_"+str(i)+".jpg"); open(path,"wb").write(raw); style_paths.append(path)
             except Exception: return self._send(400,{"error":"기준 이미지를 읽지 못했습니다"})
-            threading.Thread(target=worker_plan_high,args=(jid,plan,section_index,paths,reference_urls),daemon=True).start()
+            threading.Thread(target=worker_plan_high,args=(jid,plan,section_index,paths,reference_urls,style_paths),daemon=True).start()
             return self._send(200,{"job_id":jid})
         if self.path=="/cnmaker/compose_plan_section":
             job=(body.get("job") or "").strip(); plan=body.get("plan") or {}; section_index=body.get("section_index")
