@@ -5,7 +5,8 @@ import json
 import time
 import tempfile
 import unittest
-from unittest.mock import patch
+import urllib.error
+from unittest.mock import MagicMock, patch
 
 from PIL import Image
 
@@ -17,6 +18,16 @@ import server  # noqa: E402
 
 
 class CnmakerEngineAnalyzeTest(unittest.TestCase):
+    def test_image_generation_retries_once_after_connection_error(self):
+        payload = json.dumps({"data": [{"b64_json": __import__("base64").b64encode(b"image").decode()}]}).encode()
+        response = MagicMock()
+        response.read.return_value = payload
+        with patch("urllib.request.urlopen", side_effect=[urllib.error.URLError("temporary"), response]) as request:
+            with patch("time.sleep"):
+                result = server.gptmaker._oai_image("test", ref_imgs_b64=None, quality="low")
+        self.assertEqual(result, b"image")
+        self.assertEqual(request.call_count, 2)
+
     def test_text_safe_layout_keeps_hero_photo_full_bleed(self):
         image = Image.new("RGB", (860, 1290), "white")
         for px in range(100, 760):

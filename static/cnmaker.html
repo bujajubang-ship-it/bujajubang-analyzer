@@ -168,7 +168,7 @@ button.go:disabled{background:#d1a0a3;cursor:not-allowed}
  </div>
 </div>
 <script>
-let job=null,timer=null,mode="plan",src="cninsider",files=[],cnFiles=[],refFiles=[],currentPlan=null,currentProjectId='';
+let job=null,timer=null,pollErrors=0,mode="plan",src="cninsider",files=[],cnFiles=[],refFiles=[],currentPlan=null,currentProjectId='';
 const CN_DRAFT_KEY='cninsider-draft-v2', CN_PLAN_KEY='cninsider-plan-v1', CN_PROJECT_KEY='cninsider-project-v1';
 const NOTES={cninsider:"CN인사이더 상품 URL을 넣으면 → 자동 로그인 → 중국어 번역 → 이미지 정리 → 부자주방 스타일 (약 1~2분)",
  cafe24:"자사몰(카페24) 상품 URL을 넣으면 → 상품정보·이미지 수집 → 부자주방 스타일로 재구성"};
@@ -281,17 +281,17 @@ async function restoreServerPlan(){if(!currentProjectId)return;try{const r=await
 if(currentPlan)renderPlan();restoreServerPlan();
 function begin(){document.getElementById('go').disabled=true;document.getElementById('progress').style.display='block';document.getElementById('result').style.display='none';if(mode==='plan'){document.getElementById('plan').style.display='none';document.getElementById('l1').textContent='제품 분석';document.getElementById('l2').textContent='글 기획';document.getElementById('l3').textContent='이미지 컷 기획';document.getElementById('l4').textContent='저해상도 이미지 생성';}else{document.getElementById('l1').textContent='상품정보 수집';document.getElementById('l2').textContent='상세페이지 이미지 생성';document.getElementById('l3').textContent='결과 표시 및 저장';document.getElementById('s4').style.display='none';}setStep(1);}
 function setStep(active){const nums=['','①','②','③','④'];const max=mode==='plan'?4:3;for(let i=1;i<=max;i++){const e=document.getElementById('s'+i);e.style.display='';e.className='step'+(i<active?' done':i===active?' active':'');e.querySelector('.ico').innerHTML=i<active?'✓':(i===active?'<span class="spin"></span>':nums[i]);}}
-function poll(){timer=setInterval(()=>{fetch('/cnmaker/api/status?job='+job).then(r=>r.json()).then(d=>{
+function poll(){pollErrors=0;timer=setInterval(()=>{fetch('/cnmaker/api/status?job='+job).then(r=>r.json()).then(d=>{pollErrors=0;
   const m=d.msg||'';document.getElementById('pmsg').textContent=m;
-  if(d.status==='unknown'){clearInterval(timer);return fail('생성 작업을 찾지 못했습니다. 새로고침 후 다시 시작해 주세요.');}
+  if(d.status==='unknown'){clearInterval(timer);return fail('생성 작업을 찾지 못했습니다. 서버 재시작 또는 작업 만료 가능성이 있습니다. 다시 시작해 주세요.',true);}
   if(mode==='plan'){
     const total=(currentPlan?.sections||[]).filter(s=>s.enabled!==false).length,ready=d.ready_sections?.length||0;
     if(d.status==='done'){document.getElementById('l4').textContent='저해상도 이미지 생성 ('+total+'/'+total+' 완료)';setStep(4);}
     else{document.getElementById('l4').textContent='저해상도 이미지 생성 ('+ready+'/'+total+' 완료)';setStep(4);}
     if(ready)renderDraftReview(d,Date.now(),d.ready_sections);
   }else if(m.includes('스크래핑')||m.includes('로그인')||m.includes('캡차')||m.includes('분석')||m.includes('시작'))setStep(1);else setStep(2);
-  if(d.status==='done'){clearInterval(timer);done(d);}else if(d.status==='error'){clearInterval(timer);fail(d.error||'처리 실패');}
-}).catch(()=>{});},2500);}
+  if(d.status==='done'){clearInterval(timer);done(d);}else if(d.status==='error'){clearInterval(timer);fail(d.error||'자동 재시도 후에도 이미지 생성에 실패했습니다.',true);}
+}).catch(()=>{pollErrors++;if(pollErrors>=3){clearInterval(timer);fail('생성 서버와 세 번 연속 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.',true);}});},2500);}
 async function markDraftComplete(){if(!currentProjectId)return;try{await fetch('/cnmaker/api/plans/'+currentProjectId+'/draft-complete',{method:'POST'});}catch(e){}}
 function done(d){for(let i=1;i<=(mode==='plan'?4:3);i++){const e=document.getElementById('s'+i);e.className='step done';e.querySelector('.ico').textContent='✓';}
   if(mode==='plan')markDraftComplete();
@@ -328,7 +328,7 @@ async function saveHighQuality(index,button){if(!confirm('이 구간을 고화�
 async function downloadAllFinal(button){const active=(currentPlan?.sections||[]).filter(s=>s.enabled!==false);if(!confirm('전체 '+active.length+'개 구간을 고화질(high)로 생성할까요? 이미지 생성 비용이 발생하며 각 JPG가 따로 다운로드됩니다.'))return;button.disabled=true;try{for(let i=0;i<active.length;i++){button.textContent='고화질 이미지 '+(i+1)+'/'+active.length+' 생성 중';const highJob=await startFinalJob(i);await waitFinalJob(highJob,i,button);}button.textContent='전체 다운로드 완료';}catch(e){alert(e.message||'전체 고화질 이미지 생성 실패');button.textContent='전부 최종 이미지로 다운로드';}finally{button.disabled=false;}}
 function openCnUpload(){cnDrop.scrollIntoView({behavior:'smooth',block:'center'});cnDrop.style.borderColor='#ea580c';setTimeout(()=>cnFile.click(),350);}
 function openRefUpload(){refDrop.scrollIntoView({behavior:'smooth',block:'center'});refDrop.style.borderColor='#ea580c';setTimeout(()=>refFile.click(),350);}
-function fail(msg){if(timer)clearInterval(timer);document.getElementById('go').disabled=false;const upload=String(msg||'').startsWith('UPLOAD_REQUIRED:');if(upload){msg=String(msg).slice(16);const box=document.getElementById('cn-upload-fallback');document.getElementById('cn-upload-message').textContent=msg;box.style.display='block';box.scrollIntoView({behavior:'smooth',block:'center'});}document.getElementById('err').innerHTML='<div class=err>'+esc(msg)+'</div>';}
+function fail(msg,popup=false){if(timer)clearInterval(timer);document.getElementById('go').disabled=false;const upload=String(msg||'').startsWith('UPLOAD_REQUIRED:');if(upload){msg=String(msg).slice(16);const box=document.getElementById('cn-upload-fallback');document.getElementById('cn-upload-message').textContent=msg;box.style.display='block';box.scrollIntoView({behavior:'smooth',block:'center'});}document.getElementById('err').innerHTML='<div class=err>'+esc(msg)+'</div>';if(popup)alert('이미지 생성 실패\n\n'+msg);}
 let _histItems=[];
 // 소스별 라벨·색 (뱃지)
 const SRC_INFO={
