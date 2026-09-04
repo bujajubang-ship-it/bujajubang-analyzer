@@ -594,6 +594,8 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None)
         image = image.resize((430, 645), Image.LANCZOS)
         image = compose_plan_text(image, plan, section, index)
         section_path = os.path.splitext(out_path)[0] + f"_section_{index}.jpg"
+        base_path = os.path.splitext(out_path)[0] + f"_section_{index}_base.jpg"
+        Image.open(io.BytesIO(raw)).convert("RGB").resize((430, 645), Image.LANCZOS).save(base_path, "JPEG", quality=84)
         image.save(section_path, "JPEG", quality=84)
         if on_section:
             on_section(index, section_path)
@@ -612,6 +614,22 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None)
         final.paste(image, (0, y)); y += image.height
     final.save(out_path, "JPEG", quality=82)
     return {"product_name": product.get("name") or "상품", "section_count": len(drafts)}
+
+
+def recompose_plan_section(job_base_path, plan, section_index, show_text=True):
+    """Rebuild one low-resolution section from its untouched base image."""
+    sections = [section for section in (plan.get("sections") or []) if section.get("enabled", True)]
+    if section_index < 0 or section_index >= len(sections):
+        raise ValueError("구간 번호가 올바르지 않습니다")
+    base_path = job_base_path + f"_section_{section_index}_base.jpg"
+    output_path = job_base_path + f"_section_{section_index}.jpg"
+    if not os.path.exists(base_path):
+        raise FileNotFoundError("글자 없는 원본 시안을 찾지 못했습니다")
+    image = Image.open(base_path).convert("RGB")
+    if show_text:
+        image = compose_plan_text(image, plan, sections[section_index], section_index)
+    image.save(output_path, "JPEG", quality=84)
+    return output_path
 
 
 def run_plan_section_high(plan, section_index, image_paths, reference_urls, out_path):

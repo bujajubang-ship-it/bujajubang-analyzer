@@ -318,6 +318,19 @@ class H(BaseHTTPRequestHandler):
             except Exception: return self._send(400,{"error":"기준 이미지를 읽지 못했습니다"})
             threading.Thread(target=worker_plan_high,args=(jid,plan,section_index,paths,reference_urls),daemon=True).start()
             return self._send(200,{"job_id":jid})
+        if self.path=="/cnmaker/compose_plan_section":
+            job=(body.get("job") or "").strip(); plan=body.get("plan") or {}; section_index=body.get("section_index")
+            show_text=body.get("show_text") is not False
+            if len(job)!=12 or any(char not in "0123456789abcdef" for char in job) or not isinstance(section_index,int):
+                return self._send(400,{"error":"시안과 구간을 확인해 주세요"})
+            try:
+                gptmaker.recompose_plan_section(os.path.join(RESULT_DIR,job),plan,section_index,show_text)
+                return self._send(200,{"ok":True})
+            except FileNotFoundError:
+                return self._send(409,{"error":"이 시안에는 글자 없는 원본이 없습니다. 새 시안을 만들어 주세요."})
+            except Exception as e:
+                print("[compose_plan_section] "+str(e)[:300],flush=True)
+                return self._send(400,{"error":"글자 합성을 처리하지 못했습니다"})
         if self.path=="/cnmaker/start_imgs":
             import uuid, base64; jid=uuid.uuid4().hex[:12]
             imgs=body.get("images",[]); title=(body.get("title") or "").strip(); cat=(body.get("category") or "kitchen").strip()

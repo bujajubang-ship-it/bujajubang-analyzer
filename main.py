@@ -4525,6 +4525,29 @@ async def cnmaker_generate_section_high(project_id: str, section_index: int, req
         return JSONResponse({"error": "고화질 생성 서버에 연결하지 못했습니다."}, status_code=502)
 
 
+@app.post("/cnmaker/api/jobs/{job_id}/sections/{section_index}/compose")
+async def cnmaker_compose_section(job_id: str, section_index: int, request: Request):
+    if not _site_auth(request):
+        return JSONResponse({"error": "로그인이 필요합니다."}, status_code=401)
+    if not re.fullmatch(r"[a-f0-9]{12}", job_id) or section_index < 0:
+        return JSONResponse({"error": "시안과 구간을 확인해 주세요."}, status_code=400)
+    data = await request.json()
+    plan = data.get("plan")
+    if not isinstance(plan, dict):
+        return JSONResponse({"error": "수정 문구가 필요합니다."}, status_code=400)
+    try:
+        async with httpx.AsyncClient(timeout=40) as client:
+            response = await client.post(
+                f"{CNMAKER_BASE}/cnmaker/compose_plan_section",
+                json={"job": job_id, "section_index": section_index, "plan": plan,
+                      "show_text": data.get("show_text") is not False},
+                headers={"x-secret": CNMAKER_SECRET},
+            )
+        return JSONResponse(response.json(), status_code=response.status_code)
+    except Exception:
+        return JSONResponse({"error": "글자 합성 서버에 연결하지 못했습니다."}, status_code=502)
+
+
 @app.post("/cnmaker/api/plans/{project_id}/draft-complete")
 async def cnmaker_draft_complete(project_id: str, request: Request):
     if not _site_auth(request):
