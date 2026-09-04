@@ -81,38 +81,6 @@ async def _ai_post(client, body, headers, tries: int = 4):
     return r
 
 
-async def _openai_post(client, body, headers, tries: int = 4):
-    """Post to the OpenAI Responses API with transient-error retries."""
-    wait = 1.5
-    for i in range(tries):
-        last_try = i == tries - 1
-        try:
-            r = await client.post(OPENAI_RESPONSES_URL, json=body, headers=headers)
-        except Exception:
-            if last_try:
-                raise
-        else:
-            if r.status_code < 500 and r.status_code != 429:
-                return r
-            if last_try:
-                return r
-        await asyncio.sleep(wait)
-        wait *= 2
-    return r
-
-
-def _openai_response_text(response_data: dict) -> str:
-    """Extract assistant text from a raw Responses API response."""
-    parts = []
-    for item in response_data.get("output", []):
-        if item.get("type") != "message":
-            continue
-        for block in item.get("content", []):
-            if block.get("type") in ("output_text", "text"):
-                parts.append(str(block.get("text") or ""))
-    return "".join(parts).strip()
-
-
 def _ai_err(r) -> str:
     """실패 응답을 사람이 읽을 수 있는 한 줄로."""
     if r.status_code in (429, 529):
@@ -4272,6 +4240,23 @@ async def _cn_collect_product(url: str, allow_uploaded_fallback: bool = False) -
     return payload["product"]
 
 
+async def _cn_generate_plan_with_gpt(content: list) -> str:
+    """Use the existing secured Lightsail OpenAI connection for plan generation."""
+    async with httpx.AsyncClient(timeout=210) as client:
+        response = await client.post(
+            f"{CNMAKER_BASE}/cnmaker/plan",
+            json={"content": content},
+            headers={"x-secret": CNMAKER_SECRET},
+        )
+    try:
+        payload = response.json()
+    except Exception:
+        payload = {}
+    if response.status_code != 200 or not payload.get("text"):
+        raise RuntimeError(payload.get("error") or "GPT 기획안 생성에 실패했습니다.")
+    return str(payload["text"])
+
+
 CN_PLANS_FILE = data_path("cninsider_plans.json")
 CN_PLANS_LOCK = threading.RLock()
 
@@ -4407,9 +4392,6 @@ async def cnmaker_plan(request: Request):
     images = data.get("images") or []
     if not url1688.startswith("http"):
         return JSONResponse({"error": "CN인사이더 상품 링크를 넣어주세요."}, status_code=400)
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    if not api_key:
-        return JSONResponse({"error": "기획안용 OpenAI API 키가 설정되지 않았습니다."}, status_code=503)
     try:
         data["collected"] = await _cn_collect_product(url1688, bool(images))
     except ValueError as e:
@@ -4451,25 +4433,8 @@ async def cnmaker_plan(request: Request):
                 })
             except Exception:
                 continue
-    body = {
-        "model": os.getenv("CN_PLAN_MODEL", "gpt-5.6-sol"),
-        "input": [{"role": "user", "content": content}],
-        "reasoning": {"effort": "high"},
-        "text": {"verbosity": "medium"},
-        "max_output_tokens": 10000,
-        "store": False,
-    }
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
     try:
-        async with httpx.AsyncClient(timeout=180) as client:
-            r = await _openai_post(client, body, headers)
-        if r.status_code != 200:
-            return JSONResponse({"error": _openai_error_message(r.status_code)}, status_code=r.status_code)
-        response_data = r.json()
-        raw = _openai_response_text(response_data)
+        raw = await _cn_generate_plan_with_gpt(content)
         match = re.search(r"\{.*\}", raw, re.S)
         if not match:
             raise ValueError("JSON 응답 없음")

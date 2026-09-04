@@ -11,7 +11,43 @@ ENV = P.ENV
 OKEY = (os.getenv("OPENAI_API_KEY") or P.ENV.get("OPENAI_API_KEY") or "").strip()
 HDR = P.HDR
 IMG_MODEL = "gpt-image-2"   # 최신 최고급 — 로고제거·한글 우수 (gpt-image-1 대비 검증완료)
+PLAN_MODEL = os.getenv("CN_PLAN_MODEL", "gpt-5.6-sol").strip()
 log = P.log
+
+
+def create_text_plan(content):
+    """Create the reviewed text plan with the OpenAI key already on Lightsail."""
+    if not OKEY:
+        raise RuntimeError("OpenAI API 키가 설정되지 않았습니다")
+    body = {
+        "model": PLAN_MODEL,
+        "input": [{"role": "user", "content": content}],
+        "reasoning": {"effort": "high"},
+        "text": {"verbosity": "medium"},
+        "max_output_tokens": 10000,
+        "store": False,
+    }
+    request = urllib.request.Request(
+        "https://api.openai.com/v1/responses",
+        data=json.dumps(body).encode("utf-8"),
+        headers={"Authorization": "Bearer " + OKEY, "Content-Type": "application/json"},
+    )
+    try:
+        response = json.loads(urllib.request.urlopen(request, timeout=180).read())
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")[:500]
+        raise RuntimeError("OpenAI 기획안 오류 %d: %s" % (exc.code, detail)) from exc
+    parts = []
+    for item in response.get("output", []):
+        if item.get("type") != "message":
+            continue
+        for block in item.get("content", []):
+            if block.get("type") in ("output_text", "text"):
+                parts.append(str(block.get("text") or ""))
+    text = "".join(parts).strip()
+    if not text:
+        raise RuntimeError("GPT 기획안 응답이 비어 있습니다")
+    return text
 
 def normalize_url(url):
     """login?redirect=... 형태면 실제 상품 URL로 변환."""
