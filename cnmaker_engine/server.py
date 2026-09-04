@@ -202,9 +202,13 @@ def worker_plan_section_draft(job_id, target_job, plan, section_index, image_pat
     JOBS[job_id] = {"status": "running", "msg": f"{section_index + 1}번 이미지 다시 만드는 중"}
     try:
         base = os.path.join(RESULT_DIR, target_job + f"_section_{section_index}_base.jpg")
+        active = [section for section in (plan.get("sections") or []) if section.get("enabled", True)]
+        template_index = gptmaker._template_index(active[section_index], section_index)
+        revision_paths = ([base] + list(image_paths)) if os.path.exists(base) and template_index != 10 else image_paths
         gptmaker.run_plan_section_high(
-            plan, section_index, image_paths, reference_urls, base,
+            plan, section_index, revision_paths, reference_urls, base,
             style_image_paths=style_paths or [], quality="low", output_size=None, compose_text=False,
+            revision_mode=True,
         )
         gptmaker.recompose_plan_section(os.path.join(RESULT_DIR, target_job), plan, section_index, True)
         JOBS[job_id] = {"status": "done", "msg": f"{section_index + 1}번 이미지 수정 완료", "target_job": target_job}
