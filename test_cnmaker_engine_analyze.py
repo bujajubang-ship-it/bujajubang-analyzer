@@ -27,6 +27,16 @@ class CnmakerEngineAnalyzeTest(unittest.TestCase):
         self.assertEqual(safe.getpixel((430, 200)), (180, 30, 30))
         self.assertEqual(safe.getpixel((430, 800)), (180, 30, 30))
 
+    def test_checkpoint_detail_uses_two_separate_photo_panels(self):
+        image = Image.new("RGB", (860, 1290), "red")
+        for py in range(645, 1290):
+            for px in range(860):
+                image.putpixel((px, py), (0, 0, 255))
+        safe = server.gptmaker._prepare_text_safe_layout(image, 6)
+        self.assertEqual(safe.getpixel((430, 600)), (255, 0, 0))
+        self.assertEqual(safe.getpixel((430, 1000)), (0, 0, 255))
+        self.assertNotEqual(safe.getpixel((430, 820)), safe.getpixel((430, 600)))
+
     def test_template_slot_uses_original_section_number_after_disabled_sections(self):
         self.assertEqual(server.gptmaker._template_index({"number": 6}, 2), 5)
         self.assertEqual(server.gptmaker._section_size(5, low=True), (430, 645))

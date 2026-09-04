@@ -129,8 +129,12 @@ def _prepare_text_safe_layout(image, section_index):
         _paste_photo(canvas, source, (0, y(390), width, height))
     elif section_index == 5:        # close-ups left, descriptions right
         _paste_photo(canvas, source, (x(35), y(285), x(390), y(1250)))
-    elif 6 <= section_index <= 9:   # checkpoint detail
-        _paste_photo(canvas, source, (x(30), y(410), x(830), y(1260)))
+    elif 6 <= section_index <= 9:   # checkpoint detail: close-up + use scene
+        midpoint = source.height // 2
+        _paste_photo(canvas, source.crop((0, 0, source.width, midpoint)),
+                     (x(30), y(405), x(830), y(805)))
+        _paste_photo(canvas, source.crop((0, midpoint, source.width, source.height)),
+                     (x(30), y(835), x(830), y(1235)))
     else:                           # product info: photo center-top, specs below
         _paste_photo(canvas, source, (x(145), y(190), x(715), y(690)))
     return canvas
@@ -715,13 +719,26 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None,
 여러 색상·옵션이 입력되었습니다. 첨부된 서로 다른 옵션의 실제 제품 사진을 구간마다 번갈아 참고하고,
 전체 상세페이지에는 입력된 여러 옵션이 고르게 등장하게 하세요. 한 제품에 옵션을 임의로 합치거나
 첨부 사진에 없는 색상·무늬·형태를 새로 만들지 마세요."""
-        raw = _oai_image(prompt, ref_imgs_b64=generation_refs, size="1024x1024" if template_index == 1 else "1024x1536", quality="low")
-        image = Image.open(io.BytesIO(raw)).convert("RGB")
-        image = image.resize(_section_size(template_index, low=True), Image.LANCZOS)
+        if 6 <= template_index <= 9:
+            closeup_raw = _oai_image(
+                prompt + "\n이 첫 번째 이미지는 제품의 해당 체크포인트 구조와 소재가 선명한 상세 클로즈업 한 컷만 만드세요.",
+                ref_imgs_b64=generation_refs, size="1024x1024", quality="low")
+            use_raw = _oai_image(
+                prompt + "\n이 두 번째 이미지는 같은 체크포인트가 분명히 보이는 실제 착용·사용 장면 한 컷만 만드세요. 첫 번째 이미지와 구도·거리·각도를 다르게 하세요.",
+                ref_imgs_b64=generation_refs, size="1024x1024", quality="low")
+            closeup = Image.open(io.BytesIO(closeup_raw)).convert("RGB")
+            use_scene = Image.open(io.BytesIO(use_raw)).convert("RGB")
+            generated = Image.new("RGB", (1024, 2048), (255, 255, 255))
+            generated.paste(ImageOps.fit(closeup, (1024, 1024), method=Image.LANCZOS), (0, 0))
+            generated.paste(ImageOps.fit(use_scene, (1024, 1024), method=Image.LANCZOS), (0, 1024))
+        else:
+            raw = _oai_image(prompt, ref_imgs_b64=generation_refs, size="1024x1024" if template_index == 1 else "1024x1536", quality="low")
+            generated = Image.open(io.BytesIO(raw)).convert("RGB")
+        image = generated.resize(_section_size(template_index, low=True), Image.LANCZOS)
         image = compose_plan_text(image, plan, section, template_index)
         section_path = os.path.splitext(out_path)[0] + f"_section_{index}.jpg"
         base_path = os.path.splitext(out_path)[0] + f"_section_{index}_base.jpg"
-        Image.open(io.BytesIO(raw)).convert("RGB").resize(_section_size(template_index, low=True), Image.LANCZOS).save(base_path, "JPEG", quality=84)
+        generated.resize(_section_size(template_index, low=True), Image.LANCZOS).save(base_path, "JPEG", quality=84)
         image.save(section_path, "JPEG", quality=84)
         if on_section:
             on_section(index, section_path)
@@ -792,8 +809,22 @@ def run_plan_section_high(plan, section_index, image_paths, reference_urls, out_
         prompt += f"""
 첨부 이미지 중 앞의 {len(product_refs)}장은 제품 기준사진으로 제품을 동일하게 유지하세요.
 뒤의 {len(style_refs)}장은 연출 참고용입니다. 인물 얼굴·모델·포즈·몸 방향·카메라 각도·의상·소품·배경·구도를 복제하지 말고 명확히 다른 독창적인 장면을 만드세요."""
-    raw = _oai_image(prompt, ref_imgs_b64=generation_refs, size="1024x1024" if template_index == 1 else "1024x1536", quality=quality)
-    image = Image.open(io.BytesIO(raw)).convert("RGB").resize(output_size or _section_size(template_index, low=quality != "high"), Image.LANCZOS)
+    if 6 <= template_index <= 9:
+        closeup_raw = _oai_image(
+            prompt + "\n첫 번째 이미지는 제품의 해당 체크포인트 구조와 소재가 선명한 상세 클로즈업 한 컷만 만드세요.",
+            ref_imgs_b64=generation_refs, size="1024x1024", quality=quality)
+        use_raw = _oai_image(
+            prompt + "\n두 번째 이미지는 같은 체크포인트가 분명히 보이는 실제 착용·사용 장면 한 컷만 만드세요. 첫 번째 이미지와 구도·거리·각도를 다르게 하세요.",
+            ref_imgs_b64=generation_refs, size="1024x1024", quality=quality)
+        closeup = Image.open(io.BytesIO(closeup_raw)).convert("RGB")
+        use_scene = Image.open(io.BytesIO(use_raw)).convert("RGB")
+        generated = Image.new("RGB", (1024, 2048), (255, 255, 255))
+        generated.paste(ImageOps.fit(closeup, (1024, 1024), method=Image.LANCZOS), (0, 0))
+        generated.paste(ImageOps.fit(use_scene, (1024, 1024), method=Image.LANCZOS), (0, 1024))
+    else:
+        raw = _oai_image(prompt, ref_imgs_b64=generation_refs, size="1024x1024" if template_index == 1 else "1024x1536", quality=quality)
+        generated = Image.open(io.BytesIO(raw)).convert("RGB")
+    image = generated.resize(output_size or _section_size(template_index, low=quality != "high"), Image.LANCZOS)
     if compose_text:
         image = compose_plan_text(image, plan, section, template_index)
     image.save(out_path, "JPEG", quality=92 if quality == "high" else 84)
