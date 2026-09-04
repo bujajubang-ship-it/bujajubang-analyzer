@@ -86,6 +86,11 @@ class CnmakerEngineAnalyzeTest(unittest.TestCase):
                 size = draft_image.size
             section_output = pathlib.Path(directory) / "draft_section_0.jpg"
             self.assertTrue(section_output.exists())
+            base_output = pathlib.Path(directory) / "draft_section_0_base.jpg"
+            self.assertTrue(base_output.exists())
+            server.gptmaker.recompose_plan_section(str(output.with_suffix("")), plan, 0, False)
+            with Image.open(section_output) as text_removed:
+                self.assertEqual(text_removed.size, (430, 645))
         self.assertEqual(result["section_count"], 1)
         self.assertEqual(image_api.call_count, 1)
         self.assertIn("상어, 돌고래", image_api.call_args.args[0])
