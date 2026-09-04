@@ -481,17 +481,32 @@ def _oai_image(prompt, ref_imgs_b64=None, size="1024x1536", quality="high"):
         body = json.dumps({"model":IMG_MODEL,"prompt":prompt,"size":size,"quality":quality,"n":1}).encode()
         req = urllib.request.Request("https://api.openai.com/v1/images/generations", data=body,
             headers={"Authorization":"Bearer "+OKEY, "Content-Type":"application/json"})
-    try:
-        d = json.loads(urllib.request.urlopen(req, timeout=300).read())
-    except urllib.error.HTTPError as e:
+    d = None
+    for attempt in range(2):
         try:
-            err = json.loads(e.read().decode()); ei = err.get("error") or {}
-            msg = ei.get("message", ""); code = ei.get("code", "")
-        except Exception:
-            msg = ""; code = ""
-        if code == "billing_hard_limit_reached" or "billing" in (code or "").lower() or "billing" in (msg or "").lower():
-            raise RuntimeError("OpenAI 결제 한도 초과 — platform.openai.com에서 크레딧 충전/한도 상향 필요")
-        raise RuntimeError(f"OpenAI 오류 {e.code}: {msg or e.reason}")
+            d = json.loads(urllib.request.urlopen(req, timeout=300).read())
+            break
+        except urllib.error.HTTPError as e:
+            try:
+                err = json.loads(e.read().decode()); ei = err.get("error") or {}
+                msg = ei.get("message", ""); code = ei.get("code", "")
+            except Exception:
+                msg = ""; code = ""
+            if code == "billing_hard_limit_reached" or "billing" in (code or "").lower() or "billing" in (msg or "").lower():
+                raise RuntimeError("OpenAI 결제 한도 초과 — 크레딧 또는 사용 한도를 확인해 주세요")
+            if attempt == 0 and e.code in (408, 409, 429, 500, 502, 503, 504):
+                log(f"이미지 생성 일시 오류({e.code}) · 3초 후 자동 재시도 1/1")
+                time.sleep(3)
+                continue
+            raise RuntimeError(f"이미지 생성 재시도 실패 · OpenAI {e.code}: {msg or e.reason}")
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            if attempt == 0:
+                log("이미지 생성 연결 오류 · 3초 후 자동 재시도 1/1")
+                time.sleep(3)
+                continue
+            raise RuntimeError(f"이미지 생성 재시도 실패 · 연결 오류: {str(e)[:120]}")
+    if not d:
+        raise RuntimeError("이미지 생성 재시도 후에도 응답을 받지 못했습니다")
     b64 = d["data"][0].get("b64_json")
     return base64.b64decode(b64)
 
