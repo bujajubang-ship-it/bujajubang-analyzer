@@ -17,6 +17,10 @@ import server  # noqa: E402
 
 
 class CnmakerEngineAnalyzeTest(unittest.TestCase):
+    def test_template_slot_uses_original_section_number_after_disabled_sections(self):
+        self.assertEqual(server.gptmaker._template_index({"number": 6}, 2), 5)
+        self.assertEqual(server.gptmaker._section_size(5, low=True), (430, 645))
+
     def test_selects_lazy_loaded_1688_product_images(self):
         items = [
             {"src": "//cbu01.alicdn.com/img/ibank/O1CN_product_60x60.jpg", "w": 60, "h": 60},
