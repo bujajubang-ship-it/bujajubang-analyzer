@@ -720,7 +720,7 @@ def _section_product_refs(uploaded_refs, linked_refs, section, limit):
     for value in numbers if isinstance(numbers, list) else []:
         try:
             ref = linked_refs[int(value)]
-        except (ValueError, TypeError, IndexError):
+        except (ValueError, TypeError, IndexError, KeyError):
             continue
         if ref not in selected:
             selected.append(ref)
