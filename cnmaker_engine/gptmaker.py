@@ -22,9 +22,9 @@ def create_text_plan(content):
     body = {
         "model": PLAN_MODEL,
         "input": [{"role": "user", "content": content}],
-        "reasoning": {"effort": "high"},
+        "reasoning": {"effort": "low"},
         "text": {"verbosity": "medium"},
-        "max_output_tokens": 10000,
+        "max_output_tokens": 8000,
         "store": False,
     }
     request = urllib.request.Request(
