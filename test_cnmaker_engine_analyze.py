@@ -75,6 +75,13 @@ class CnmakerEngineAnalyzeTest(unittest.TestCase):
         self.assertEqual(selected[0], uploaded[0])
         self.assertEqual(selected[1], linked[3])
 
+    def test_missing_planned_cn_image_falls_back_without_failure(self):
+        uploaded = [("image/jpeg", "uploaded")]
+        linked = {2: ("image/jpeg", "cn2")}
+        selected = server.gptmaker._section_product_refs(
+            uploaded, linked, {"source_image_numbers": [1]}, 3)
+        self.assertEqual(selected, [uploaded[0], linked[2]])
+
     def test_selects_lazy_loaded_1688_product_images(self):
         items = [
             {"src": "//cbu01.alicdn.com/img/ibank/O1CN_product_60x60.jpg", "w": 60, "h": 60},
