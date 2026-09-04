@@ -42,6 +42,7 @@ def _wrap_text(draw, text, font, max_width, max_lines=4):
 
 
 def _draw_box_text(draw, xy, text, font, max_width, anchor="la", max_lines=3, padding=8):
+    """Draw readable text without reproducing the guide template's black boxes."""
     lines = _wrap_text(draw, text, font, max_width - padding * 2, max_lines)
     if not lines:
         return
@@ -49,9 +50,19 @@ def _draw_box_text(draw, xy, text, font, max_width, anchor="la", max_lines=3, pa
     widths = [draw.textbbox((0, 0), line, font=font)[2] for line in lines]
     x, y = xy
     for line, width in zip(lines, widths):
-        left = x - width // 2 - padding if anchor == "ma" else x - padding
-        draw.rectangle((left, y - padding // 2, left + width + padding * 2, y + line_height), fill=(8, 8, 8))
-        draw.text((x, y), line, font=font, fill="white", anchor=anchor)
+        if anchor == "ma":
+            x = min(max(x, width // 2 + padding), draw._image.width - width // 2 - padding)
+            left = x - width // 2
+        elif anchor == "ra":
+            x = min(max(x, width + padding), draw._image.width - padding)
+            left = x - width
+        else:
+            x = min(max(x, padding), draw._image.width - width - padding)
+            left = x
+        sample = draw._image.crop((max(0, left), max(0, y), min(draw._image.width, left + width), min(draw._image.height, y + line_height)))
+        mean = sum(sample.resize((1, 1)).getpixel((0, 0))) / 3 if sample.width and sample.height else 255
+        fill = (250, 250, 250) if mean < 125 else (28, 26, 24)
+        draw.text((x, y), line, font=font, fill=fill, anchor=anchor)
         y += line_height + max(2, padding // 2)
 
 
@@ -76,8 +87,8 @@ def compose_plan_text(image, plan, section, section_index):
         _draw_box_text(draw, (sx(430), sx(110)), title, medium, sx(650), "ma", 2)
         _draw_box_text(draw, (sx(430), sx(245)), body, body_font, sx(680), "ma", 3)
     elif section_index == 2:
-        _draw_box_text(draw, (sx(760), sx(135)), "이런 점이 만족스러워요", small, sx(400), "ma", 1)
-        _draw_box_text(draw, (sx(760), sx(215)), title, big, sx(650), "ma", 2)
+        _draw_box_text(draw, (sx(790), sx(135)), "이런 점이 만족스러워요", small, sx(400), "ra", 1)
+        _draw_box_text(draw, (sx(790), sx(215)), title, big, sx(700), "ra", 2)
     elif section_index == 3:
         _draw_box_text(draw, (sx(430), sx(85)), "POINT REVIEW", medium, sx(600), "ma", 1)
         _draw_box_text(draw, (sx(430), sx(180)), title, body_font, sx(690), "ma", 2)
@@ -525,28 +536,37 @@ def make_thumbnail(form, refs, out_path):
     return out_path
 
 
-def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None, style_image_paths=None):
-    """확정된 기획안으로 글자 없는 저해상도 구간 시안을 만든다."""
-    refs = []
-    for path in image_paths[:4]:
+def _load_product_refs(image_paths, reference_urls, limit):
+    """Keep at least one CN-link image in the product references when available."""
+    uploaded, linked = [], []
+    for path in image_paths:
         try:
             with open(path, "rb") as image_file:
                 raw = image_file.read()
-            mime = "image/png" if raw[:4] == b"\x89PNG" else "image/jpeg"
-            refs.append((mime, base64.b64encode(raw).decode()))
+            uploaded.append(("image/png" if raw[:4] == b"\x89PNG" else "image/jpeg", base64.b64encode(raw).decode()))
         except Exception:
             pass
     for url in reference_urls:
-        if len(refs) >= 4:
-            break
         try:
             raw = urllib.request.urlopen(urllib.request.Request(url, headers=HDR), timeout=20).read()
-            mime = "image/png" if raw[:4] == b"\x89PNG" else "image/jpeg"
-            refs.append((mime, base64.b64encode(raw).decode()))
+            linked.append(("image/png" if raw[:4] == b"\x89PNG" else "image/jpeg", base64.b64encode(raw).decode()))
         except Exception:
             pass
-    if not refs:
-        raise RuntimeError("시안에 사용할 제품 사진이 없습니다")
+        if len(linked) >= max(1, limit // 2):
+            break
+    selected = []
+    if uploaded:
+        selected.append(uploaded.pop(0))
+    if linked and len(selected) < limit:
+        selected.append(linked.pop(0))
+    while len(selected) < limit and (uploaded or linked):
+        source = uploaded if uploaded else linked
+        selected.append(source.pop(0))
+    return selected
+
+
+def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None, style_image_paths=None):
+    """확정된 기획안으로 글자 없는 저해상도 구간 시안을 만든다."""
     style_refs = []
     for path in (style_image_paths or [])[:2]:
         try:
@@ -555,7 +575,9 @@ def run_plan_draft(plan, image_paths, reference_urls, out_path, on_section=None,
             style_refs.append(("image/png" if raw[:4] == b"\x89PNG" else "image/jpeg", base64.b64encode(raw).decode()))
         except Exception:
             pass
-    product_refs = refs[:2] if style_refs else refs[:4]
+    product_refs = _load_product_refs(image_paths, reference_urls, 2 if style_refs else 4)
+    if not product_refs:
+        raise RuntimeError("시안에 사용할 제품 사진이 없습니다")
     generation_refs = product_refs + style_refs
 
     product = plan.get("product") or {}
@@ -648,25 +670,9 @@ def recompose_plan_section(job_base_path, plan, section_index, show_text=True):
 
 
 def run_plan_section_high(plan, section_index, image_paths, reference_urls, out_path, style_image_paths=None):
-    """선택한 활성 구간 하나를 최종용 medium 품질로 생성한다."""
-    refs = []
-    for path in image_paths[:4]:
-        try:
-            with open(path, "rb") as image_file:
-                raw = image_file.read()
-            refs.append(("image/png" if raw[:4] == b"\x89PNG" else "image/jpeg", base64.b64encode(raw).decode()))
-        except Exception:
-            pass
-    for url in reference_urls:
-        if len(refs) >= 4:
-            break
-        try:
-            raw = urllib.request.urlopen(urllib.request.Request(url, headers=HDR), timeout=20).read()
-            refs.append(("image/png" if raw[:4] == b"\x89PNG" else "image/jpeg", base64.b64encode(raw).decode()))
-        except Exception:
-            pass
+    """선택한 활성 구간 하나를 최종용 high 품질로 생성한다."""
     sections = [section for section in (plan.get("sections") or []) if section.get("enabled", True)]
-    if not refs or section_index < 0 or section_index >= len(sections):
+    if section_index < 0 or section_index >= len(sections):
         raise RuntimeError("고화질 생성에 필요한 제품 사진 또는 구간이 없습니다")
     style_refs = []
     for path in (style_image_paths or [])[:2]:
@@ -676,7 +682,9 @@ def run_plan_section_high(plan, section_index, image_paths, reference_urls, out_
             style_refs.append(("image/png" if raw[:4] == b"\x89PNG" else "image/jpeg", base64.b64encode(raw).decode()))
         except Exception:
             pass
-    product_refs = refs[:2] if style_refs else refs[:4]
+    product_refs = _load_product_refs(image_paths, reference_urls, 2 if style_refs else 4)
+    if not product_refs:
+        raise RuntimeError("고화질 생성에 필요한 제품 사진이 없습니다")
     generation_refs = product_refs + style_refs
     product, palette, section = plan.get("product") or {}, plan.get("palette") or {}, sections[section_index]
     prompt = f"""첨부 사진의 실제 제품을 그대로 유지한 한국 쇼핑몰 상세페이지 배경 장면을 만드세요.
@@ -692,7 +700,7 @@ def run_plan_section_high(plan, section_index, image_paths, reference_urls, out_
         prompt += f"""
 첨부 이미지 중 앞의 {len(product_refs)}장은 제품 기준사진으로 제품을 동일하게 유지하세요.
 뒤의 {len(style_refs)}장은 연출 참고용입니다. 인물 얼굴·모델·포즈·몸 방향·카메라 각도·의상·소품·배경·구도를 복제하지 말고 명확히 다른 독창적인 장면을 만드세요."""
-    raw = _oai_image(prompt, ref_imgs_b64=generation_refs, size="1024x1536", quality="medium")
+    raw = _oai_image(prompt, ref_imgs_b64=generation_refs, size="1024x1536", quality="high")
     image = Image.open(io.BytesIO(raw)).convert("RGB").resize((860, 1290), Image.LANCZOS)
     compose_plan_text(image, plan, section, section_index).save(out_path, "JPEG", quality=92)
     return {"product_name": product.get("name") or "상품"}

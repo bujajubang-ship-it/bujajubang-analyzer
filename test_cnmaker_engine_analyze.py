@@ -97,7 +97,7 @@ class CnmakerEngineAnalyzeTest(unittest.TestCase):
         self.assertIn("여러 색상·옵션", image_api.call_args.args[0])
         self.assertEqual(size, (430, 645))
 
-    def test_generates_one_medium_quality_final_section(self):
+    def test_generates_one_high_quality_final_section(self):
         buffer = io.BytesIO()
         Image.new("RGB", (1024, 1536), "white").save(buffer, "JPEG")
         generated = buffer.getvalue()
@@ -111,7 +111,7 @@ class CnmakerEngineAnalyzeTest(unittest.TestCase):
             self.assertTrue(output.exists())
             with Image.open(output) as final_image:
                 self.assertEqual(final_image.size, (860, 1290))
-            self.assertEqual(image_api.call_args.kwargs["quality"], "medium")
+            self.assertEqual(image_api.call_args.kwargs["quality"], "high")
 
     def test_completed_low_resolution_draft_is_saved_to_history(self):
         with tempfile.TemporaryDirectory() as directory:
