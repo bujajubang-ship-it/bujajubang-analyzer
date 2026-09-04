@@ -92,7 +92,7 @@ class CnmakerEngineAnalyzeTest(unittest.TestCase):
         self.assertIn("여러 색상·옵션", image_api.call_args.args[0])
         self.assertEqual(size, (430, 645))
 
-    def test_generates_one_high_quality_section(self):
+    def test_generates_one_medium_quality_final_section(self):
         buffer = io.BytesIO()
         Image.new("RGB", (1024, 1536), "white").save(buffer, "JPEG")
         generated = buffer.getvalue()
@@ -104,7 +104,9 @@ class CnmakerEngineAnalyzeTest(unittest.TestCase):
             with patch.object(server.gptmaker, "_oai_image", return_value=generated) as image_api:
                 server.gptmaker.run_plan_section_high(plan, 0, [str(reference)], [], str(output))
             self.assertTrue(output.exists())
-            self.assertEqual(image_api.call_args.kwargs["quality"], "high")
+            with Image.open(output) as final_image:
+                self.assertEqual(final_image.size, (860, 1290))
+            self.assertEqual(image_api.call_args.kwargs["quality"], "medium")
 
     def test_completed_low_resolution_draft_is_saved_to_history(self):
         with tempfile.TemporaryDirectory() as directory:
