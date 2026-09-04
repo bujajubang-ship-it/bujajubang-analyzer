@@ -94,12 +94,12 @@ class CnmakerEngineAnalyzeTest(unittest.TestCase):
             self.assertTrue(base_output.exists())
             server.gptmaker.recompose_plan_section(str(output.with_suffix("")), plan, 0, False)
             with Image.open(section_output) as text_removed:
-                self.assertEqual(text_removed.size, (430, 960))
+                self.assertEqual(text_removed.size, (430, 645))
         self.assertEqual(result["section_count"], 1)
         self.assertEqual(image_api.call_count, 1)
         self.assertIn("상어, 돌고래", image_api.call_args.args[0])
         self.assertIn("여러 색상·옵션", image_api.call_args.args[0])
-        self.assertEqual(size, (430, 960))
+        self.assertEqual(size, (430, 645))
 
     def test_generates_one_high_quality_final_section(self):
         buffer = io.BytesIO()
@@ -114,7 +114,7 @@ class CnmakerEngineAnalyzeTest(unittest.TestCase):
                 server.gptmaker.run_plan_section_high(plan, 0, [str(reference)], [], str(output))
             self.assertTrue(output.exists())
             with Image.open(output) as final_image:
-                self.assertEqual(final_image.size, (860, 1920))
+                self.assertEqual(final_image.size, (860, 1290))
             self.assertEqual(image_api.call_args.kwargs["quality"], "high")
 
     def test_completed_low_resolution_draft_is_saved_to_history(self):
