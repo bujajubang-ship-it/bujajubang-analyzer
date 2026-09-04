@@ -48,6 +48,14 @@ class CnmakerEngineAnalyzeTest(unittest.TestCase):
         self.assertIn("한 가지", one)
         self.assertIn("함께", all_options)
 
+    def test_product_info_uses_original_product_photo(self):
+        buffer = io.BytesIO()
+        Image.new("RGB", (300, 500), (20, 40, 60)).save(buffer, "JPEG")
+        reference = [("image/jpeg", __import__("base64").b64encode(buffer.getvalue()).decode())]
+        result = server.gptmaker._product_info_base(reference)
+        self.assertEqual(result.size, (860, 1290))
+        self.assertNotEqual(result.getpixel((430, 350)), (247, 245, 241))
+
     def test_selects_lazy_loaded_1688_product_images(self):
         items = [
             {"src": "//cbu01.alicdn.com/img/ibank/O1CN_product_60x60.jpg", "w": 60, "h": 60},
