@@ -70,7 +70,7 @@ class CnmakerPlanTest(unittest.TestCase):
         self.assertEqual(len(response.json()["plan"]["sections"]), 11)
         self.assertEqual(response.json()["plan"]["sections"][2]["type"], "제품 후기 배너")
         self.assertEqual(response.json()["plan"]["sections"][2]["title"], "고객님이 들려준 사용후기")
-        self.assertEqual(response.json()["plan"]["sections"][2]["body"], "이런점이 만족스러웠어요")
+        self.assertEqual(response.json()["plan"]["sections"][2]["body"], "이런 점이 만족스러워요")
         self.assertEqual(response.json()["plan"]["sections"][4]["title"], "타사 제품과 무엇이 다를까요?")
         self.assertEqual(response.json()["plan"]["sections"][4]["body"], "")
         self.assertEqual(response.json()["plan"]["sections"][6]["type"], "CHECK POINT 01 상세")

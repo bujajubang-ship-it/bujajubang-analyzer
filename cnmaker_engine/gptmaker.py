@@ -161,8 +161,8 @@ def compose_plan_text(image, plan, section, section_index):
         _draw_box_text(draw, (sx(430), sx(110)), title, medium, sx(650), "ma", 2)
         _draw_box_text(draw, (sx(430), sx(245)), body, body_font, sx(680), "ma", 3)
     elif section_index == 2:
-        _draw_box_text(draw, (sx(790), sx(135)), "이런 점이 만족스러워요", small, sx(400), "ra", 1)
-        _draw_box_text(draw, (sx(790), sx(215)), title, big, sx(700), "ra", 2)
+        _draw_box_text(draw, (sx(790), sx(125)), body or "이런 점이 만족스러워요", body_font, sx(560), "ra", 1)
+        _draw_box_text(draw, (sx(790), sx(205)), title, medium, sx(760), "ra", 1)
     elif section_index == 3:
         _draw_box_text(draw, (sx(430), sx(65)), "POINT REVIEW", medium, sx(600), "ma", 1)
         items = section.get("review_items") if isinstance(section.get("review_items"), list) else []
