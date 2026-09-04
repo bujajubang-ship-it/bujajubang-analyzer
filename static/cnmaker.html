@@ -131,10 +131,9 @@ button.go:disabled{background:#d1a0a3;cursor:not-allowed}
 
  <div class="card" id="progress">
    <h2>진행 상황</h2>
-   <div class="step" id="s1"><span class="ico">①</span> <span id="l1">상품 수집</span></div>
-   <div class="step" id="s2"><span class="ico">②</span> 카피 생성 (Opus 4.8)</div>
-   <div class="step" id="s3"><span class="ico">③</span> 이미지 선별·정리</div>
-   <div class="step" id="s4"><span class="ico">④</span> 부자주방 스타일 합성</div>
+   <div class="step" id="s1"><span class="ico">①</span> <span id="l1">확정 기획안과 제품사진 전송</span></div>
+   <div class="step" id="s2"><span class="ico">②</span> <span id="l2">저해상도 이미지 생성 준비</span></div>
+   <div class="step" id="s3"><span class="ico">③</span> <span id="l3">완성된 구간 표시 및 저장</span></div>
    <div class="note" id="pmsg" style="margin-top:10px"></div>
  </div>
 
@@ -260,19 +259,20 @@ async function confirmPlan(){if(!currentProjectId)return alert('먼저 텍스트
 async function startDraft(){const count=(currentPlan?.sections||[]).filter(s=>s.enabled!==false).length;if(!confirm('저해상도 시안 '+count+'개를 생성할까요? 지금부터 이미지 생성 비용이 발생합니다.'))return;const btn=document.getElementById('draft-go');btn.disabled=true;begin();document.getElementById('draft-review-list').innerHTML='';document.getElementById('pmsg').textContent='확정된 기획안을 생성 서버로 보내는 중…';try{const r=await fetch('/cnmaker/api/plans/'+currentProjectId+'/generate-draft',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({images:cnFiles.map(f=>f.data)})}),d=await r.json();if(!r.ok||d.error)throw new Error(d.error||'시안 생성을 시작하지 못했습니다.');job=d.job_id;poll();document.getElementById('progress').scrollIntoView({behavior:'smooth'});}catch(e){fail(e.message||'시안 생성을 시작하지 못했습니다.');btn.disabled=false;}}
 async function restoreServerPlan(){if(!currentProjectId)return;try{const r=await fetch('/cnmaker/api/plans/'+currentProjectId),d=await r.json();if(r.ok&&d.item?.plan){if(!currentPlan){currentPlan=d.item.plan;localStorage.setItem(CN_PLAN_KEY,JSON.stringify(currentPlan));}ensureCheckpoints();renderPlan();if(d.item.status==='confirmed'){const s=document.getElementById('plan-status');s.textContent='확정본 v'+d.item.version;s.style.background='#dcfce7';s.style.color='#166534';showDraftAction();}}}catch(e){}}
 if(currentPlan)renderPlan();restoreServerPlan();
-function begin(){document.getElementById('go').disabled=true;document.getElementById('progress').style.display='block';document.getElementById('result').style.display='none';setStep(1);}
-function setStep(active){const nums=['','①','②','③','④'];for(let i=1;i<=4;i++){const e=document.getElementById('s'+i);e.className='step'+(i<active?' done':i===active?' active':'');e.querySelector('.ico').innerHTML=i<active?'✓':(i===active?'<span class="spin"></span>':nums[i]);}}
+function begin(){document.getElementById('go').disabled=true;document.getElementById('progress').style.display='block';document.getElementById('result').style.display='none';if(mode==='plan'){document.getElementById('l1').textContent='확정 기획안과 제품사진 전송';document.getElementById('l2').textContent='저해상도 이미지 생성 준비';document.getElementById('l3').textContent='완성된 구간 표시 및 저장';}else{document.getElementById('l1').textContent='상품정보 수집';document.getElementById('l2').textContent='상세페이지 이미지 생성';document.getElementById('l3').textContent='결과 표시 및 저장';}setStep(1);}
+function setStep(active){const nums=['','①','②','③'];for(let i=1;i<=3;i++){const e=document.getElementById('s'+i);e.className='step'+(i<active?' done':i===active?' active':'');e.querySelector('.ico').innerHTML=i<active?'✓':(i===active?'<span class="spin"></span>':nums[i]);}}
 function poll(){timer=setInterval(()=>{fetch('/cnmaker/api/status?job='+job).then(r=>r.json()).then(d=>{
   const m=d.msg||'';document.getElementById('pmsg').textContent=m;
-  if(mode==='plan'&&d.ready_sections?.length)renderDraftReview(d,Date.now(),d.ready_sections);
-  if(m.includes('스크래핑')||m.includes('로그인')||m.includes('캡차')||m.includes('분석')||m.includes('시작')) setStep(1);
-  else if(m.includes('폼')||m.includes('번역')||m.includes('카피')||m.includes('소구')) setStep(2);
-  else if(m.includes('섹션')||m.includes('평가')||m.includes('선별')) setStep(3);
-  else if(m.includes('합성')||m.includes('대표이미지')||m.includes('완성')) setStep(4);
+  if(mode==='plan'){
+    const total=(currentPlan?.sections||[]).filter(s=>s.enabled!==false).length,ready=d.ready_sections?.length||0;
+    if(d.status==='done'){document.getElementById('l2').textContent='저해상도 이미지 생성 ('+total+'/'+total+' 완료)';setStep(3);}
+    else{document.getElementById('l2').textContent='저해상도 이미지 생성 ('+ready+'/'+total+' 완료)';setStep(2);}
+    if(ready)renderDraftReview(d,Date.now(),d.ready_sections);
+  }else if(m.includes('스크래핑')||m.includes('로그인')||m.includes('캡차')||m.includes('분석')||m.includes('시작'))setStep(1);else setStep(2);
   if(d.status==='done'){clearInterval(timer);done(d);}else if(d.status==='error'){clearInterval(timer);fail(d.error||'처리 실패');}
 }).catch(()=>{});},2500);}
 async function markDraftComplete(){if(!currentProjectId)return;try{await fetch('/cnmaker/api/plans/'+currentProjectId+'/draft-complete',{method:'POST'});}catch(e){}}
-function done(d){for(let i=1;i<=4;i++){const e=document.getElementById('s'+i);e.className='step done';e.querySelector('.ico').textContent='✓';}
+function done(d){for(let i=1;i<=3;i++){const e=document.getElementById('s'+i);e.className='step done';e.querySelector('.ico').textContent='✓';}
   if(mode==='plan')markDraftComplete();
   document.getElementById('go').disabled=false;document.getElementById('result').style.display='block';
   document.getElementById('rtitle').textContent='✅ '+(d.product_name||'완성!');
