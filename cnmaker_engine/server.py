@@ -197,6 +197,21 @@ def worker_plan_high(job_id, plan, section_index, image_paths, reference_urls, s
         traceback.print_exc()
         JOBS[job_id] = {"status": "error", "error": str(e)[:200], "msg": "고화질 생성 실패"}
 
+
+def worker_plan_section_draft(job_id, target_job, plan, section_index, image_paths, reference_urls, style_paths=None):
+    JOBS[job_id] = {"status": "running", "msg": f"{section_index + 1}번 이미지 다시 만드는 중"}
+    try:
+        base = os.path.join(RESULT_DIR, target_job + f"_section_{section_index}_base.jpg")
+        gptmaker.run_plan_section_high(
+            plan, section_index, image_paths, reference_urls, base,
+            style_image_paths=style_paths or [], quality="low", output_size=(430, 645), compose_text=False,
+        )
+        gptmaker.recompose_plan_section(os.path.join(RESULT_DIR, target_job), plan, section_index, True)
+        JOBS[job_id] = {"status": "done", "msg": f"{section_index + 1}번 이미지 수정 완료", "target_job": target_job}
+    except Exception as e:
+        traceback.print_exc()
+        JOBS[job_id] = {"status": "error", "error": str(e)[:200], "msg": "이미지 다시 만들기 실패"}
+
 class H(BaseHTTPRequestHandler):
     def log_message(self,*a): pass
     def _send(self,code,obj,ctype="application/json"):
@@ -326,6 +341,25 @@ class H(BaseHTTPRequestHandler):
                     path=os.path.join(updir,"high_style_"+str(i)+".jpg"); open(path,"wb").write(raw); style_paths.append(path)
             except Exception: return self._send(400,{"error":"기준 이미지를 읽지 못했습니다"})
             threading.Thread(target=worker_plan_high,args=(jid,plan,section_index,paths,reference_urls,style_paths),daemon=True).start()
+            return self._send(200,{"job_id":jid})
+        if self.path=="/cnmaker/start_plan_section_draft":
+            import uuid, base64
+            target_job=(body.get("target_job") or "").strip(); plan=body.get("plan") or {}
+            section_index=body.get("section_index"); images=body.get("images") or []; style_images=body.get("style_images") or []
+            reference_urls=[url for url in (body.get("reference_urls") or []) if str(url).startswith("http")][:10]
+            active=[section for section in (plan.get("sections") or []) if section.get("enabled",True)]
+            if len(target_job)!=12 or not isinstance(section_index,int) or section_index<0 or section_index>=len(active):
+                return self._send(400,{"error":"수정할 시안과 구간을 확인해 주세요"})
+            jid=uuid.uuid4().hex[:12]; paths=[]; style_paths=[]; updir=os.path.join(RESULT_DIR,"up",target_job); os.makedirs(updir,exist_ok=True)
+            try:
+                for i,value in enumerate(images[:10]):
+                    raw=base64.b64decode(value.split(",",1)[1] if "," in value else value,validate=True)
+                    path=os.path.join(updir,"redo_"+str(i)+".jpg"); open(path,"wb").write(raw); paths.append(path)
+                for i,value in enumerate(style_images[:10]):
+                    raw=base64.b64decode(value.split(",",1)[1] if "," in value else value,validate=True)
+                    path=os.path.join(updir,"redo_style_"+str(i)+".jpg"); open(path,"wb").write(raw); style_paths.append(path)
+            except Exception: return self._send(400,{"error":"업로드 이미지를 읽지 못했습니다"})
+            threading.Thread(target=worker_plan_section_draft,args=(jid,target_job,plan,section_index,paths,reference_urls,style_paths),daemon=True).start()
             return self._send(200,{"job_id":jid})
         if self.path=="/cnmaker/compose_plan_section":
             job=(body.get("job") or "").strip(); plan=body.get("plan") or {}; section_index=body.get("section_index")
