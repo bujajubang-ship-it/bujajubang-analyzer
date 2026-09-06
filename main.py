@@ -4159,644 +4159,6 @@ async def category_recommend_bulk(request: Request):
 CNMAKER_BASE = os.getenv("CNMAKER_BASE", "http://43.200.232.189")
 CNMAKER_SECRET = os.getenv("CNMAKER_SECRET", "bj-cnmaker-2026")
 
-
-def _cn_plan_prompt(data: dict) -> str:
-    """이미지 비용을 쓰기 전에 사람이 검토할 텍스트 기획안만 만든다."""
-    direct = data.get("product") or {}
-    collected = data.get("collected") or {}
-    return f"""당신은 쿠팡용 상품 상세페이지 기획자입니다.
-아직 이미지를 만들지 말고, 사용자가 먼저 검토할 수 있는 텍스트 기획안만 작성하세요.
-
-[절대 규칙]
-- 사용자가 직접 입력한 정보가 최우선입니다.
-- 확인되지 않은 소재, 규격, 수치, 효능은 만들지 말고 반드시 '확인 필요'라고 쓰세요.
-- 브랜드명과 로고를 새로 만들지 마세요.
-- 체크포인트는 제품에서 확인할 수 있는 기능명만 최소 3개 작성하세요.
-- 첨부된 링크 이미지마다 화면에 보이는 장면과 제품 부위를 정확히 구분하세요.
-- 이미지 속 중국어를 빠뜨리지 말고 원문과 자연스러운 한국어 번역을 기록하세요.
-- 체크포인트는 번역문 또는 이미지에서 직접 확인된 사실만 사용하고, 서로 다른 구매 장점으로 작성하세요.
-- 디자인은 저채도 배경 1~2개와 포인트색 1개만 사용하세요.
-- 결과는 설명 없이 JSON 객체 하나만 출력하세요.
-
-[사용자 직접 입력]
-CN인사이더 상품 링크: {data.get('url1688') or '없음'}
-판매 상품명: {direct.get('name') or '미입력'}
-색상: {direct.get('color') or '미입력'}
-색상·옵션명이 쉼표로 여러 개 입력되면 모두 실제 옵션으로 유지하고 하나로 합치지 마세요.
-사이즈: {direct.get('size') or '미입력'}
-수량·구성: {direct.get('composition') or '미입력'}
-업로드한 기준 이미지 수: {int(data.get('image_count') or 0)}장
-
-[1688에서 실제 수집한 자료]
-수집된 상품명: {collected.get('title') or '확인 필요'}
-수집된 상품 이미지 수: {len(collected.get('images') or [])}장
-
-[필수 JSON 구조]
-{{
-  "product": {{
-    "name": "판매 상품명",
-    "summary": "제품 소개",
-    "material": "소재 또는 확인 필요",
-    "color": "색상 또는 확인 필요",
-    "size": "크기 또는 확인 필요",
-    "composition": "구성 또는 확인 필요",
-    "usage": "사용법 또는 확인 필요",
-    "caution": "주의사항 또는 확인 필요"
-  }},
-  "features": [
-    {{"title":"체크포인트명"}},
-    {{"title":"체크포인트명"}},
-    {{"title":"체크포인트명"}}
-  ],
-  "image_analysis": [
-    {{"image_number":1, "shot":"이미지에 보이는 제품·부위·사용 장면", "chinese_text":"읽힌 중국어 원문 또는 없음", "korean_translation":"정확한 한국어 번역 또는 없음", "verified_features":["번역이나 화면에서 확인된 사실"]}}
-  ],
-  "palette": {{"background":"아이보리", "secondary":"연베이지", "accent":"다크 브라운"}},
-  "sections": [
-    {{"number":1, "type":"hero", "enabled":true, "title":"제목", "body":"본문", "image_prompt":"이미지 계획"}}
-  ],
-  "warnings": ["확인이 필요한 사실"]
-}}
-
-sections는 반드시 다음 11개 순서로 작성하세요: 메인 배너, 제품 사용 만족도 설명, 제품 후기 배너,
-제품 후기 상세내용, 체크포인트 배너, 체크포인트 4개 정리, CHECK POINT 01 상세,
-CHECK POINT 02 상세, CHECK POINT 03 상세, CHECK POINT 04 상세, PRODUCT INFO.
-각 section의 image_prompt에는 보여줄 제품 부위, 사용 상황, 인물 유무, 촬영 거리와 각도를 구체적으로 작성하세요.
-네 개의 체크포인트 상세 장면은 서로 다른 기능과 서로 다른 구도여야 하며 같은 이미지를 반복하지 마세요.
-11개 구간은 모두 enabled를 true로 설정하세요. 확인된 체크포인트가 3개뿐이면 CHECK POINT 04는 제품의 추가 활용 장면으로 작성하세요."""
-
-
-def _cn_product_analysis_prompt(data: dict) -> str:
-    direct = data.get("product") or {}
-    return f"""당신은 제품 사실 분석가입니다. 판매 문구와 이미지 생성 프롬프트를 만들지 마세요.
-첨부된 제품 상세사진과 CN인사이더 상품 이미지를 이미지 순서대로 빠짐없이 high 정밀도로 분석하세요.
-각 이미지 앞에 표시된 출처와 번호를 그대로 유지하세요. 중국어가 있는 이미지는 중국어 원문을 보이는 그대로 모두 추출하고, 쇼핑몰 문맥에 맞는 자연스러운 한국어로 정확히 번역하세요.
-중국어 문구가 이미지의 어떤 사진·제품 부위·사용 장면을 설명하는지 반드시 같은 항목에 기록하세요.
-제품 외형·구성품·소재·크기·색상·옵션·사용법과 각 이미지의 촬영 장면을 구분하세요.
-화면이나 문구로 확인된 사실과 추정·미확인 내용을 엄격히 분리하세요.
-사용자 입력은 최우선 사실입니다: 상품명={direct.get('name') or '미입력'}, 색상·옵션={direct.get('color') or '미입력'}, 크기={direct.get('size') or '미입력'}, 구성={direct.get('composition') or '미입력'}.
-JSON만 출력하세요:
-{{"images":[{{"source":"cninsider 또는 upload","source_number":1,"shot":"사진에 보이는 전체 장면","product_part":"보이는 제품 부위","text_visual_relation":"중국어 문구가 어떤 사진·기능을 설명하는지","chinese_text":"중국어 원문 전체 또는 없음","korean_translation":"자연스러운 한국어 번역 또는 없음","verified_facts":["번역과 화면으로 확인된 사실"],"unverified":["미확인 내용"]}}],"product":{{"appearance":"","components":[],"material":"확인 필요","size":"확인 필요","colors_options":[],"usage":"확인 필요"}},"verified_facts":[],"unverified":[]}}"""
-
-
-def _cn_reference_analysis_prompt() -> str:
-    return """당신은 상세페이지 연출 참고자료 분석가입니다. 판매 문구나 새 이미지를 만들지 마세요.
-첨부된 참고 이미지를 순서대로 분석하세요. 이미지 속 중국어·외국어는 원문과 한국어 번역을 기록하세요.
-어떤 글에 어떤 이미지가 사용됐는지, 이미지의 역할·구도·인물·카메라 각도·문구 여백을 분석하세요.
-참고 이미지 속 제품 특징은 판매 제품의 사실로 취급하지 마세요. JSON만 출력하세요:
-{"images":[{"image_number":1,"original_text":"원문 또는 없음","korean_translation":"번역 또는 없음","text_purpose":"어떤 글인지","visual_role":"어떤 이미지가 쓰였는지","composition":"구도·인물·각도·여백"}]}"""
-
-
-def _cn_copy_plan_prompt(data: dict, product_analysis: dict, reference_analysis: dict) -> str:
-    direct = data.get("product") or {}
-    return f"""당신은 한국 쇼핑몰 상세페이지 글 기획자입니다. 이미지나 이미지 프롬프트를 만들지 마세요.
-아래 제품 분석 결과만 사용해 실제 삽입 문구를 작성하세요. 분석 결과에 없는 기능·소재·수치 생성 금지, 체크포인트 중복 금지입니다.
-사용자 입력은 최우선입니다: {json.dumps(direct, ensure_ascii=False)}
-제품 분석: {json.dumps(product_analysis, ensure_ascii=False)}
-참고자료의 글 사용 방식 분석: {json.dumps(reference_analysis, ensure_ascii=False)}
-판매상품명, 제품소개, 체크포인트 4개와 각 상세 설명, 후기 형식의 장점 문구, 만족도 설명, 사용법, 주의사항, 11개 구간별 실제 삽입 문구를 작성하세요.
-아래 예시는 문장 길이·말투·구조를 보여주는 참고용입니다. 예시의 양말 관련 표현을 다른 제품에 그대로 복사하지 말고, 제품 분석에서 확인된 사실에 맞춰 작성하세요.
-
-1번 메인 배너:
-- body 보조문구는 제품 사양이 아니라 사용자가 얻는 핵심 이점을 약 10~20자의 자연스러운 한국어 한 문장으로 작성하고 한 줄을 넘기지 마세요.
-- 보조문구 예시: '어떤 스포츠에도 다리를 잘 잡아주는', '하루 종일 신어도 편안한', '부위별 설계로 편안하게'.
-- 보조문구에 '블랙·화이트 2컬러 구성', 'FREE 사이즈', 긴 기능 나열을 넣지 마세요.
-- title 판매상품명은 제품 종류와 핵심 특성이 바로 이해되게 간결하게 작성하세요. 예: '압박 스포츠양말 니삭스'.
-- features의 체크포인트명은 각각 짧고 분명한 효익형 표현으로 작성하세요. 예: '탄탄한 지지력', '편안한 착용감', '부위별 니트 설계'.
-
-2번 제품 소개:
-- title은 제품 장점을 함축한 자연스러운 영문 2~3단어로 작성하세요. 예: 'active support', 'premium quality', 'allday wearable'.
-- body는 핵심 만족도와 기획 의도를 한국어 3~4줄로 간결하게 작성하세요. 각 줄은 짧고 읽기 쉬워야 하며 색상·구성만 나열하지 마세요.
-- 문체와 구성 예시: '움직일수록 느껴지는 탄탄한 서포트 / 종아리부터 발바닥까지 안정적으로 잡아주는 스포츠 니삭스 / 부위별 압박 설계, 쿠션 바닥, 통기 조직 / 운동 내내 흔들림은 줄이고 편안함을 더했습니다.'
-
-3번 제품 후기 배너:
-- 글을 새로 생성하거나 변형하지 마세요.
-- body는 정확히 '이런 점이 만족스러워요', title은 정확히 '고객님이 들려준 사용후기'로 고정하세요.
-
-4번 제품 후기 상세내용:
-- review_items에 서로 다른 체크포인트를 자연스럽게 칭찬하는 후기 4개를 작성하고, 각 항목의 title과 body를 별도로 작성하세요.
-- 실제 구매자가 일상적으로 쓴 것처럼 자연스럽되, 제품 분석에서 확인되지 않은 경험·효능·수치·과장 표현은 만들지 마세요.
-- 제목 예시: '뛰어도 안 흘러내려요', '발바닥 쿠션이 완전 도톰함', '통기성이 좋아서'.
-- 내용 예시: '러닝할 때 신는데 오래 뛰어도 안 흘러내리고 짱짱하게 잘 잡아줘서 좋아요!', '골프 라운딩에 신어도 편안해요. 다리도 안 붓고 오래 신고 있기 좋습니다.', '땀이 차도 덜 답답하고 쾌적해요~ 운동 중에도 발과 종아리가 가볍게 느껴집니다. 여름에도 추천!!'.
-- 위 예시는 해당 사실이 제품 분석에서 확인된 경우에만 참고하세요. 네 후기의 제목과 내용은 서로 중복하지 마세요.
-
-5번 체크포인트 배너:
-- 글을 새로 생성하거나 변형하지 마세요.
-- title은 정확히 '타사 제품과 무엇이 다를까요?'로 고정하고 body는 비워 두세요.
-
-6번 체크포인트 4개 정리:
-- features에 체크포인트 4개를 만들고, 각 체크포인트의 title과 detail을 별도로 작성하세요.
-- 제목 예시: '부위별 압박설계', '발바닥 쿠션 조직', '통기 니트 구조'.
-- 설명 예시: '발목부터 종아리 상단까지 짜임과 밀도를 다르게 설계해 러닝 중에도 흔들림 없이 다리에 밀착되도록 도와줍니다.', '착지 시 힘이 집중되는 부분에 도톰한 쿠션을 더해 운동 중 발바닥이 느끼는 부담을 덜어줍니다.', '세로 골지와 미세한 니트 조직이 열기와 습기를 빠르게 분산해 땀이 나는 순간에도 쾌적함을 유지합니다.'.
-- 기능·효과는 제품 분석에서 확인된 범위만 사용하고 네 체크포인트를 중복하지 마세요.
-
-7~10번 CHECK POINT 0X 상세:
-- 각 section의 title은 해당 체크포인트의 좋은 점을 짧은 문장으로 표현하고, body는 그 근거가 되는 구조·소재·사용상 장점을 설명하세요.
-- title 예시: '종아리를 탄탄하게 잡아줍니다'.
-- body 예시: '부위별 압박 짜임으로 종아리를 안정적으로 감싸며, 반복적인 움직임에도 니삭스가 쉽게 밀려 내려가지 않도록 도와줍니다.'.
-- 7~10번은 각각 features 1~4와 같은 순서로 정확히 대응해야 합니다.
-
-11번 PRODUCT INFO:
-- 제품 분석이나 사용자 입력으로 확실하게 확인된 정보만 기재하고, 확인되지 않은 정보는 '확인 필요'로 표시하세요.
-sections의 number와 type은 아래 순서를 절대 바꾸지 마세요:
-1 메인 배너 — title은 판매상품명, body는 짧은 효익형 보조문구
-2 제품 소개 — title은 영문 2~3단어, body는 제품 만족도와 기획 의도
-3 제품 후기 배너 — title은 '고객님이 들려준 사용후기', body는 '이런 점이 만족스러워요'로 고정
-4 제품 후기 상세내용 — review_items에 체크포인트 1~4를 각각 자연스럽게 칭찬하는 후기 4개를 작성. 각 항목은 title과 body를 별도로 작성
-5 체크포인트 배너 — title은 '타사 제품과 무엇이 다를까요?'로 고정, body는 빈 문자열
-6 체크포인트 4개 정리 — title은 '가득 담았습니다', body는 체크포인트 1~4의 이름과 설명
-7 CHECK POINT 01 상세 — 첫 번째 체크포인트의 제목과 상세 설명
-8 CHECK POINT 02 상세 — 두 번째 체크포인트의 제목과 상세 설명
-9 CHECK POINT 03 상세 — 세 번째 체크포인트의 제목과 상세 설명
-10 CHECK POINT 04 상세 — 네 번째 체크포인트 또는 추가 활용 장면의 제목과 설명
-11 PRODUCT INFO — 확인된 제품 정보만 정리
-3번 제품 후기 배너에 CHECK POINT 문구를 넣지 말고, 7~10번 이외 구간을 CHECK POINT 상세로 작성하지 마세요.
-확인되지 않은 정보는 '확인 필요'로 표시하세요. JSON만 출력하세요:
-{{"product":{{"name":"","summary":"","material":"","color":"","size":"","composition":"","usage":"","caution":""}},"features":[{{"title":"","detail":""}}],"sections":[{{"number":1,"type":"메인 배너","enabled":true,"title":"실제 삽입 제목","body":"실제 삽입 본문","review_items":[{{"title":"후기1 제목","body":"후기1 내용"}}]}}],"warnings":[]}}"""
-
-
-def _cn_cut_plan_prompt(copy_plan: dict, product_analysis: dict, reference_analysis: dict) -> str:
-    return f"""당신은 쇼핑몰 촬영 콘티를 만드는 이미지 컷 기획자입니다. 판매 문구를 새로 쓰거나 이미지를 생성하지 마세요.
-제품 분석과 확정된 글 기획을 바탕으로 각 문구를 어떤 사진으로 보여줄지 11개 구간의 촬영 계획만 작성하세요.
-제품 부위, 모델·손 필요 여부, 착용·사용 장면, 클로즈업 위치, 카메라 각도·거리, 배경·소품, 문구 여백을 모두 구체적으로 작성하세요.
-참고 이미지는 글과 사진의 대응 방식만 참고하고 모델·포즈·각도·패션·배경·구도를 복제하지 마세요.
-제품 분석: {json.dumps(product_analysis, ensure_ascii=False)}
-참고 이미지 분석: {json.dumps(reference_analysis, ensure_ascii=False)}
-글 기획: {json.dumps(copy_plan, ensure_ascii=False)}
-순서는 메인 배너, 제품 소개, 제품 후기 배너, 제품 후기 상세내용, 체크포인트 배너, 체크포인트 4개 정리, CHECK POINT 01~04 상세, PRODUCT INFO입니다.
-7~10번에는 image_prompt_closeup에 상세 클로즈업 계획, image_prompt_use에 착용·사용 장면 계획을 서로 겹치지 않게 따로 작성하세요.
-각 구간의 source_image_numbers에는 그 장면과 제품 형태를 만들 때 참고할 CN인사이더 이미지 번호만 지정하세요. 번역문과 사진 장면이 해당 구간 문구의 근거가 되는 이미지를 우선 선택하세요.
-JSON만 출력하세요: {{"sections":[{{"number":1,"source_image_numbers":[1,3],"image_prompt":"공통 이미지 계획","image_prompt_closeup":"7~10번 상세 클로즈업 계획","image_prompt_use":"7~10번 착용·사용 장면 계획"}}]}}"""
-
-
-def _cn_json_result(raw: str) -> dict:
-    match = re.search(r"\{.*\}", raw, re.S)
-    if not match:
-        raise ValueError("JSON 응답 없음")
-    return json.loads(match.group(0))
-
-
-CN_SECTION_TYPES = [
-    "메인 배너", "제품 소개", "제품 후기 배너", "제품 후기 상세내용", "체크포인트 배너",
-    "체크포인트 4개 정리", "CHECK POINT 01 상세", "CHECK POINT 02 상세",
-    "CHECK POINT 03 상세", "CHECK POINT 04 상세", "PRODUCT INFO",
-]
-
-
-async def _cn_collect_product(url: str, allow_uploaded_fallback: bool = False) -> dict:
-    """Lightsail에서 이미지 생성 없이 1688 상품자료만 가져온다."""
-    async with httpx.AsyncClient(timeout=120) as client:
-        response = await client.post(
-            f"{CNMAKER_BASE}/cnmaker/analyze",
-            json={"url": url},
-            headers={"x-secret": CNMAKER_SECRET},
-        )
-    try:
-        payload = response.json()
-    except Exception:
-        payload = {}
-    if response.status_code != 200 or not payload.get("product"):
-        if allow_uploaded_fallback:
-            return {
-                "title": "",
-                "images": [],
-                "warning": "1688 자동 수집이 차단되어 직접 올린 제품 사진과 입력 정보만 사용했습니다.",
-            }
-        payload["error"] = "UPLOAD_REQUIRED:1688 자동 수집이 차단됐습니다. 제품 사진을 올린 뒤 다시 눌러주세요."
-        raise ValueError(payload.get("error") or "1688 상품정보를 가져오지 못했습니다.")
-    return payload["product"]
-
-
-async def _cn_generate_plan_with_gpt(content: list) -> str:
-    """Use the existing secured Lightsail OpenAI connection for plan generation."""
-    async with httpx.AsyncClient(timeout=210) as client:
-        response = await client.post(
-            f"{CNMAKER_BASE}/cnmaker/plan",
-            json={"content": content},
-            headers={"x-secret": CNMAKER_SECRET},
-        )
-    try:
-        payload = response.json()
-    except Exception:
-        payload = {}
-    if response.status_code != 200 or not payload.get("text"):
-        raise RuntimeError(payload.get("error") or "GPT 기획안 생성에 실패했습니다.")
-    return str(payload["text"])
-
-
-CN_PLANS_FILE = data_path("cninsider_plans.json")
-CN_PLANS_LOCK = threading.RLock()
-
-
-def _cn_load_plans() -> dict:
-    try:
-        local = json.loads(CN_PLANS_FILE.read_text(encoding="utf-8"))
-        if isinstance(local, dict):
-            return local
-    except Exception:
-        pass
-    restored = _kv_restore("cninsider_plans", timeout=10)
-    return restored if isinstance(restored, dict) else {}
-
-
-def _cn_save_plans(plans: dict) -> dict:
-    """Render 로컬과 Lightsail KV에 기획안을 함께 저장한다."""
-    CN_PLANS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = CN_PLANS_FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(plans, ensure_ascii=False), encoding="utf-8")
-    tmp.replace(CN_PLANS_FILE)
-    return _kv_backup_checked("cninsider_plans", plans, timeout=10)
-
-
-def _cn_store_plan(project_id: str, plan: dict, source: dict | None = None) -> dict:
-    with CN_PLANS_LOCK:
-        plans = _cn_load_plans()
-        old = plans.get(project_id) if isinstance(plans.get(project_id), dict) else {}
-        now = datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d %H:%M:%S")
-        plans[project_id] = {
-            **old,
-            "id": project_id,
-            "created_at": old.get("created_at") or now,
-            "updated_at": now,
-            "source": source if source is not None else old.get("source", {}),
-            "plan": plan,
-            "status": "draft",
-            "version": int(old.get("version") or 0),
-        }
-        ordered = sorted(plans.values(), key=lambda item: item.get("updated_at", ""), reverse=True)[:100]
-        trimmed = {item["id"]: item for item in ordered}
-        backup = _cn_save_plans(trimmed)
-        return {"item": trimmed[project_id], "backup": backup}
-
-
-def _cn_has_required_checkpoints(plan: dict) -> bool:
-    features = plan.get("features") if isinstance(plan, dict) else None
-    return isinstance(features, list) and len(features) >= 3 and all(
-        isinstance(item, dict) and str(item.get("title") or "").strip()
-        for item in features[:3]
-    )
-
-
-@app.get("/cnmaker/api/plans/{project_id}")
-async def cnmaker_plan_get(project_id: str, request: Request):
-    if not _site_auth(request):
-        return JSONResponse({"error": "로그인이 필요합니다."}, status_code=401)
-    item = _cn_load_plans().get(project_id)
-    if not item:
-        return JSONResponse({"error": "저장된 기획안을 찾지 못했습니다."}, status_code=404)
-    return JSONResponse({"ok": True, "item": item})
-
-
-@app.put("/cnmaker/api/plans/{project_id}")
-async def cnmaker_plan_save(project_id: str, request: Request):
-    if not _site_auth(request):
-        return JSONResponse({"error": "로그인이 필요합니다."}, status_code=401)
-    if not re.fullmatch(r"[a-f0-9]{12}", project_id):
-        return JSONResponse({"error": "기획안 번호가 올바르지 않습니다."}, status_code=400)
-    data = await request.json()
-    plan = data.get("plan")
-    if not isinstance(plan, dict) or len(plan.get("sections") or []) != 11:
-        return JSONResponse({"error": "11개 구간의 기획안을 확인해 주세요."}, status_code=400)
-    if not _cn_has_required_checkpoints(plan):
-        return JSONResponse({"error": "체크포인트 3개를 모두 입력해 주세요."}, status_code=400)
-    if len(json.dumps(plan, ensure_ascii=False)) > 200_000:
-        return JSONResponse({"error": "기획안 내용이 너무 깁니다."}, status_code=413)
-    saved = _cn_store_plan(project_id, plan)
-    backup_ok = bool(saved["backup"].get("ok"))
-    return JSONResponse({
-        "ok": True,
-        "updated_at": saved["item"]["updated_at"],
-        "backup_ok": backup_ok,
-        "backup_warning": "보조 백업이 지연되고 있습니다. 현재 서버에는 저장됐습니다." if not backup_ok else "",
-    })
-
-
-@app.post("/cnmaker/api/plans/{project_id}/confirm")
-async def cnmaker_plan_confirm(project_id: str, request: Request):
-    if not _site_auth(request):
-        return JSONResponse({"error": "로그인이 필요합니다."}, status_code=401)
-    if not re.fullmatch(r"[a-f0-9]{12}", project_id):
-        return JSONResponse({"error": "기획안 번호가 올바르지 않습니다."}, status_code=400)
-    with CN_PLANS_LOCK:
-        plans = _cn_load_plans()
-        item = plans.get(project_id)
-        if not isinstance(item, dict) or not isinstance(item.get("plan"), dict):
-            return JSONResponse({"error": "확정할 기획안을 찾지 못했습니다."}, status_code=404)
-        if len(item["plan"].get("sections") or []) != 11:
-            return JSONResponse({"error": "11개 구간의 기획안을 확인해 주세요."}, status_code=400)
-        if not _cn_has_required_checkpoints(item["plan"]):
-            return JSONResponse({"error": "체크포인트 3개를 모두 입력해 주세요."}, status_code=400)
-        now = datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d %H:%M:%S")
-        version = int(item.get("version") or 0) + 1
-        revisions = item.get("revisions") if isinstance(item.get("revisions"), list) else []
-        revisions.append({"version": version, "confirmed_at": now, "plan": copy.deepcopy(item["plan"])})
-        item.update({
-            "status": "confirmed",
-            "version": version,
-            "confirmed_at": now,
-            "confirmed_plan": copy.deepcopy(item["plan"]),
-            "revisions": revisions[-10:],
-            "updated_at": now,
-        })
-        plans[project_id] = item
-        backup = _cn_save_plans(plans)
-    backup_ok = bool(backup.get("ok"))
-    return JSONResponse({
-        "ok": True,
-        "version": version,
-        "confirmed_at": now,
-        "backup_ok": backup_ok,
-        "backup_warning": "보조 백업이 지연되고 있습니다. 확정본은 현재 서버에 저장됐습니다." if not backup_ok else "",
-    })
-
-
-@app.post("/cnmaker/api/plan")
-async def cnmaker_plan(request: Request):
-    if not _site_auth(request):
-        return JSONResponse({"error": "로그인이 필요합니다."}, status_code=401)
-    data = await request.json()
-    url1688 = (data.get("url1688") or "").strip()
-    images = data.get("images") or []
-    style_images = data.get("style_images") or []
-    if not url1688.startswith("http"):
-        return JSONResponse({"error": "CN인사이더 상품 링크를 넣어주세요."}, status_code=400)
-    try:
-        data["collected"] = await _cn_collect_product(url1688, bool(images))
-    except ValueError as e:
-        return JSONResponse({"error": str(e)}, status_code=502)
-    except Exception:
-        return JSONResponse({"error": "1688 수집 서버에 연결하지 못했습니다."}, status_code=502)
-    product_content = [{"type": "input_text", "text": _cn_product_analysis_prompt(data)}]
-    reference_content = [{"type": "input_text", "text": _cn_reference_analysis_prompt()}]
-    if len(images) > 10 or len(style_images) > 10:
-        return JSONResponse({"error": "제품사진과 참고사진은 각각 최대 10장까지 올릴 수 있습니다."}, status_code=400)
-    total_image_bytes = 0
-    for upload_number, image in enumerate(images, 1):
-        match = re.match(r"^data:(image/(?:jpeg|png|webp|gif));base64,(.+)$", str(image), re.S)
-        if not match:
-            return JSONResponse({"error": "읽을 수 없는 이미지가 포함되어 있습니다."}, status_code=400)
-        total_image_bytes += len(match.group(2)) * 3 // 4
-        product_content.append({"type": "input_text", "text": f"[직접 업로드 제품사진 {upload_number}]"})
-        product_content.append({
-            "type": "input_image",
-            "image_url": f"data:{match.group(1)};base64,{match.group(2)}",
-            "detail": "high",
-        })
-    if total_image_bytes > 25 * 1024 * 1024:
-        return JSONResponse({"error": "이미지 전체 용량을 25MB 이하로 줄여주세요."}, status_code=413)
-    for image in style_images:
-        match = re.match(r"^data:(image/(?:jpeg|png|webp|gif));base64,(.+)$", str(image), re.S)
-        if not match:
-            return JSONResponse({"error": "읽을 수 없는 참고 이미지가 포함되어 있습니다."}, status_code=400)
-        reference_content.append({"type": "input_image", "image_url": f"data:{match.group(1)};base64,{match.group(2)}", "detail": "high"})
-    # 직접 올린 사진 다음에 1688 제품 사진을 보조 근거로 전달한다.
-    cn_image_numbers_attached = []
-    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-        for cn_number, image_url in enumerate((data["collected"].get("images") or [])[:10], 1):
-            try:
-                image_response = await client.get(image_url, headers={"User-Agent": "Mozilla/5.0"})
-                image_response.raise_for_status()
-                image_bytes = image_response.content
-                if len(image_bytes) > 5 * 1024 * 1024:
-                    continue
-                media_type = (image_response.headers.get("content-type") or "image/jpeg").split(";", 1)[0]
-                if media_type not in ("image/jpeg", "image/png", "image/webp", "image/gif"):
-                    continue
-                product_content.append({"type": "input_text", "text": f"[CN인사이더 이미지 {cn_number}]"})
-                product_content.append({
-                    "type": "input_image",
-                    "image_url": f"data:{media_type};base64,{base64.b64encode(image_bytes).decode()}",
-                    "detail": "high",
-                })
-                cn_image_numbers_attached.append(cn_number)
-            except Exception:
-                continue
-    try:
-        product_analysis = _cn_json_result(await _cn_generate_plan_with_gpt(product_content))
-        analyzed_cn = {
-            int(item.get("source_number") or 0) for item in (product_analysis.get("images") or [])
-            if isinstance(item, dict) and str(item.get("source") or "").lower() == "cninsider"
-        }
-        missing_cn = [number for number in cn_image_numbers_attached if number not in analyzed_cn]
-        if missing_cn:
-            retry_content = product_content + [{
-                "type": "input_text",
-                "text": f"검사 결과 CN인사이더 이미지 번호 {missing_cn}가 누락되었습니다. 첨부된 모든 CN인사이더 이미지를 번호별로 각각 하나의 images 항목으로 빠짐없이 다시 분석하고 JSON 전체를 다시 출력하세요.",
-            }]
-            product_analysis = _cn_json_result(await _cn_generate_plan_with_gpt(retry_content))
-        reference_analysis = _cn_json_result(await _cn_generate_plan_with_gpt(reference_content)) if style_images else {"images": []}
-        copy_plan = _cn_json_result(await _cn_generate_plan_with_gpt([
-            {"type": "input_text", "text": _cn_copy_plan_prompt(data, product_analysis, reference_analysis)}
-        ]))
-        cut_plan = _cn_json_result(await _cn_generate_plan_with_gpt([
-            {"type": "input_text", "text": _cn_cut_plan_prompt(copy_plan, product_analysis, reference_analysis)}
-        ]))
-        plan = copy_plan
-        raw_copy_sections = plan.get("sections") or []
-        by_number = {}
-        for index, section in enumerate(raw_copy_sections):
-            if isinstance(section, dict):
-                try:
-                    number = int(section.get("number") or index + 1)
-                except (TypeError, ValueError):
-                    number = index + 1
-                if 1 <= number <= 11 and number not in by_number:
-                    by_number[number] = section
-        copy_sections = []
-        for number, expected_type in enumerate(CN_SECTION_TYPES, 1):
-            section = by_number.get(number, {})
-            normalized = {**section, "number": number, "type": expected_type, "enabled": True,
-                          "title": str(section.get("title") or "확인 필요"),
-                          "body": str(section.get("body") or "확인 필요")}
-            if number == 3:
-                normalized["title"] = "고객님이 들려준 사용후기"
-                normalized["body"] = "이런 점이 만족스러워요"
-            if number == 4:
-                items = section.get("review_items") if isinstance(section.get("review_items"), list) else []
-                normalized["review_items"] = [
-                    {"title": str((items[i] if i < len(items) and isinstance(items[i], dict) else {}).get("title") or f"후기{i + 1} 제목"),
-                     "body": str((items[i] if i < len(items) and isinstance(items[i], dict) else {}).get("body") or f"후기{i + 1} 내용")}
-                    for i in range(4)
-                ]
-            if number == 5:
-                normalized["title"] = "타사 제품과 무엇이 다를까요?"
-                normalized["body"] = ""
-            copy_sections.append(normalized)
-        cut_sections = cut_plan.get("sections") or []
-        merged = {int(item.get("number") or 0): item for item in cut_sections if isinstance(item, dict)}
-        for section in copy_sections:
-            cut = merged.get(section["number"]) or {}
-            section["image_prompt"] = str(cut.get("image_prompt") or "")
-            section["source_image_numbers"] = [
-                int(value) for value in (cut.get("source_image_numbers") or [])
-                if str(value).isdigit() and 1 <= int(value) <= 10
-            ][:4]
-            if 7 <= section["number"] <= 10:
-                section["image_prompt_closeup"] = str(cut.get("image_prompt_closeup") or section["image_prompt"])
-                section["image_prompt_use"] = str(cut.get("image_prompt_use") or section["image_prompt"])
-        plan["sections"] = copy_sections
-        plan["analysis"] = {"product": product_analysis, "reference": reference_analysis}
-        if len(plan.get("sections") or []) != 11:
-            return JSONResponse({"error": "기획안 구간 수가 맞지 않습니다. 다시 시도해 주세요."}, status_code=502)
-        if data["collected"].get("warning"):
-            plan.setdefault("warnings", []).append(data["collected"]["warning"])
-        features = plan.get("features") if isinstance(plan.get("features"), list) else []
-        while len(features) < 4:
-            features.append({"title": "확인 필요"})
-        plan["features"] = [{"title": str(item.get("title") or "확인 필요"),
-                             "detail": str(item.get("detail") or "")}
-                            for item in features if isinstance(item, dict)]
-        project_id = uuid.uuid4().hex[:12]
-        source = {
-            "url1688": url1688,
-            "product": data.get("product") or {},
-            "image_count": min(10, int(data.get("image_count") or 0)),
-            "collected_title": data["collected"].get("title") or "",
-            "collected_images": (data["collected"].get("images") or [])[:10],
-        }
-        saved = _cn_store_plan(project_id, plan, source)
-        return JSONResponse({
-            "ok": True,
-            "project_id": project_id,
-            "plan": plan,
-            "saved": bool(saved["backup"].get("ok")),
-        })
-    except (ValueError, json.JSONDecodeError):
-        return JSONResponse({"error": "기획안을 정리하지 못했습니다. 다시 시도해 주세요."}, status_code=502)
-    except Exception:
-        return JSONResponse({"error": "GPT가 기획안을 만드는 중 연결이 끊겼습니다."}, status_code=502)
-
-
-@app.post("/cnmaker/api/plans/{project_id}/generate-draft")
-async def cnmaker_generate_draft(project_id: str, request: Request):
-    if not _site_auth(request):
-        return JSONResponse({"error": "로그인이 필요합니다."}, status_code=401)
-    if not re.fullmatch(r"[a-f0-9]{12}", project_id):
-        return JSONResponse({"error": "기획안 번호가 올바르지 않습니다."}, status_code=400)
-    item = _cn_load_plans().get(project_id)
-    if not item or item.get("status") != "confirmed" or not item.get("confirmed_plan"):
-        return JSONResponse({"error": "기획안을 먼저 확정해 주세요."}, status_code=409)
-    data = await request.json()
-    images = data.get("images") or []
-    style_images = data.get("style_images") or []
-    if len(images) > 10 or len(style_images) > 10:
-        return JSONResponse({"error": "제품사진과 참고사진은 각각 최대 10장까지 올릴 수 있습니다."}, status_code=400)
-    payload = {
-        "project_id": project_id,
-        "plan": item["confirmed_plan"],
-        "images": images,
-        "style_images": style_images,
-        "reference_urls": (item.get("source") or {}).get("collected_images") or [],
-    }
-    try:
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post(
-                f"{CNMAKER_BASE}/cnmaker/start_plan_draft",
-                json=payload,
-                headers={"x-secret": CNMAKER_SECRET},
-            )
-        result = response.json()
-        return JSONResponse(result, status_code=response.status_code)
-    except Exception:
-        return JSONResponse({"error": "시안 생성 서버에 연결하지 못했습니다."}, status_code=502)
-
-
-@app.post("/cnmaker/api/plans/{project_id}/sections/{section_index}/generate-high")
-async def cnmaker_generate_section_high(project_id: str, section_index: int, request: Request):
-    if not _site_auth(request):
-        return JSONResponse({"error": "로그인이 필요합니다."}, status_code=401)
-    item = _cn_load_plans().get(project_id)
-    if not item or item.get("status") != "confirmed" or not item.get("confirmed_plan"):
-        return JSONResponse({"error": "기획안을 먼저 확정해 주세요."}, status_code=409)
-    active = [section for section in item["confirmed_plan"].get("sections", []) if section.get("enabled", True)]
-    if section_index < 0 or section_index >= len(active):
-        return JSONResponse({"error": "고화질로 만들 구간을 확인해 주세요."}, status_code=400)
-    data = await request.json()
-    images = data.get("images") or []
-    style_images = data.get("style_images") or []
-    if len(images) > 10 or len(style_images) > 10:
-        return JSONResponse({"error": "제품사진과 참고사진은 각각 최대 10장까지 올릴 수 있습니다."}, status_code=400)
-    payload = {"project_id": project_id, "plan": item["confirmed_plan"], "section_index": section_index,
-               "images": images, "style_images": style_images,
-               "reference_urls": (item.get("source") or {}).get("collected_images") or []}
-    try:
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post(f"{CNMAKER_BASE}/cnmaker/start_plan_high", json=payload,
-                                         headers={"x-secret": CNMAKER_SECRET})
-        return JSONResponse(response.json(), status_code=response.status_code)
-    except Exception:
-        return JSONResponse({"error": "고화질 생성 서버에 연결하지 못했습니다."}, status_code=502)
-
-
-@app.post("/cnmaker/api/jobs/{job_id}/sections/{section_index}/compose")
-async def cnmaker_compose_section(job_id: str, section_index: int, request: Request):
-    if not _site_auth(request):
-        return JSONResponse({"error": "로그인이 필요합니다."}, status_code=401)
-    if not re.fullmatch(r"[a-f0-9]{12}", job_id) or section_index < 0:
-        return JSONResponse({"error": "시안과 구간을 확인해 주세요."}, status_code=400)
-    data = await request.json()
-    plan = data.get("plan")
-    if not isinstance(plan, dict):
-        return JSONResponse({"error": "수정 문구가 필요합니다."}, status_code=400)
-    try:
-        async with httpx.AsyncClient(timeout=40) as client:
-            response = await client.post(
-                f"{CNMAKER_BASE}/cnmaker/compose_plan_section",
-                json={"job": job_id, "section_index": section_index, "plan": plan,
-                      "show_text": data.get("show_text") is not False},
-                headers={"x-secret": CNMAKER_SECRET},
-            )
-        return JSONResponse(response.json(), status_code=response.status_code)
-    except Exception:
-        return JSONResponse({"error": "글자 합성 서버에 연결하지 못했습니다."}, status_code=502)
-
-
-@app.post("/cnmaker/api/jobs/{job_id}/sections/{section_index}/regenerate")
-async def cnmaker_regenerate_section(job_id: str, section_index: int, request: Request):
-    if not _site_auth(request):
-        return JSONResponse({"error": "로그인이 필요합니다."}, status_code=401)
-    data = await request.json()
-    plan, project_id = data.get("plan"), str(data.get("project_id") or "")
-    item = _cn_load_plans().get(project_id)
-    if not re.fullmatch(r"[a-f0-9]{12}", job_id) or not isinstance(plan, dict) or not item:
-        return JSONResponse({"error": "수정할 시안 정보를 확인해 주세요."}, status_code=400)
-    payload = {"target_job": job_id, "section_index": section_index, "plan": plan,
-               "images": data.get("images") or [], "style_images": data.get("style_images") or [],
-               "reference_urls": (item.get("source") or {}).get("collected_images") or []}
-    try:
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post(f"{CNMAKER_BASE}/cnmaker/start_plan_section_draft", json=payload,
-                                         headers={"x-secret": CNMAKER_SECRET})
-        return JSONResponse(response.json(), status_code=response.status_code)
-    except Exception:
-        return JSONResponse({"error": "이미지 수정 서버에 연결하지 못했습니다."}, status_code=502)
-
-
-@app.post("/cnmaker/api/plans/{project_id}/draft-complete")
-async def cnmaker_draft_complete(project_id: str, request: Request):
-    if not _site_auth(request):
-        return JSONResponse({"error": "로그인이 필요합니다."}, status_code=401)
-    if not re.fullmatch(r"[a-f0-9]{12}", project_id):
-        return JSONResponse({"error": "기획안 번호가 올바르지 않습니다."}, status_code=400)
-    with CN_PLANS_LOCK:
-        plans = _cn_load_plans()
-        item = plans.get(project_id)
-        if not isinstance(item, dict):
-            return JSONResponse({"error": "기획안을 찾지 못했습니다."}, status_code=404)
-        item["low_res_generated"] = True
-        item["low_res_completed_at"] = datetime.now(
-            timezone(timedelta(hours=9))
-        ).strftime("%Y-%m-%d %H:%M:%S")
-        plans[project_id] = item
-        backup = _cn_save_plans(plans)
-    backup_ok = bool(backup.get("ok"))
-    return JSONResponse({
-        "ok": True,
-        "low_res_generated": True,
-        "backup_ok": backup_ok,
-        "backup_warning": "보조 백업이 지연되고 있습니다." if not backup_ok else "",
-    })
-
 @app.get("/cnmaker")
 def cnmaker_page(request: Request):
     if not _site_auth(request):
@@ -4842,16 +4204,64 @@ async def cnmaker_history():
         r = await client.get(f"{CNMAKER_BASE}/cnmaker/history", headers={"x-secret": CNMAKER_SECRET})
         return JSONResponse(r.json(), status_code=r.status_code)
 
+# ── CN메이커 로고 자동삽입 (부자홀딩스/부자주방 로고) ──
+CN_LOGO_PATH = "static/logo_bujajubang.png"
+CN_LOGO_CFG = data_path("cnmaker_logo.json")
+def _cn_logo_cfg():
+    try:
+        return json.loads(CN_LOGO_CFG.read_text(encoding="utf-8"))
+    except Exception:
+        return {"enabled": True, "position": "bottom-right", "size_pct": 0.15, "margin_pct": 0.03}
+def _cn_apply_logo(img_bytes: bytes) -> bytes:
+    cfg = _cn_logo_cfg()
+    if not cfg.get("enabled"):
+        return img_bytes
+    try:
+        import io as _io
+        from PIL import Image as _Img
+        base = _Img.open(_io.BytesIO(img_bytes)).convert("RGBA")
+        logo = _Img.open(CN_LOGO_PATH).convert("RGBA")
+        W, H = base.size
+        lw = max(1, int(W * float(cfg.get("size_pct", 0.15))))
+        lh = max(1, int(logo.height * lw / logo.width))
+        logo = logo.resize((lw, lh))
+        m = int(W * float(cfg.get("margin_pct", 0.03)))
+        pos = str(cfg.get("position", "bottom-right"))
+        x = m if "left" in pos else (W - lw - m if "right" in pos else (W - lw) // 2)
+        y = m if "top" in pos else (H - lh - m)
+        base.alpha_composite(logo, (x, y))
+        out = _io.BytesIO(); base.convert("RGB").save(out, "JPEG", quality=90)
+        return out.getvalue()
+    except Exception:
+        return img_bytes
+
+@app.get("/cnmaker/api/logo_config")
+async def cn_logo_get():
+    return _cn_logo_cfg()
+
+@app.post("/cnmaker/api/logo_config")
+async def cn_logo_set(request: Request):
+    d = await request.json()
+    cfg = {
+        "enabled": bool(d.get("enabled", True)),
+        "position": str(d.get("position", "bottom-right")),
+        "size_pct": max(0.03, min(0.5, float(d.get("size_pct", 0.15)))),
+        "margin_pct": max(0.0, min(0.2, float(d.get("margin_pct", 0.03)))),
+    }
+    CN_LOGO_CFG.write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
+    return {"ok": True, "cfg": cfg}
+
 @app.get("/cnmaker/api/result")
-async def cnmaker_result(job: str, thumb: str = "", section: str = ""):
+async def cnmaker_result(job: str, thumb: str = ""):
     params = {"job": job}
     if thumb:
         params["thumb"] = "1"
-    if section.isdigit():
-        params["section"] = section
     async with httpx.AsyncClient(timeout=60) as client:
         r = await client.get(f"{CNMAKER_BASE}/cnmaker/result", params=params)
-        return Response(content=r.content, media_type="image/jpeg")
+        content = r.content
+        if not thumb and r.status_code == 200:
+            content = _cn_apply_logo(content)  # 상세 이미지에 로고 자동합성
+        return Response(content=content, media_type="image/jpeg")
 
 
 # ── 📊 시장조사 (쿠팡 윙 원천 데이터 뷰어) ──────────────────────────
