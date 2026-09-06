@@ -11,23 +11,19 @@ INGEST_SECRET = (os.getenv("JAGEUM_INGEST_SECRET") or pipeline.ENV.get("JAGEUM_I
 RESULT_DIR = os.path.join(BASE, "results")
 os.makedirs(RESULT_DIR, exist_ok=True)
 HISTORY_FILE = os.path.join(BASE, "history.json")
-HISTORY_LOCK = threading.RLock()
 
-def _save_history(job_id, product_name, has_thumb, url="", src="", **metadata):
+def _save_history(job_id, product_name, has_thumb, url="", src=""):
     """완료된 생성을 히스토리에 누적 (최신순, 최대 200개)."""
-    with HISTORY_LOCK:
-        try:
-            with open(HISTORY_FILE, encoding="utf-8") as history_file:
-                hist = json.load(history_file) if os.path.exists(HISTORY_FILE) else []
-        except Exception:
-            hist = []
-        hist = [h for h in hist if h.get("job") != job_id]
-        hist.insert(0, {"job": job_id, "product_name": product_name or "(제목없음)",
-                        "thumb": bool(has_thumb), "url": url, "src": src,
-                        "ts": time.strftime("%Y-%m-%d %H:%M"), **metadata})
-        hist = hist[:200]
-        with open(HISTORY_FILE, "w", encoding="utf-8") as history_file:
-            json.dump(hist, history_file, ensure_ascii=False)
+    try:
+        hist = json.load(open(HISTORY_FILE, encoding="utf-8")) if os.path.exists(HISTORY_FILE) else []
+    except Exception:
+        hist = []
+    hist = [h for h in hist if h.get("job") != job_id]  # 중복 제거
+    hist.insert(0, {"job": job_id, "product_name": product_name or "(제목없음)",
+                    "thumb": bool(has_thumb), "url": url, "src": src,
+                    "ts": time.strftime("%Y-%m-%d %H:%M")})
+    hist = hist[:200]
+    json.dump(hist, open(HISTORY_FILE, "w", encoding="utf-8"), ensure_ascii=False)
 
 # ===== 영업결산: 이카운트 판매조회 온디맨드 재수집 (영업직원이 판매 넘긴 후 새로고침) =====
 # 실시간 대신 필요할 때만. 중복 실행 잠금으로 서버 과부하 방지.
@@ -42,7 +38,7 @@ def _scrape_sales_job():
         if p.returncode == 0:
             subprocess.run(
                 "cd /home/ubuntu/ecount && curl -s -X POST "
-                f"-H 'x-ingest-secret: {INGEST_SECRET}' -H 'Content-Type: application/json' "
+                "-H 'x-ingest-secret: bj-ecount-2026-ingest' -H 'Content-Type: application/json' "
                 "--data-binary @data/dashboard.json "
                 "https://bujajubang-analyzer.onrender.com/jageum/api/ingest",
                 shell=True, timeout=90)
@@ -138,84 +134,6 @@ def worker_imgs(job_id, image_paths, title, category='kitchen'):
         traceback.print_exc()
         JOBS[job_id]={"status":"error","error":str(e)[:200],"msg":"실패"}
 
-
-def analyze_product(url):
-    """이미지 생성 없이 CN인사이더 상품명과 기준 이미지 주소만 수집한다."""
-    normalized = gptmaker.normalize_url((url or "").strip())
-    if not normalized.startswith("http"):
-        raise ValueError("1688 상품 링크가 필요합니다")
-    source = pipeline.detect_source(normalized)
-    if source != "cninsider" and "1688.com/" not in normalized.lower():
-        raise ValueError("CN인사이더 또는 1688 상품 링크를 확인해 주세요")
-    data = gptmaker.login_and_scrape(normalized)
-    images = [src for src in data.get("main_imgs", []) if str(src).startswith("http")][:10]
-    if not images:
-        raise RuntimeError("상품 이미지를 찾지 못했습니다")
-    return {"title": (data.get("title") or "").strip(), "images": images}
-
-
-def worker_plan_draft(job_id, plan, image_paths, reference_urls, style_paths=None):
-    JOBS[job_id] = {"status": "running", "msg": "저해상도 시안 준비", "ready_sections": []}
-    started_at = time.time()
-    try:
-        out = os.path.join(RESULT_DIR, job_id + ".jpg")
-        def patched_log(message):
-            JOBS[job_id]["msg"] = message
-            print(f"[{job_id}] {message}", flush=True)
-        gptmaker.log = patched_log
-        def section_ready(index, _path):
-            ready = JOBS[job_id].setdefault("ready_sections", [])
-            if index not in ready:
-                ready.append(index)
-                ready.sort()
-            JOBS[job_id]["msg"] = f"저해상도 시안 {len(ready)}개 화면에 표시"
-        result = gptmaker.run_plan_draft(plan, image_paths, reference_urls, out, on_section=section_ready, style_image_paths=style_paths or [])
-        JOBS[job_id] = {
-            "status": "done", "msg": "저해상도 시안 완성",
-            "product_name": result["product_name"], "result": job_id + ".jpg",
-            "copy": {"headline": "텍스트 기획안 확정본 사용"},
-            "draft": True, "section_count": result["section_count"],
-            "ready_sections": list(range(result["section_count"])),
-        }
-        _save_history(
-            job_id, result["product_name"], False, "", "저해상도 시안",
-            draft=True, section_count=result["section_count"],
-            elapsed_seconds=max(1, int(time.time() - started_at)),
-        )
-    except Exception as e:
-        traceback.print_exc()
-        JOBS[job_id] = {"status": "error", "error": str(e)[:200], "msg": "시안 생성 실패"}
-
-
-def worker_plan_high(job_id, plan, section_index, image_paths, reference_urls, style_paths=None):
-    JOBS[job_id] = {"status": "running", "msg": "선택 구간 고화질 생성"}
-    try:
-        out = os.path.join(RESULT_DIR, job_id + ".jpg")
-        result = gptmaker.run_plan_section_high(plan, section_index, image_paths, reference_urls, out, style_image_paths=style_paths or [])
-        JOBS[job_id] = {"status": "done", "msg": "고화질 구간 완성", "product_name": result["product_name"], "result": job_id + ".jpg", "high_quality": True}
-    except Exception as e:
-        traceback.print_exc()
-        JOBS[job_id] = {"status": "error", "error": str(e)[:200], "msg": "고화질 생성 실패"}
-
-
-def worker_plan_section_draft(job_id, target_job, plan, section_index, image_paths, reference_urls, style_paths=None):
-    JOBS[job_id] = {"status": "running", "msg": f"{section_index + 1}번 이미지 다시 만드는 중"}
-    try:
-        base = os.path.join(RESULT_DIR, target_job + f"_section_{section_index}_base.jpg")
-        active = [section for section in (plan.get("sections") or []) if section.get("enabled", True)]
-        template_index = gptmaker._template_index(active[section_index], section_index)
-        revision_paths = ([base] + list(image_paths)) if os.path.exists(base) and template_index != 10 else image_paths
-        gptmaker.run_plan_section_high(
-            plan, section_index, revision_paths, reference_urls, base,
-            style_image_paths=style_paths or [], quality="low", output_size=None, compose_text=False,
-            revision_mode=True,
-        )
-        gptmaker.recompose_plan_section(os.path.join(RESULT_DIR, target_job), plan, section_index, True)
-        JOBS[job_id] = {"status": "done", "msg": f"{section_index + 1}번 이미지 수정 완료", "target_job": target_job}
-    except Exception as e:
-        traceback.print_exc()
-        JOBS[job_id] = {"status": "error", "error": str(e)[:200], "msg": "이미지 다시 만들기 실패"}
-
 class H(BaseHTTPRequestHandler):
     def log_message(self,*a): pass
     def _send(self,code,obj,ctype="application/json"):
@@ -280,104 +198,6 @@ class H(BaseHTTPRequestHandler):
             import uuid; jid=uuid.uuid4().hex[:12]
             threading.Thread(target=worker,args=(jid,url,cat),daemon=True).start()
             return self._send(200,{"job_id":jid})
-        if self.path=="/cnmaker/analyze":
-            url=(body.get("url") or "").strip()
-            try:
-                return self._send(200,{"ok":True,"product":analyze_product(url)})
-            except ValueError as e:
-                return self._send(400,{"error":str(e)})
-            except Exception as e:
-                print("[cnmaker/analyze] "+str(e)[:200], flush=True)
-                return self._send(502,{"error":"1688 상품정보를 가져오지 못했습니다. 링크와 로그인을 확인해 주세요."})
-        if self.path=="/cnmaker/plan":
-            content=body.get("content") or []
-            if not isinstance(content,list) or not content:
-                return self._send(400,{"error":"기획안 입력자료가 필요합니다"})
-            try:
-                return self._send(200,{"ok":True,"text":gptmaker.create_text_plan(content)})
-            except Exception as e:
-                print("[cnmaker/plan] "+str(e)[:500], flush=True)
-                return self._send(502,{"error":"GPT 기획안을 만들지 못했습니다"})
-        if self.path=="/cnmaker/start_plan_draft":
-            import uuid, base64
-            project_id=(body.get("project_id") or "").strip()
-            plan=body.get("plan") or {}; images=body.get("images") or []; style_images=body.get("style_images") or []
-            reference_urls=[url for url in (body.get("reference_urls") or []) if str(url).startswith("http")][:10]
-            if len(project_id)!=12 or any(char not in "0123456789abcdef" for char in project_id) or len(plan.get("sections") or []) != 11:
-                return self._send(400,{"error":"확정된 기획안을 확인해 주세요"})
-            if len(images)>10 or len(style_images)>10:
-                return self._send(400,{"error":"제품사진과 참고사진은 각각 최대 10장입니다"})
-            jid=uuid.uuid4().hex[:12]; paths=[]; style_paths=[]
-            updir=os.path.join(RESULT_DIR,"up",project_id); os.makedirs(updir,exist_ok=True)
-            try:
-                for i,value in enumerate(images):
-                    encoded=value.split(",",1)[1] if "," in value else value
-                    raw=base64.b64decode(encoded,validate=True)
-                    if len(raw)>5*1024*1024: return self._send(413,{"error":"이미지 한 장은 5MB 이하여야 합니다"})
-                    path=os.path.join(updir,str(i)+".jpg"); open(path,"wb").write(raw); paths.append(path)
-                for i,value in enumerate(style_images):
-                    encoded=value.split(",",1)[1] if "," in value else value
-                    raw=base64.b64decode(encoded,validate=True)
-                    if len(raw)>5*1024*1024: return self._send(413,{"error":"참고 이미지 한 장은 5MB 이하여야 합니다"})
-                    path=os.path.join(updir,"style_"+str(i)+".jpg"); open(path,"wb").write(raw); style_paths.append(path)
-            except Exception:
-                return self._send(400,{"error":"기준 이미지를 읽지 못했습니다"})
-            threading.Thread(target=worker_plan_draft,args=(jid,plan,paths,reference_urls,style_paths),daemon=True).start()
-            return self._send(200,{"job_id":jid})
-        if self.path=="/cnmaker/start_plan_high":
-            import uuid, base64
-            project_id=(body.get("project_id") or "").strip(); plan=body.get("plan") or {}
-            section_index=body.get("section_index"); images=body.get("images") or []; style_images=body.get("style_images") or []
-            reference_urls=[url for url in (body.get("reference_urls") or []) if str(url).startswith("http")][:10]
-            active=[section for section in (plan.get("sections") or []) if section.get("enabled",True)]
-            if len(project_id)!=12 or not isinstance(section_index,int) or section_index<0 or section_index>=len(active):
-                return self._send(400,{"error":"고화질로 만들 구간을 확인해 주세요"})
-            if len(images)>10 or len(style_images)>10: return self._send(400,{"error":"제품사진과 참고사진은 각각 최대 10장입니다"})
-            jid=uuid.uuid4().hex[:12]; paths=[]; style_paths=[]; updir=os.path.join(RESULT_DIR,"up",project_id); os.makedirs(updir,exist_ok=True)
-            try:
-                for i,value in enumerate(images):
-                    raw=base64.b64decode(value.split(",",1)[1] if "," in value else value,validate=True)
-                    if len(raw)>5*1024*1024: return self._send(413,{"error":"이미지 한 장은 5MB 이하여야 합니다"})
-                    path=os.path.join(updir,"high_"+str(i)+".jpg"); open(path,"wb").write(raw); paths.append(path)
-                for i,value in enumerate(style_images):
-                    raw=base64.b64decode(value.split(",",1)[1] if "," in value else value,validate=True)
-                    if len(raw)>5*1024*1024: return self._send(413,{"error":"참고 이미지 한 장은 5MB 이하여야 합니다"})
-                    path=os.path.join(updir,"high_style_"+str(i)+".jpg"); open(path,"wb").write(raw); style_paths.append(path)
-            except Exception: return self._send(400,{"error":"기준 이미지를 읽지 못했습니다"})
-            threading.Thread(target=worker_plan_high,args=(jid,plan,section_index,paths,reference_urls,style_paths),daemon=True).start()
-            return self._send(200,{"job_id":jid})
-        if self.path=="/cnmaker/start_plan_section_draft":
-            import uuid, base64
-            target_job=(body.get("target_job") or "").strip(); plan=body.get("plan") or {}
-            section_index=body.get("section_index"); images=body.get("images") or []; style_images=body.get("style_images") or []
-            reference_urls=[url for url in (body.get("reference_urls") or []) if str(url).startswith("http")][:10]
-            active=[section for section in (plan.get("sections") or []) if section.get("enabled",True)]
-            if len(target_job)!=12 or not isinstance(section_index,int) or section_index<0 or section_index>=len(active):
-                return self._send(400,{"error":"수정할 시안과 구간을 확인해 주세요"})
-            jid=uuid.uuid4().hex[:12]; paths=[]; style_paths=[]; updir=os.path.join(RESULT_DIR,"up",target_job); os.makedirs(updir,exist_ok=True)
-            try:
-                for i,value in enumerate(images[:10]):
-                    raw=base64.b64decode(value.split(",",1)[1] if "," in value else value,validate=True)
-                    path=os.path.join(updir,"redo_"+str(i)+".jpg"); open(path,"wb").write(raw); paths.append(path)
-                for i,value in enumerate(style_images[:10]):
-                    raw=base64.b64decode(value.split(",",1)[1] if "," in value else value,validate=True)
-                    path=os.path.join(updir,"redo_style_"+str(i)+".jpg"); open(path,"wb").write(raw); style_paths.append(path)
-            except Exception: return self._send(400,{"error":"업로드 이미지를 읽지 못했습니다"})
-            threading.Thread(target=worker_plan_section_draft,args=(jid,target_job,plan,section_index,paths,reference_urls,style_paths),daemon=True).start()
-            return self._send(200,{"job_id":jid})
-        if self.path=="/cnmaker/compose_plan_section":
-            job=(body.get("job") or "").strip(); plan=body.get("plan") or {}; section_index=body.get("section_index")
-            show_text=body.get("show_text") is not False
-            if len(job)!=12 or any(char not in "0123456789abcdef" for char in job) or not isinstance(section_index,int):
-                return self._send(400,{"error":"시안과 구간을 확인해 주세요"})
-            try:
-                gptmaker.recompose_plan_section(os.path.join(RESULT_DIR,job),plan,section_index,show_text)
-                return self._send(200,{"ok":True})
-            except FileNotFoundError:
-                return self._send(409,{"error":"이 시안에는 글자 없는 원본이 없습니다. 새 시안을 만들어 주세요."})
-            except Exception as e:
-                print("[compose_plan_section] "+str(e)[:300],flush=True)
-                return self._send(400,{"error":"글자 합성을 처리하지 못했습니다"})
         if self.path=="/cnmaker/start_imgs":
             import uuid, base64; jid=uuid.uuid4().hex[:12]
             imgs=body.get("images",[]); title=(body.get("title") or "").strip(); cat=(body.get("category") or "kitchen").strip()
@@ -422,8 +242,7 @@ class H(BaseHTTPRequestHandler):
             return self._send(200,{"items":hist})
         if self.path.startswith("/cnmaker/result"):
             is_thumb=(q.get("thumb",[""])[0])
-            section=(q.get("section",[""])[0])
-            fn=jid+"_thumb.jpg" if is_thumb else (jid+"_section_"+section+".jpg" if section.isdigit() else jid+".jpg")
+            fn=jid+"_thumb.jpg" if is_thumb else jid+".jpg"
             fp=os.path.join(RESULT_DIR, fn)
             if os.path.exists(fp):
                 return self._send(200, open(fp,"rb").read(), "image/jpeg")
