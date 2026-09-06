@@ -1410,6 +1410,8 @@ def _load_jageum():
     return {}
 _MANUAL_DATASETS = {
     "선급금": ("manual_prepaids", "items"),
+    # 가압류로 묶인 계좌. 통장에 잔액이 찍혀 있어도 못 쓰는 돈이라 따로 관리한다.
+    "가압류": ("manual_seizures", "items"),
     "카페24": ("settlement_cafe24", "value"),
     "실물재고": ("manual_warehouse_inventory", "value"),
     "로켓그로스재고": ("manual_rocket_inventory", "value"),

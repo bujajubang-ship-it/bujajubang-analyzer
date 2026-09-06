@@ -352,6 +352,7 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
    <div class="muted" style="font-size:13px">💎 실질 총자산 <span style="font-size:11px">(오늘 기준 · 통장+곧 들어올 돈+받을 돈+선급+재고+투자)</span><span class="trust-badge" data-dataset-badge="bank_balances"></span><span class="trust-badge" data-dataset-badge="receivables"></span></div>
    <div id="asset_total" style="font-size:34px;font-weight:800;color:#5b21b6;line-height:1.2">-</div>
    <div id="asset_net" style="font-size:14px;color:#374151;margin-top:2px"></div>
+   <div id="asset_split" style="margin-top:12px"></div>
    <div class="asset-items" id="asset_items"></div>
    <div id="asset_audit" style="margin-top:14px"></div>
  </div>
@@ -726,11 +727,17 @@ const SEONYZ_SEED=[
  {거래처:"세스티에스",잔액:1000000,비고:"1800 토핑냉장고 보관(은영)",일자:"2026-03-05"},
  {거래처:"새날인터내셔널",잔액:13912800,비고:"식깡 332개",일자:"2026-06-02"},
 ];
+// 가압류된 계좌는 통장에 잔액이 찍혀 있어도 못 쓴다. 그래서 '쓸 수 있는 돈'에서 뺀다.
+// 가압류가 풀리면 이 목록에서 그 줄을 지우면 된다(대시보드에서 바로 수정 가능).
+const SEIZURE_SEED=[
+ {거래처:"국민은행 (801)",잔액:120000000,비고:"가압류",일자:""},
+ {거래처:"국민은행 (612)",잔액:20000000,비고:"가압류",일자:""},
+];
 const LOAN_SEED=[{거래처:"중소기업진흥공단 대출",잔액:250000000,비고:"",일자:""},{거래처:"신용보증기금(하나은행) 대출",잔액:200000000,비고:"",일자:""}];
 // 수동입력 저장소(서버). M.선급금 / M.미수금 / M.카페24 / M.실물재고 / M.로켓그로스재고 / M.대출
 let M={};
 function manualGet(key,seed){ if(M[key]===undefined) return seed; return M[key]; }
-const MANUAL_DATASET={선급금:'manual_prepaids',카페24:'settlement_cafe24',실물재고:'manual_warehouse_inventory',로켓그로스재고:'manual_rocket_inventory',대출:'manual_loans'};
+const MANUAL_DATASET={선급금:'manual_prepaids',가압류:'manual_seizures',카페24:'settlement_cafe24',실물재고:'manual_warehouse_inventory',로켓그로스재고:'manual_rocket_inventory',대출:'manual_loans'};
 function manualMeta(key){
  const ds=MANUAL_DATASET[key], meta=M._manual_meta||{}, all=meta.datasets||{};
  return (ds&&all[ds])||{dataset:ds,status:(Object.prototype.hasOwnProperty.call(M,key)?'stale':'unknown'),last_confirmed_at:null,confirmed_by:null,source:'legacy_unverified',snapshot_id:null,updated_at:null};
@@ -788,6 +795,7 @@ async function saveManual(opts={}){
  }
 }
 const SEONYZ=()=>manualGet('선급금',SEONYZ_SEED);
+const SEIZURES=()=>manualGet('가압류',SEIZURE_SEED);
 // ===== 계정과목 분류표 [대분류, 고정/변동] =====
 const CAT={
  '외상매입금':['매입','변동'],'상품':['매입','변동'],'가구매':['매입','변동'],'상품매입':['매입','변동'],
@@ -960,6 +968,7 @@ function chatWelcome(){
 const EM_CFG={
  '미수금':{title:'🧾 미수금 편집 (B2B 받을 돈)',note:'거래처·금액·받을예정일. 저장하면 이카운트 자동값 대신 이 목록을 씁니다. 전부 비우고 저장하면 다시 자동값으로 돌아갑니다.',cols:['거래처','잔액','일자','비고'],seedFn:()=>misuList()},
  '선급금':{title:'🤝 선급금 편집 (거래처 선지급)',note:'거래처·남은금액·지급일·비고(언제 나갔는지/내용).',cols:['거래처','잔액','일자','비고'],seedFn:()=>SEONYZ()},
+ '가압류':{title:'⚖️ 가압류 편집 (묶인 계좌)',note:'가압류로 묶여서 지금 쓸 수 없는 금액. 은행·계좌와 묶인 금액을 적으세요. 풀리면 그 줄을 지우면 됩니다.',cols:['거래처','잔액','일자','비고'],seedFn:()=>SEIZURES()},
  '대출':{title:'💳 대출(부채) 편집',note:'기관명·잔액. 갚으면 잔액 줄이세요.',cols:['거래처','잔액','일자','비고'],seedFn:()=>loanList()},
  '카페24':{title:'🛍️ 카페24 묶인돈 편집',note:'cafe24payments 정산예정금액. API 구매확정전 추정(참고): '+(()=>cafe24Auto().toLocaleString())()+'원',cols:['금액'],single:true,seedFn:()=>cafe24Amt()},
  '실물재고':{title:'🏭 실물재고 편집 (자사 창고)',note:'자사 창고에 실제 보관 중인 재고의 현재 원가 금액을 입력하세요. 아직 선급금에 남아 있는 금액과 중복 입력하지 마세요.',cols:['금액'],single:true,seedFn:()=>warehouseInventoryAmt()},
@@ -982,7 +991,7 @@ function emRender(){ const cfg=EM_CFG[emKey];
  if(cfg.single){ document.getElementById('em_table').innerHTML='<tr><td>금액 (원)</td><td><input type="text" value="'+(emRows[0].잔액||0).toLocaleString()+'" oninput="emRows[0].잔액=(+this.value.replace(/[^0-9-]/g,\'\')||0);this.value=emRows[0].잔액.toLocaleString()" style="width:180px;padding:6px;border:1px solid #d1d5db;border-radius:6px;text-align:right"></td></tr>';
    document.querySelector('#edit_modal button[onclick="emAddRow()"]').style.display='none'; return; }
  document.querySelector('#edit_modal button[onclick="emAddRow()"]').style.display='';
- let h='<thead><tr><th>거래처/기관</th><th class="num">금액</th><th>'+(emKey==='선급금'?'지급일':'받을예정일')+'</th><th>비고</th><th></th></tr></thead><tbody>';
+ let h='<thead><tr><th>거래처/기관</th><th class="num">금액</th><th>'+(emKey==='선급금'?'지급일':emKey==='가압류'?'가압류일':'받을예정일')+'</th><th>비고</th><th></th></tr></thead><tbody>';
  h+=emRows.map((r,i)=>`<tr>
    <td><input value="${(r.거래처||'').replace(/"/g,'&quot;')}" oninput="emRows[${i}].거래처=this.value" style="width:150px;padding:5px;border:1px solid #d1d5db;border-radius:6px"></td>
    <td><input value="${(r.잔액||0).toLocaleString()}" oninput="emRows[${i}].잔액=(+this.value.replace(/[^0-9-]/g,'')||0);this.value=emRows[${i}].잔액.toLocaleString()" style="width:110px;padding:5px;border:1px solid #d1d5db;border-radius:6px;text-align:right"></td>
@@ -2532,18 +2541,44 @@ function renderAssets(){
    else if(isGovSupport(r)){gov+=r.금액; const k=r.적요||r.거래처명||'기타'; govBy[k]=(govBy[k]||0)+r.금액;}
  });});
  const loans=loanList(), loan=sum(loans,x=>x.잔액||0);
+ const seizureArr=SEIZURES(), seizureRaw=sum(seizureArr,x=>x.잔액||0);
+ // 통장에 있는 돈보다 가압류가 클 수는 없다. 마이너스 가용현금이 뜨지 않게 막는다.
+ const seizure=Math.min(seizureRaw,cash);
+ const usable=cash-seizure;
  const total=cash+settle+misu+seonyz+warehouseInventory+rocketInventory+invest+gov;
+ const locked=total-usable;
  const net=total-loan;
  const provisional=['선급금','카페24','실물재고','로켓그로스재고','대출'].filter(k=>manualMeta(k).status!=='confirmed');
  window._bizTotal=total; window._bizNet=net; window._bizLoan=loan;
  if(window.renderTotal)renderTotal();
  asset_total.textContent=won(total);
  document.getElementById('asset_net').innerHTML='− 대출(부채) '+won(loan)+'  =  <b style="color:#059669;font-size:17px">순자산 '+won(net)+'</b>'+(provisional.length?`<div style="margin-top:5px;color:#b45309;font-size:11.5px;font-weight:700">⚠️ 관리상 잠정값 포함 (${provisional.join('·')}) · 확인 완료 상태와 구분해 보세요.</div>`:'');
+ const lockedParts=[['정산예정',settle],['미수금',misu],['선급금',seonyz],['실물재고',warehouseInventory],['로켓그로스재고',rocketInventory],['투자자산',invest],['정부지원',gov],['가압류 계좌',seizure]].filter(([,v])=>v>0);
+ document.getElementById('asset_split').innerHTML=
+  '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px">'+
+  '<div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:11px;padding:12px 14px">'+
+   '<div style="font-size:12.5px;color:#047857;font-weight:700">💵 지금 쓸 수 있는 돈</div>'+
+   '<div style="font-size:24px;font-weight:800;color:#047857;line-height:1.25">'+won(usable)+'</div>'+
+   '<div style="font-size:11.5px;color:#065f46;margin-top:3px">통장 '+cash.toLocaleString()+
+     (seizure?' − 가압류 '+seizure.toLocaleString():'')+
+     ' <a href="javascript:;" onclick="openEdit(\'가압류\')" style="color:#2563eb">✏️ 가압류 수정</a></div>'+
+  '</div>'+
+  '<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:11px;padding:12px 14px">'+
+   '<div style="font-size:12.5px;color:#b45309;font-weight:700">🔒 묶인 돈 (당장 못 쓰는 돈)</div>'+
+   '<div style="font-size:24px;font-weight:800;color:#b45309;line-height:1.25">'+won(locked)+'</div>'+
+   '<div style="font-size:11.5px;color:#92400e;margin-top:3px">'+
+     lockedParts.map(([k,v])=>k+' '+Math.round(v/1e4).toLocaleString()+'만').join(' · ')+'</div>'+
+  '</div></div>'+
+  (seizureRaw>cash?'<div style="margin-top:6px;color:#b91c1c;font-size:11.5px;font-weight:700">⚠️ 적어둔 가압류('+seizureRaw.toLocaleString()+')가 통장 잔액보다 큽니다. 가압류 금액을 확인해 주세요.</div>':'');
  const D2=(arr)=>arr.map(([k,v])=>`<div><span>${k}</span><b style="color:#1f2937">${(v||0).toLocaleString()}</b></div>`).join('')||'<div>-</div>';
  const D3=(arr)=>arr.map(x=>`<div><span>${x.거래처}${x.일자?' <span class=muted>('+x.일자+')</span>':''}</span><b style="color:#1f2937">${(x.잔액||0).toLocaleString()}</b></div>`).join('')||'<div>-</div>';
  const editLink=(fn,t)=>`<div style="border-bottom:none"><a href="javascript:;" onclick="${fn}" style="color:#2563eb">✏️ ${t||'수정'}</a></div>`;
  const items=[
-  ['🏦 현금 잔액 (통장)',cash, D2(bal.map(b=>[acctName(b), b.금일잔액]))],
+  ['🏦 현금 잔액 (통장)',cash, D2(bal.map(b=>[acctName(b), b.금일잔액]))
+    +(seizureRaw?'<div style="border-top:1px dashed #e5e7eb;margin-top:4px;padding-top:4px"></div>'
+      +D3(seizureArr.map(x=>({거래처:'⚖️ 가압류 '+(x.거래처||''),잔액:-(x.잔액||0),일자:x.일자})))
+      +`<div><span>= 쓸 수 있는 돈</span><b style="color:#047857">${usable.toLocaleString()}</b></div>`
+      +editLink("openEdit('가압류')",'가압류 수정'):'')],
   ['📦 정산예정 (결제됨·미입금)'+(manualMeta('카페24').status==='confirmed'?'':' ⚠️'),settle, editLink("openEdit('카페24')",'카페24 수정')+D2([['쿠팡 정산예정',c.정산예정||0],['쿠팡 미구매확정',c.미구매확정||0],['네이버(실시간)',naverAmt()],['카페24(수동·'+manualStatusUi('카페24').text+')',cafe24Amt()]])],
   ['🧾 미수금 (B2B 받을 돈)'+(misuIsManual()?' ✋':''),misu, editLink("openEdit('미수금')",'미수금 수정')+D3(misuArr)],
   ['🤝 선급금 (거래처 선지급)'+(manualMeta('선급금').status==='confirmed'?'':' ⚠️'),seonyz, editLink("openEdit('선급금')",'선급금 수정')+D3(seonyzArr)],
@@ -2570,6 +2605,7 @@ function renderAssets(){
    ['🚀 로켓그로스재고','수동',manualMeta('로켓그로스재고').status,rocketInventory],
    ['☀️ 투자자산','자동(파생)',autoStat(monOk,invest),invest],
    ['🏛️ 정부지원','자동(파생)',autoStat(monOk,gov),gov],
+   ['⚖️ 가압류 (묶인 계좌)','수동',manualMeta('가압류').status,seizureRaw],
    ['💳 대출 (부채)'+(manualHasActual('대출')?'':' · 기존 참고금액'),'수동',manualMeta('대출').status,loan],
  ];
  const failCnt=rowsA.filter(r=>r[2]==='fail').length;
@@ -2584,7 +2620,7 @@ function renderAssets(){
  // ── 오늘 자산 스냅샷 저장 (하루 1회, 화면값 그대로) + 흐름 표시 ──
  if((MYROLE==='boss'||MYROLE==='staff') && !window._snapDone){
    window._snapDone=true;
-   const snap={date:_ymd(),통장:cash,정산예정:settle,쿠팡:cuVal,네이버:nvVal,카페24:cf24,미수금:misu,선급금:seonyz,실물재고:warehouseInventory,로켓그로스재고:rocketInventory,투자:invest,정부지원:gov,대출:loan,실질총자산:total,순자산:net};
+   const snap={date:_ymd(),통장:cash,정산예정:settle,쿠팡:cuVal,네이버:nvVal,카페24:cf24,미수금:misu,선급금:seonyz,실물재고:warehouseInventory,로켓그로스재고:rocketInventory,투자:invest,정부지원:gov,대출:loan,가압류:seizure,가용현금:usable,묶인돈:locked,실질총자산:total,순자산:net};
    fetch('/jageum/api/asset_snapshot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({snap})}).then(()=>loadSnaps()).catch(()=>loadSnaps());
  }
 }
@@ -2614,7 +2650,7 @@ function renderSnaps(){
     {label:'실질총자산',data:SNAPS.map(s=>s.실질총자산||0),borderColor:'#5b21b6',backgroundColor:'rgba(91,33,182,.06)',fill:true,tension:.2,borderWidth:2,pointRadius:2},
     {label:'순자산',data:SNAPS.map(s=>s.순자산||0),borderColor:'#059669',borderWidth:2,pointRadius:2,fill:false,tension:.2}
   ]},options:{plugins:{legend:{position:'top'},tooltip:{callbacks:{label:c=>c.dataset.label+' '+won(c.parsed.y)}}},scales:{y:{ticks:{callback:v=>(v/1e8).toFixed(2)+'억'}}}}});
-  const cols=[['통장','통장'],['정산예정','정산예정'],['미수금','미수금'],['선급금','선급금'],['실물재고','실물재고'],['로켓그로스','로켓그로스재고'],['투자','투자'],['대출','대출'],['실질총자산','실질총자산'],['순자산','순자산']];
+  const cols=[['통장','통장'],['가용현금','가용현금'],['정산예정','정산예정'],['미수금','미수금'],['선급금','선급금'],['실물재고','실물재고'],['로켓그로스','로켓그로스재고'],['투자','투자'],['대출','대출'],['실질총자산','실질총자산'],['순자산','순자산']];
   const rev=SNAPS.slice().reverse().slice(0,14);
   const idxOf=d=>SNAPS.findIndex(s=>s.date===d);
   let th='<thead><tr style="color:#6b7280"><th style="text-align:left;padding:4px 6px">날짜</th>'+cols.map(c=>`<th class="num" style="padding:4px 6px">${c[0]}</th>`).join('')+'</tr></thead>';
