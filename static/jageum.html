@@ -2527,6 +2527,25 @@ function warehouseInventoryAmt(){ return +manualGet('실물재고',0)||0; }
 function rocketGrowthInventoryAmt(){ return +manualGet('로켓그로스재고',0)||0; }
 function cafe24Auto(){return (D.정산예정&&D.정산예정.카페24&&D.정산예정.카페24.구매확정전)||0;}
 function naverAmt(){return (D.정산예정&&D.정산예정.네이버&&D.정산예정.네이버.지급예정)||0;}
+// 가압류 줄을 통장 계좌에 붙인다. '국민은행 (801)'처럼 앞 3자리 번호로 찾고,
+// 번호가 없으면 은행 이름으로 찾는다. 못 찾으면 어느 계좌인지 모르는 돈으로 남긴다.
+function seizureBreakdown(bal,rows){
+ const accounts=bal.map(b=>({name:acctName(b),balance:b.금일잔액||0,남은:b.금일잔액||0}));
+ // '국민은행 (801)'도, 사장님이 손으로 적은 '국민 801계좌'도 같은 계좌로 본다.
+ const codeOf=t=>{const s=String(t||''),m=s.match(/\((\d{3})/)||s.match(/(\d{3})/);return m?m[1]:'';};
+ return (rows||[]).map(row=>{
+  const label=String(row.거래처||'').trim(), want=Math.max(0,row.잔액||0), code=codeOf(label);
+  let acct=null;
+  if(code) acct=accounts.find(a=>codeOf(a.name)===code)||null;
+  if(!acct){ const bare=label.replace(/\s*\(.*?\)\s*/g,'').trim();
+   if(bare) acct=accounts.find(a=>a.name.includes(bare)||bare.includes(a.name.replace(/\s*\(.*?\)\s*/g,'').trim()))||null; }
+  // 계좌를 찾았으면 그 계좌 잔액까지만, 못 찾았으면 통장 전체 남은 돈까지만 묶는다.
+  const 한도=acct?acct.남은:accounts.reduce((s,a)=>s+a.남은,0);
+  const 적용=Math.min(want,한도);
+  if(acct) acct.남은-=적용; else { let rest=적용; accounts.forEach(a=>{const cut=Math.min(a.남은,rest);a.남은-=cut;rest-=cut;}); }
+  return {label,계좌:acct?acct.name:'',잔액:acct?acct.balance:null,요청:want,적용,초과:want-적용,일자:row.일자||''};
+ });
+}
 function renderAssets(){
  const bal=(D.자금현황||[]).filter(b=>(b.계정명||'').includes('보통예금'));
  const cash=sum(bal,x=>x.금일잔액||0);
@@ -2542,8 +2561,12 @@ function renderAssets(){
  });});
  const loans=loanList(), loan=sum(loans,x=>x.잔액||0);
  const seizureArr=SEIZURES(), seizureRaw=sum(seizureArr,x=>x.잔액||0);
- // 통장에 있는 돈보다 가압류가 클 수는 없다. 마이너스 가용현금이 뜨지 않게 막는다.
- const seizure=Math.min(seizureRaw,cash);
+ // 가압류는 '그 계좌에서' 묶인 금액이다. 2천만 가압류인 통장에 3천만이 있으면
+ // 1천만은 쓸 수 있는 돈이다. 그래서 계좌별로 잔액과 맞춰서 뺀다.
+ // 한 계좌의 가압류가 그 계좌 잔액보다 커도, 남의 계좌 돈까지 묶이지는 않는다.
+ const seizureRows=seizureBreakdown(bal,seizureArr);
+ const seizure=sum(seizureRows,x=>x.적용);
+ const seizureOver=seizureRows.filter(x=>x.초과>0);
  const usable=cash-seizure;
  const total=cash+settle+misu+seonyz+warehouseInventory+rocketInventory+invest+gov;
  const locked=total-usable;
@@ -2569,14 +2592,14 @@ function renderAssets(){
    '<div style="font-size:11.5px;color:#92400e;margin-top:3px">'+
      lockedParts.map(([k,v])=>k+' '+Math.round(v/1e4).toLocaleString()+'만').join(' · ')+'</div>'+
   '</div></div>'+
-  (seizureRaw>cash?'<div style="margin-top:6px;color:#b91c1c;font-size:11.5px;font-weight:700">⚠️ 적어둔 가압류('+seizureRaw.toLocaleString()+')가 통장 잔액보다 큽니다. 가압류 금액을 확인해 주세요.</div>':'');
+  (seizureOver.length?'<div style="margin-top:6px;color:#b91c1c;font-size:11.5px;font-weight:700">⚠️ '+seizureOver.map(x=>(x.계좌||x.label)+' 가압류 '+x.요청.toLocaleString()+'인데 잔액은 '+(x.잔액===null?'확인 불가':x.잔액.toLocaleString())+' — '+x.적용.toLocaleString()+'만 묶인 것으로 계산했습니다').join(' · ')+'</div>':'');
  const D2=(arr)=>arr.map(([k,v])=>`<div><span>${k}</span><b style="color:#1f2937">${(v||0).toLocaleString()}</b></div>`).join('')||'<div>-</div>';
  const D3=(arr)=>arr.map(x=>`<div><span>${x.거래처}${x.일자?' <span class=muted>('+x.일자+')</span>':''}</span><b style="color:#1f2937">${(x.잔액||0).toLocaleString()}</b></div>`).join('')||'<div>-</div>';
  const editLink=(fn,t)=>`<div style="border-bottom:none"><a href="javascript:;" onclick="${fn}" style="color:#2563eb">✏️ ${t||'수정'}</a></div>`;
  const items=[
   ['🏦 현금 잔액 (통장)',cash, D2(bal.map(b=>[acctName(b), b.금일잔액]))
     +(seizureRaw?'<div style="border-top:1px dashed #e5e7eb;margin-top:4px;padding-top:4px"></div>'
-      +D3(seizureArr.map(x=>({거래처:'⚖️ 가압류 '+(x.거래처||''),잔액:-(x.잔액||0),일자:x.일자})))
+      +D3(seizureRows.map(x=>({거래처:'⚖️ 가압류 '+(x.계좌||x.label)+(x.잔액!==null?' (잔액 '+x.잔액.toLocaleString()+' 중)':' (계좌 못 찾음)'),잔액:-x.적용,일자:x.일자})))
       +`<div><span>= 쓸 수 있는 돈</span><b style="color:#047857">${usable.toLocaleString()}</b></div>`
       +editLink("openEdit('가압류')",'가압류 수정'):'')],
   ['📦 정산예정 (결제됨·미입금)'+(manualMeta('카페24').status==='confirmed'?'':' ⚠️'),settle, editLink("openEdit('카페24')",'카페24 수정')+D2([['쿠팡 정산예정',c.정산예정||0],['쿠팡 미구매확정',c.미구매확정||0],['네이버(실시간)',naverAmt()],['카페24(수동·'+manualStatusUi('카페24').text+')',cafe24Amt()]])],
