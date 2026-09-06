@@ -682,6 +682,10 @@ input.search{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:
        <button onclick="lifeCompare()" style="background:#fff;color:#16a34a;border:1.5px solid #16a34a;border-radius:9px;padding:10px 18px;font-weight:700;cursor:pointer">🔗 과거와 비교</button>
      </div>
      <div id="life_compare" style="display:none;margin-top:12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px"></div>
+     <details id="life_favs" style="margin-top:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:2px 12px">
+       <summary style="cursor:pointer;font-weight:700;font-size:13.5px;color:#b45309;padding:9px 0">⭐ 즐겨찾기 <span id="life_favs_count" class="muted" style="font-weight:500"></span></summary>
+       <div id="life_favs_body" style="padding-bottom:10px"></div>
+     </details>
      <div id="life_entries" style="margin-top:16px"></div>
    </div>
    <div class="card" style="border-top:3px solid #16a34a">
@@ -1753,6 +1757,11 @@ function lifeAdd(){
   document.getElementById('life_body').value=''; _lifePendingImgs=[]; renderPendingImgs();
   saveLife();renderLife();
 }
+// 마음에 드는 메모는 별을 눌러 위쪽 즐겨찾기 칸에 따로 모은다.
+function lifeStar(id){
+  const en=(LIFE.글||[]).find(e=>e.id===id); if(!en)return;
+  en.star=!en.star; saveLife(); renderLife();
+}
 function lifeDel(id){if(!confirm('이 기록 삭제할까요?'))return;LIFE.글=(LIFE.글||[]).filter(e=>e.id!==id);saveLife();renderLife();}
 // ── 메모 수정 ──
 // 위 입력칸으로 올려보내면 '새 메모'인지 '수정'인지 헷갈리므로, 그 자리에서 바로 고친다.
@@ -1854,12 +1863,28 @@ function renderLife(){
         </div></div>`;
       }
       return `<div style="border-left:3px solid #16a34a;background:#f6fdf8;border-radius:8px;padding:12px 14px;margin-bottom:10px">
-      <div style="display:flex;justify-content:${hasTitle?'space-between':'flex-end'};gap:8px;align-items:baseline">${hasTitle?`<b style="font-size:15px">${esc(en.title)}</b>`:''}<span class="muted" style="font-size:12px;white-space:nowrap">${when} <a onclick="lifeEdit(${en.id})" style="cursor:pointer;color:#16a34a;font-weight:600">수정</a> <a onclick="lifeDel(${en.id})" style="cursor:pointer;color:#dc2626">삭제</a></span></div>
+      <div style="display:flex;justify-content:${hasTitle?'space-between':'flex-end'};gap:8px;align-items:baseline">${hasTitle?`<b style="font-size:15px">${esc(en.title)}</b>`:''}<span class="muted" style="font-size:12px;white-space:nowrap"><a onclick="lifeStar(${en.id})" title="${en.star?'즐겨찾기 해제':'즐겨찾기'}" style="cursor:pointer;color:${en.star?'#f59e0b':'#c4c8cf'};font-size:15px">${en.star?'★':'☆'}</a> ${when} <a onclick="lifeEdit(${en.id})" style="cursor:pointer;color:#16a34a;font-weight:600">수정</a> <a onclick="lifeDel(${en.id})" style="cursor:pointer;color:#dc2626">삭제</a></span></div>
       <div style="white-space:pre-wrap;margin-top:${hasTitle?'6px':'0'};font-size:14px;line-height:1.6">${esc(en.body)}</div>
       ${imgs}</div>`;
     }).join(''):'<div class="muted" style="padding:8px">메모하듯 막 적어보세요. 매일 쌓이면 생각의 흐름이 보여요.</div>';
+  renderLifeFavs();
   renderPast();
   lcRenderAll();
+}
+// 별을 누른 메모만 모아 보여준다. 지우는 게 아니라 아래 목록에도 그대로 남는다.
+function renderLifeFavs(){
+  const box=document.getElementById('life_favs_body'), cnt=document.getElementById('life_favs_count');
+  if(!box)return;
+  const favs=(LIFE.글||[]).filter(e=>e.star);
+  if(cnt)cnt.textContent=favs.length?`${favs.length}개`:'(아직 없어요)';
+  box.innerHTML=favs.length?favs.map(en=>{
+    const hasTitle=en.title&&en.title!=='(무제)';
+    const imgs=(en.imgs&&en.imgs.length)?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${en.imgs.map((src,i)=>`<img src="${src}" onclick="lifeImgView(${en.id},${i})" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid #fde68a;cursor:zoom-in">`).join('')}</div>`:'';
+    return `<div style="border-left:3px solid #f59e0b;background:#fff;border-radius:8px;padding:11px 13px;margin-bottom:8px">
+      <div style="display:flex;justify-content:${hasTitle?'space-between':'flex-end'};gap:8px;align-items:baseline">${hasTitle?`<b style="font-size:14.5px">${esc(en.title)}</b>`:''}<span class="muted" style="font-size:12px;white-space:nowrap"><a onclick="lifeStar(${en.id})" title="즐겨찾기 해제" style="cursor:pointer;color:#f59e0b;font-size:15px">★</a> ${en.date} <a onclick="lifeEdit(${en.id})" style="cursor:pointer;color:#16a34a;font-weight:600">수정</a></span></div>
+      <div style="white-space:pre-wrap;margin-top:${hasTitle?'6px':'0'};font-size:14px;line-height:1.6">${esc(en.body)}</div>
+      ${imgs}</div>`;
+  }).join(''):'<div class="muted" style="font-size:13px;padding:2px 0 8px">아래 메모에서 ☆ 를 누르면 여기에 모입니다.</div>';
 }
 // ── 상담 대화방 (클로드 채팅처럼 왼쪽에 주제별로 저장) ──
 function lcRooms(){
