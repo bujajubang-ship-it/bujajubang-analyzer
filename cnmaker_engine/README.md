@@ -18,6 +18,13 @@ Render의 `main.py`는 이 서버에 작업을 요청하고 상태와 결과를 
 `env.example`을 참고해 Lightsail의 `/home/ubuntu/cnmaker/cn.env`에서 관리한다.
 실제 값은 Git에 넣지 않는다.
 
+상품 사진 분석·번역·카피 작성은 `text_ai.py`의 OpenAI Responses API를 공유한다.
+기본 모델은 `gpt-6-astra`, 추론 강도는 `low`이며 `OPENAI_API_KEY`를 사용한다.
+`CN_ANALYSIS_MODEL`, `CN_ANALYSIS_REASONING`으로 설정할 수 있다. 지원하지 않는 모델로 자동 대체하지 않는다.
+이미지 생성·색상 편집은 기존 이미지 모델을 사용한다. 분석 캐시는 모델·추론 설정별로 분리한다.
+Lightsail 배포 시 `text_ai.py`, `pipeline.py`, `page_maker.py`, `prompt_v3.py`를 함께 반영한다.
+Render의 `page_maker.py` 역시 `cnmaker_engine.text_ai`를 사용하므로 OpenAI 키가 필요하다.
+
 ## 설치
 
 ```bash

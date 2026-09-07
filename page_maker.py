@@ -1,6 +1,8 @@
 """
 상세페이지 메이커 — 이미지 스크래핑 + AI 카피 생성 + Pillow 레이아웃 합성
 """
+import asyncio
+from cnmaker_engine import text_ai as AI
 import base64
 import io
 import json
@@ -20,19 +22,10 @@ GEMINI_IMAGE_MODEL  = "gemini-2.5-flash-image"
 GEMINI_VISION_MODEL = "gemini-2.5-flash"
 GEMINI_BASE         = "https://generativelanguage.googleapis.com/v1beta/models"
 
-# 분석·카피는 Claude Opus 4.8 (한국어 마케팅·상품이해 최상)
-CLAUDE_ANALYSIS_MODEL = "claude-opus-4-8"
-
-
 async def _claude_vision_json(prompt: str, images: list, max_tokens: int = 3000) -> dict:
-    """프롬프트 + 이미지(URL 또는 (mime,b64)) → Claude Opus 4.8 Vision → JSON dict.
-    images: list of either str(url) or tuple(mime, b64).
-    """
-    api_key = os.getenv("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return {"error": "ANTHROPIC_API_KEY 미설정"}
+    """GPT image analysis; retain the legacy function name for callers."""
     content = [{"type": "text", "text": prompt}]
-    # 이미지 다운로드/첨부 (최대 8장, Claude 한도 고려)
+    # 이미지 다운로드/첨부 (최대 8장)
     async with httpx.AsyncClient(headers=HEADERS, timeout=20, follow_redirects=True) as client:
         for img in images[:8]:
             try:
@@ -52,23 +45,7 @@ async def _claude_vision_json(prompt: str, images: list, max_tokens: int = 3000)
                     "type": "base64", "media_type": mime, "data": b64}})
             except Exception:
                 continue
-    body = {
-        "model": CLAUDE_ANALYSIS_MODEL,
-        "max_tokens": max_tokens,
-        "messages": [{"role": "user", "content": content}],
-    }
-    headers = {
-        "x-api-key": api_key,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-    }
-    async with httpx.AsyncClient(timeout=120) as client:
-        resp = await client.post("https://api.anthropic.com/v1/messages",
-                                 json=body, headers=headers)
-        resp.raise_for_status()
-        data = resp.json()
-        text = "".join(b.get("text", "") for b in data.get("content", [])
-                       if b.get("type") == "text")
+    text = await asyncio.to_thread(AI.complete, content, max_tokens)
     text = re.sub(r"```[a-z]*", "", text).strip("`\n ")
     # JSON 본문만 안전 추출
     s, e = text.find("{"), text.rfind("}")
@@ -297,14 +274,8 @@ def _draw_wrapped(draw: ImageDraw.ImageDraw, text: str, font, x: int, y: int,
 # ── AI copy generation ───────────────────────────────────────────────
 
 async def generate_product_copy(title: str, description: str = "") -> dict:
-    """Claude Haiku로 제품 마케팅 카피 생성"""
-    api_key = os.getenv("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return _default_copy(title)
-
+    """GPT로 제품 마케팅 카피 생성."""
     try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
         prompt = f"""상품명: {title}
 {("상세정보: " + description[:200]) if description else ""}
 
@@ -321,12 +292,7 @@ JSON만 반환 (코드블록 없이):
   "cta": "구매 유도 문구 최대 12자",
   "color_scheme": "warm 또는 cool 또는 neutral 또는 green 중 제품에 적합한 것"
 }}"""
-        resp = client.messages.create(
-            model=CLAUDE_ANALYSIS_MODEL,
-            max_tokens=1200,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        raw = resp.content[0].text.strip()
+        raw = (await asyncio.to_thread(AI.complete, prompt, 1200)).strip()
         m = re.search(r'\{.*\}', raw, re.DOTALL)
         if m:
             return json.loads(m.group())

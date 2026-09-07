@@ -3,6 +3,9 @@ import os, json, io, re, base64, urllib.request, glob, time
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from playwright.sync_api import sync_playwright
 import cn_transform as T
+import text_ai as AI
+
+ANALYSIS_CACHE_ID = AI.CACHE_ID
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 ENV = {}
@@ -14,7 +17,6 @@ if os.path.exists(ENV_PATH):
 for _name in ("CN_ID", "CN_PW"):
     if os.getenv(_name):
         ENV[_name] = os.getenv(_name)
-AKEY = (os.getenv("ANTHROPIC_API_KEY") or ENV.get("ANTHROPIC_API_KEY") or "").strip()
 STATE = os.path.join(BASE, "cn_state.json")
 HDR = {"User-Agent": "Mozilla/5.0", "Referer": "https://www.cninsider.co.kr/"}
 RED=(215,0,16); BLACK=(28,28,28); GRAY=(150,150,150); WHITE=(255,255,255); DGRAY=(80,80,80); W=860
@@ -98,13 +100,10 @@ def _name_lines(d,name,font_big,maxw):
         if d.textbbox((0,0),cand,font=font_big)[2]<=maxw: return " ".join(words[:-k]),cand
     return " ".join(words[:-1]),words[-1]
 
-# ---------- Claude ----------
+# Shared GPT analysis; keep the legacy callable name for existing integrations.
 def _claude(content, max_tokens=2000):
-    body={"model":"claude-opus-4-8","max_tokens":max_tokens,"messages":[{"role":"user","content":content}]}
-    req=urllib.request.Request("https://api.anthropic.com/v1/messages",data=json.dumps(body).encode(),
-        headers={"x-api-key":AKEY,"anthropic-version":"2023-06-01","content-type":"application/json"})
-    d=json.loads(urllib.request.urlopen(req,timeout=120).read())
-    return "".join(c.get("text","") for c in d.get("content",[]) if c.get("type")=="text")
+    return AI.complete(content, max_tokens)
+
 
 def _json(txt):
     txt=re.sub(r"```[a-z]*","",txt).strip("`\n ")
