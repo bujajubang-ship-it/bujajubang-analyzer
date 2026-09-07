@@ -27,16 +27,18 @@ $('reference-drop').onkeydown=e=>{if(e.key==='Enter')$('reference-file').click()
 $('reference-drop').addEventListener('drop',e=>{e.preventDefault();pasteTarget='reference';addFiles(e.dataTransfer.files,'reference');});
 document.addEventListener('focusin',e=>{if(e.target.closest('#reference-upload'))pasteTarget='reference';$('reference-drop').classList.toggle('paste-active',pasteTarget==='reference');if(pasteTarget==='reference'){$('color-drop').classList.remove('paste-active');$('drop').classList.remove('paste-active');}});
 const imageURL=(doc,a)=>`${API}/image?id=${encodeURIComponent(doc.id)}&asset=${encodeURIComponent(a.id)}`;
+const reviewPhotos=doc=>doc.workflow_version===4&&doc.status==='reviewing'?doc.assets.filter(a=>a.selected&&a.origin!=='reference'&&typeof a.usable==='boolean'):doc.assets;
 const originalSources=renderSources;
 renderSources=function(doc){
   if(doc.workflow_version!==4){originalSources(doc);return;}
   if(photoJob!==doc.id){photoJob=doc.id;photoChoices=new Set(doc.assets.filter(a=>a.selected).map(a=>a.id));photoUses={};photoCrops={};}
   if(doc.status==='selecting'&&doc.assets.length&&!photoChoices.size&&!$('source-photo-list').children.length)photoChoices=new Set(doc.assets.filter(a=>a.selected).map(a=>a.id));
-  $('source-gallery').hidden=!doc.assets.length;$('source-gallery').open=['selecting','reviewing'].includes(doc.status);
+  const visible=reviewPhotos(doc);
+  $('source-gallery').hidden=!visible.length;$('source-gallery').open=['selecting','reviewing'].includes(doc.status);
   const signature=JSON.stringify([doc.id,doc.status,doc.assets,Array.from(photoChoices)]);
   if($('source-photo-list').dataset.signature!==signature){
     $('source-photo-list').dataset.signature=signature;
-    $('source-photo-list').replaceChildren(...doc.assets.map(a=>{
+    $('source-photo-list').replaceChildren(...visible.map(a=>{
       const figure=sourcePhoto(doc,a);
       if(doc.status==='selecting'){
         const label=document.createElement('label'),check=document.createElement('input');check.type='checkbox';check.checked=photoChoices.has(a.id);
@@ -78,7 +80,7 @@ function openPhoto(id){modalId=id;const a=state.assets.find(a=>a.id===id);if(!a)
     });
   }
 }
-function movePhoto(delta){if(!state?.assets.length)return;const i=state.assets.findIndex(a=>a.id===modalId);openPhoto(state.assets[(i+delta+state.assets.length)%state.assets.length].id);}
+function movePhoto(delta){const photos=state?reviewPhotos(state):[];if(!photos.length)return;const i=photos.findIndex(a=>a.id===modalId);openPhoto(photos[(i+delta+photos.length)%photos.length].id);}
 ['photo-modal','analysis-error-modal'].forEach(id=>$(id).addEventListener('click',e=>{if(e.target===$(id)){const r=$(id).getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)$(id).close();}}));
 $('photo-modal').addEventListener('keydown',e=>{if(['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName))return;if(e.key==='ArrowLeft')movePhoto(-1);if(e.key==='ArrowRight')movePhoto(1);});
 const originalPlan=renderPlan;
@@ -114,6 +116,7 @@ const originalRender=renderDraft;
 renderDraft=function(doc){originalRender(doc);const v4=doc.workflow_version===4;
   $('photo-selection-actions').hidden=!v4||doc.status!=='selecting';$('photo-selection-bottom').hidden=!v4||doc.status!=='selecting';$('review-generate').hidden=!v4||doc.status!=='reviewing';
   $('back-photos').hidden=!v4||doc.status==='running'||doc.status==='selecting';
+  $('generation-results').hidden=v4&&(doc.status==='selecting'||doc.status==='reviewing'||!doc.sections.length);
   if(v4){$('section-list').hidden=['selecting','reviewing'].includes(doc.status);$('plan-editor').hidden=!doc.form?.product_name;if(doc.status==='reviewing')$('plan-editor').open=true;
     document.querySelectorAll('.draft-section').forEach((card,i)=>{if([1,3,4,5,7,8].includes(i)){card.querySelector('.edit-label').hidden=true;card.querySelector('[data-kind=edit]').hidden=true;}});
     $('low-download').disabled=doc.sections.length!==10||!doc.sections.slice(0,9).every(s=>s.low);$('high-download').disabled=doc.sections.length!==10||!doc.sections.slice(0,9).every(s=>s.high);

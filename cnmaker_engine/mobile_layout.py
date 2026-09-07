@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 import prompt_v3 as V
+import image_review as R
 
 
 def prompt(form,index,action='',instruction='',current=False):
@@ -17,7 +18,7 @@ def prompt(form,index,action='',instruction='',current=False):
         2:'실사용 메인 장면은 오직 사진만. 상품명·한글·영문·숫자·아이콘·문구 모두 없음.',
         6:'추가 활용 장면은 오직 사진만. 상품명·한글·영문·숫자·아이콘·문구 모두 없음. 메인 사용 장면과 다른 포즈·환경·각도.',
         7:'DETAIL 제목 외에는 번호·제목·설명·하단 글자가 없음. 실제 제품 사진을 그대로 활용.',
-        8:'COLOR & SIZE와 PRODUCT INFO는 이 한 장에 통합. 상단에는 제품 누끼컷 한 장과 실제 판매 컬러 탭만. 하단에는 상품명·판매 옵션·확인된 사이즈 정보. 사진 반복·추가 상세컷 없음. 정보가 없으면 해당 행을 생략.'}
+        8:'COLOR & SIZE와 PRODUCT INFO는 이 한 장에 통합. 상단에는 PRODUCT INFO 제목과 제품 누끼컷 한 장만. 별도 색상 탭 금지, 컬러는 하단 정보표에 한 번만. 하단에는 상품명·판매 옵션·확인된 사이즈 정보. 사진 반복·추가 상세컷 없음. 정보가 없으면 해당 행을 생략.'}
     return text+'\n[사용자가 확정한 최우선 레이아웃]\n'+rules.get(index,'글자 없는 정사각형 썸네일.')
 
 
@@ -30,17 +31,23 @@ def crop_box(asset):
 
 def product_photo(doc,asset,path,G,quality,cutout=False):
     image=Image.open(path/asset['file']).convert('RGB')
-    l,t,r,b=crop_box(asset)
+    l,t,r,b=crop_box({'crop':asset.get('crop')})
     image=image.crop((round(l*image.width),round(t*image.height),round(r*image.width),round(b*image.height)))
-    target=doc.get('primary_color') or doc.get('color_request','').split(',')[0].strip()
+    target=R.target_color(doc)
     aliases={'화이트':'흰색','white':'흰색','블랙':'검정','black':'검정','블랙색':'검정','블랙컬러':'검정'}
     normalized=lambda c:aliases.get(c.lower().strip(),c.lower().strip())
-    needs_color=(target and normalized(target) not in [normalized(c) for c in asset.get('colors',[])]) or (not target and doc.get('color_refs'))
+    needs_color=(target and {normalized(target)} != {normalized(c) for c in asset.get('colors',[])}) or (not target and doc.get('color_refs'))
     cleanup=bool(asset.get('has_overlay') or asset.get('original_text'))
+    if target and not (needs_color or cleanup or cutout):
+        original=io.BytesIO();image.save(original,'JPEG',quality=95)
+        try:R.check(G,original.getvalue(),original.getvalue(),doc,path,clean=False)
+        except R.ProductImageError:needs_color=True
     if needs_color or cleanup or cutout:
-        buf=io.BytesIO();image.save(buf,'JPEG',quality=95)
+        size='1536x1024' if image.width/image.height>1.2 else '1024x1536' if image.width/image.height<.83 else '1024x1024'
+        frame=ImageOps.pad(image,tuple(map(int,size.split('x'))),color='white')
+        buf=io.BytesIO();frame.save(buf,'JPEG',quality=95)
         refs=[('image/jpeg',base64.b64encode(buf.getvalue()).decode())]+[('image/jpeg',base64.b64encode((path/n).read_bytes()).decode()) for n in doc.get('color_refs',[])]
-        key=hashlib.sha256(json.dumps(['clean-product-v1',refs,target,quality,cleanup,cutout]).encode()).hexdigest()[:24]
+        key=hashlib.sha256(json.dumps(['clean-product-v3-framing',refs,target,quality,cleanup,cutout]).encode()).hexdigest()[:24]
         cache=path/('clean-product-'+key+'.jpg')
         if cache.exists():return Image.open(cache).convert('RGB')
         task='첫 사진을 최소한으로 편집하세요. 제품 소재·짜임·마름모·패턴·길이·두께·형태·비율·봉제선은 원본과 동일하게 보존. 제품을 재디자인하지 마세요. 제품 고유의 무늬·로고는 보존. '
@@ -52,8 +59,16 @@ def product_photo(doc,asset,path,G,quality,cutout=False):
             task+='제품 포즈·배경·조명과 제품을 착용한 사람은 유지. '
         if needs_color:
             task+='제품 색상만 '+(target or '나머지 색상 기준 사진의 대표 색상')+'으로 변경. 다른 사진은 색조만 참고. 피부·배경·신발 재착색 금지. '
-        task+='새 기능·무늬·구성품·글자를 생성하지 마세요.'
-        raw=G._oai_image(task,ref_imgs_b64=refs,size='1024x1536',quality=quality)
+        task+='새 기능·무늬·구성품·글자를 생성하지 마세요. 원본의 종횡비와 제품 길이/폭/부품 비율을 고정. 확대나 줌인/재크롭 금지. 제품 전체와 원본 착용 포즈가 보이는 여백 유지. 소재 확대 원본은 확대 상태와 짜임을 유지.'
+        if target:task+=' 모든 제품과 원단 확대 부분을 대표 판매 색상 '+target+'으로 통일. 작은 원단 조각에도 원본의 미판매 색상이 남지 않게 하세요.'
+        for attempt in range(2):
+            raw=G._oai_image(task,ref_imgs_b64=refs,size=size,quality=quality)
+            try:R.check(G,buf.getvalue(),raw,doc,path,cutout=cutout)
+            except R.ProductImageError as error:
+                if attempt:raise
+                task+='\n이전 결과의 문제를 원본 기준으로 바로잡으세요: '+str(error)
+                continue
+            break
         image=Image.open(io.BytesIO(raw)).convert('RGB');image.save(cache,'JPEG',quality=95)
     return image
 
@@ -77,15 +92,25 @@ def compose(doc,index,chosen,path,quality,G,instruction=''):
     """Photo pixels are pasted, not regenerated, unless color conversion is requested."""
     points=doc['form'].get('sellpoints',[]) if index==1 else doc.get('section_copy',{}).get('details',doc['form'].get('sellpoints',[]))
     if index==1:
-        heights=[max(360,80+len(lines(p['title'],750,48))*62+len(lines(p['desc'],750,32))*45+60) for p in points[:3]]
-        canvas=Image.new('RGB',(860,200+sum(heights)),'white');draw=ImageDraw.Draw(canvas)
-        draw.text((55,50),'CHECK POINT',font=font(52,True),fill='#222222')
-        top=170
+        heights=[120+len(lines(p['title'],610,44))*58+len(lines(p['desc'],700,32))*45 for p in points[:3]]
+        canvas=Image.new('RGB',(860,180+sum(heights)+60),'#f7f8fa');draw=ImageDraw.Draw(canvas)
+        draw.text((45,45),'CHECK POINT',font=font(52,True),fill='#222222')
+        top=145
         for i,p in enumerate(points[:3]):
-            y=top;top+=heights[i]
-            draw.text((55,y),f'0{i+1}',font=font(42,True),fill='#777777');y+=65
-            for line in lines(p['title'],750,48):draw.text((55,y),line,font=font(48,True),fill='#222222');y+=62
-            for line in lines(p['desc'],750,32):draw.text((55,y+20),line,font=font(32),fill='#444444');y+=45
+            h=heights[i];draw.rounded_rectangle((30,top,830,top+h-20),radius=24,fill='white',outline='#e3e7ed',width=2)
+            draw.rounded_rectangle((50,top+25,130,top+105),radius=20,fill=('#e7eef8','#e8f3ef','#f4ecdf')[i])
+            if i==0:
+                for x in (65,78,91):draw.arc((x,top+40,x+25,top+85),80,280,fill='#375675',width=3)
+            elif i==1:
+                for x in (66,80,94,108):draw.line((x,top+42,x,top+88),fill='#477464',width=2)
+                for y in (top+42,top+56,top+70,top+84):draw.line((66,y,112,y),fill='#477464',width=2)
+            else:
+                draw.line((88,top+42,88,top+88),fill='#8a6b3e',width=3);draw.line((76,top+54,88,top+42,100,top+54),fill='#8a6b3e',width=3)
+            y=top+27
+            for line in lines(p['title'],610,44):draw.text((155,y),line,font=font(44,True),fill='#222222');y+=58
+            y=max(y+18,top+120)
+            for line in lines(p['desc'],700,32):draw.text((60,y),line,font=font(32),fill='#444444');y+=45
+            top+=h
     elif index==8:
         return product_info(doc,chosen,path,quality,G)
     else:
@@ -114,16 +139,11 @@ def product_info(doc,chosen,path,quality,G):
     if 'product_info' in form:rows=[r for r in form['product_info'] if r['value'].strip()]
     photo=product_photo(doc,chosen[0],path,G,quality,cutout=True)
     photo=ImageOps.contain(photo,(750,780))
-    colors=[c.strip() for c in (doc.get('color_request') or form.get('option','')).replace('，',',').split(',') if c.strip()]
-    color_lines=lines(' · '.join(colors),750,30) if colors else []
     heights=[max(75,len(lines(r['value'],500,29))*43+30,len(lines(r['label'],180,28))*42+30) for r in rows]
-    height=180+photo.height+len(color_lines)*45+60+sum(heights)
+    height=180+photo.height+60+sum(heights)
     canvas=Image.new('RGB',(860,height),'white');draw=ImageDraw.Draw(canvas)
     draw.text((50,45),'PRODUCT INFO',font=font(48,True),fill='#222222')
     y=145;canvas.paste(photo,((860-photo.width)//2,y));y+=photo.height+25
-    for line in color_lines:
-        draw.rounded_rectangle((50,y,810,y+40),radius=8,fill='#f3f4f6')
-        draw.text((65,y+2),line,font=font(30),fill='#333333');y+=45
     y+=25
     for row,h in zip(rows,heights):
         draw.line((50,y,810,y),fill='#dddddd',width=2)

@@ -274,11 +274,12 @@ def generate(jid, index, action, instruction=''):
     if styles:
         prompt += '\n마지막 '+str(len(styles))+'장은 참고용 이미지입니다. 구도·포즈·패션·배경만 참고하고 제품 형태·수량·글자·스펙·구성은 절대 가져오지 마세요.'
     if doc.get('workflow_version')==4:
+        prompt += '\n제품 전체를 프레임 안에 여유 있게 배치. 과도한 클로즈업 금지. 사용 상황과 포즈가 보이도록 촬영. 인물이 필요하면 성인 모델의 일반적인 스포츠/일상 상품 착용 장면. 운동복을 입고 자연스럽게 운동하는 광고 사진. 제품 외 신체를 강조하지 마세요.'
         prompt += '\n첫 제품 참고 사진을 이 구간의 큰 구도·크기·착용 방식 기준으로 사용하세요. 제품 형태는 그대로, 포즈·패션·배경만 자연스럽게 변형하세요.'
     if doc.get('workflow_version')==4:
         prompt += '\n내부 번역 자료는 의미 이해에만 참고하세요. 실제 출력 문구는 사용자가 확정한 기획을 우선하고, 사진 속 원문이나 직역 문장을 그대로 출력하지 마세요: '+json.dumps({a['id']:doc.get('translations',{}).get(a['id'],a.get('translation','')) for a in chosen},ensure_ascii=False)
     if doc.get('workflow_version')==4 and index==0:
-        prompt+='\nHERO 최종 문구 규칙: 상품명과 다음 2~3단어 문구만 출력. 핵심 장점 3개·설명·번역 원문·디테일 인셋을 추가하지 마세요: '+doc.get('section_copy',{}).get('hero','')
+        prompt+='\nHERO 최종 문구 규칙: 상품명과 다음 감성적인 한 줄 문구만 출력. 핵심 장점 3개·설명·번역 원문·디테일 인셋을 추가하지 마세요: '+doc.get('section_copy',{}).get('hero','')
     if instruction:
         prompt += '\n현재 수정 요청(판매 색상 설정을 바꾸려면 상품 정보에서 변경): ' + instruction
     with LOCK:
@@ -294,14 +295,19 @@ def generate(jid, index, action, instruction=''):
                     raw=compose(doc,index,chosen,folder(jid),quality,G,instruction)
                 else:
                     raw = G._oai_image(prompt, ref_imgs_b64=refs, size='1024x1024' if thumbnail else '1024x1536', quality=quality)
+                    if doc.get('workflow_version')==4:
+                        import image_review as R
+                        R.check(G,(folder(jid)/chosen[0]['file']).read_bytes(),raw,doc,folder(jid),scene=True,clean=False)
                 break
             except Exception as error:
-                temporary = any(word in str(error).lower() for word in ('429', '500', '502', '503', '504', 'timeout', 'timed out', 'temporar', 'server_error', 'connection reset'))
+                import image_review as R
+                temporary = isinstance(error,R.ProductImageError) or any(word in str(error).lower() for word in ('429', '500', '502', '503', '504', 'timeout', 'timed out', 'temporar', 'server_error', 'connection reset'))
                 if attempt or not temporary:
                     raise
                 with LOCK:
                     doc['message'] = section['title'] + ' 일시 오류 — 한 번 더 시도 중'
                     save(doc)
+                if isinstance(error,R.ProductImageError):prompt+='\n원본 기준으로 수정할 검증 결과: '+str(error)
                 time.sleep(2)
         image = Image.open(io.BytesIO(raw)).convert('RGB')
         width = (1000 if thumbnail else 860) if quality == 'high' else 430
