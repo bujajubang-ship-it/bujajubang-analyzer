@@ -236,6 +236,7 @@ def prompt_for(doc, index, action='', instruction='', current=False):
     form = dict(doc['form'], brand='', product_name=doc.get('submitted_title') or doc['title'])
     if doc.get('workflow_version')==4:
         from mobile_layout import prompt
+        form['section_copy']=doc.get('section_copy',{})
         return prompt(form,index,action,instruction,current)
     return V3.image_prompt(form, index, action, instruction, current)
 
@@ -248,19 +249,18 @@ def generate(jid, index, action, instruction=''):
         thumbnail=index==(9 if doc.get('workflow_version')==4 else 10)
         section.update(status='running', error='', failed_action=action)
         record_progress(doc, f'{index + 1}/{len(titles)} 구간 · {titles[index]} {"고화질" if action == "high" else "부분 수정" if action == "edit" else "저해상도"} 생성 중')
+    if doc.get('workflow_version')==4 and index in (0,3,4,5):
+        import merchandising as M
+        def copy_progress(message):
+            with LOCK:record_progress(doc,message)
+        M.section_copy(doc,G,folder(jid),copy_progress)
     chosen = S.choose(doc, 10 if thumbnail else index)
-    if doc.get('workflow_version')==4:
-        lead=doc.get('section_photos',{}).get(str(index))
-        if lead:
-            chosen=sorted(chosen,key=lambda a:a['id']!=lead)
-            primary=next((a for a in doc['assets'] if a['id']==lead and a.get('selected') and a.get('use_as')!='info' and a.get('usable')),None)
-            if primary and primary not in chosen:chosen=[primary]+chosen[:11]
     if not chosen:
         raise DraftError('제품 참고 사진이 없습니다. 사진 수집을 다시 시도해 주세요.')
-    if doc.get('workflow_version')==4 and index in (1,3,4,5,7):
+    if doc.get('workflow_version')==4 and index in (1,3,4,5,7,8):
         chosen=chosen[:2 if index==7 else 1]
     styles=[a for a in doc.get('assets',[]) if a.get('selected') and a['origin']=='reference'][:2] if doc.get('workflow_version')==4 else []
-    if doc.get('workflow_version')==4 and index in (1,3,4,5,7):styles=[]
+    if doc.get('workflow_version')==4 and index in (1,3,4,5,7,8):styles=[]
     if styles:chosen=chosen[:10]
     reference_names = [a['file'] for a in chosen] + doc.get('color_refs', []) + [a['file'] for a in styles]
     refs = [('image/jpeg', base64.b64encode((folder(jid) / name).read_bytes()).decode()) for name in reference_names]
@@ -276,7 +276,9 @@ def generate(jid, index, action, instruction=''):
     if doc.get('workflow_version')==4:
         prompt += '\n첫 제품 참고 사진을 이 구간의 큰 구도·크기·착용 방식 기준으로 사용하세요. 제품 형태는 그대로, 포즈·패션·배경만 자연스럽게 변형하세요.'
     if doc.get('workflow_version')==4:
-        prompt += '\n사용자가 수정·확정한 번역 자료(새로운 상품명·수량·스펙을 추가하지 마세요): '+json.dumps({a['id']:doc.get('translations',{}).get(a['id'],a.get('translation','')) for a in chosen},ensure_ascii=False)
+        prompt += '\n내부 번역 자료는 의미 이해에만 참고하세요. 실제 출력 문구는 사용자가 확정한 기획을 우선하고, 사진 속 원문이나 직역 문장을 그대로 출력하지 마세요: '+json.dumps({a['id']:doc.get('translations',{}).get(a['id'],a.get('translation','')) for a in chosen},ensure_ascii=False)
+    if doc.get('workflow_version')==4 and index==0:
+        prompt+='\nHERO 최종 문구 규칙: 상품명과 다음 2~3단어 문구만 출력. 핵심 장점 3개·설명·번역 원문·디테일 인셋을 추가하지 마세요: '+doc.get('section_copy',{}).get('hero','')
     if instruction:
         prompt += '\n현재 수정 요청(판매 색상 설정을 바꾸려면 상품 정보에서 변경): ' + instruction
     with LOCK:
@@ -287,7 +289,7 @@ def generate(jid, index, action, instruction=''):
     try:
         for attempt in range(2):
             try:
-                if doc.get('workflow_version')==4 and index in (1,3,4,5,7):
+                if doc.get('workflow_version')==4 and index in (1,3,4,5,7,8):
                     from mobile_layout import compose
                     raw=compose(doc,index,chosen,folder(jid),quality,G,instruction)
                 else:
@@ -403,8 +405,8 @@ def action(jid, body):
         indices = list(dict.fromkeys(indices))
         if kind == 'edit' and (not instruction or len(indices) != 1):
             raise DraftError('수정할 구간 하나와 수정 내용을 입력해 주세요.')
-        if doc.get('workflow_version')==4 and kind=='edit' and indices[0] in (1,3,4,5,7):
-            raise DraftError('원본 사진 유지 구간입니다. 기획에서 문구·기준 사진·사용 영역을 저장한 뒤 이 구간 새로 만들기를 눌러주세요.')
+        if doc.get('workflow_version')==4 and kind=='edit' and indices[0] in (1,3,4,5,7,8):
+            raise DraftError('제품 사진 조판 구간입니다. 기획에서 문구·상품정보를 저장한 뒤 이 구간 새로 만들기를 눌러주세요.')
         if kind in ('edit', 'high') and any(not doc['sections'][i]['low'] for i in indices):
             raise DraftError('저해상도 시안을 먼저 만들어 주세요.')
         tasks = [(i, (doc['sections'][i]['failed_action'] or 'low') if kind == 'retry' else kind) for i in indices]

@@ -1,4 +1,5 @@
 """Versioned user-supplied prompts and validated, resumable analysis responses."""
+import merchandising as M
 import hashlib
 import json
 from pathlib import Path
@@ -28,7 +29,7 @@ def planning(title, doc, assets):
     return fill(BLOCKS['A'].split('[출력]')[0] + '\n' + BLOCKS['C'], {
         '상품명': title, '사용자 판매 색상': doc.get('color_request', ''),
         '대표 색상': doc.get('primary_color', ''),
-        '사진 분석 JSON': json.dumps(assets, ensure_ascii=False)})
+        '사진 분석 JSON': json.dumps(assets, ensure_ascii=False)}) + ('\n'+M.COPY_RULES if doc.get('workflow_version')==4 else '')
 
 
 def image_prompt(form, index, action='', instruction='', current=False):
@@ -83,6 +84,9 @@ def validate_photos(value, ids):
 
 
 def validate_form(value):
+    if 'product_info' in value:
+        try:M.normalize_rows(value['product_info'])
+        except ValueError as error:raise AnalysisFormatError(str(error)) from error
     points = value.get('sellpoints')
     if not isinstance(points, list) or len(points) != 3 or any(
         not isinstance(p, dict) or any(not isinstance(p.get(k), str) or not p[k].strip() for k in ('title', 'desc')) for p in points):
