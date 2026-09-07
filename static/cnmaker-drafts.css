@@ -34,3 +34,5 @@ dialog::backdrop {background:#000a}
 
 #photo-large.native-size {max-width:none;max-height:none;flex-shrink:0}
 .photo-stage:has(.native-size) {justify-content:flex-start}
+
+.product-info-row{display:grid;grid-template-columns:minmax(90px,1fr) minmax(130px,2fr) auto;gap:8px;margin:10px 0;align-items:start}.product-info-row input,.product-info-row textarea{box-sizing:border-box;width:100%;min-width:0}#photo-selection-bottom{margin:16px 0}#photo-selection-bottom .go{margin-top:8px}

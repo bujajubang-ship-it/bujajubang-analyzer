@@ -220,6 +220,7 @@ def analyze(assets, title, path, G, progress):
         label = f'제품 사진 분석 {start + 1}~{min(start + 10, len(assets))}/{len(assets)}장'
         progress(label + f' 진행 중 — {start}장 완료')
         prompt = V3.fill(V3.BLOCKS['B'], {'상품명': title}) + '\n추가 필드: information_only(boolean)는 글자·규격·정보 위주 사진이면 true. 같은 제품의 정보 자료는 usable=true. 다른 모델 자료는 false. product_bbox는 글자 영역을 제외한 실제 제품 사진 영역 [좌,상,우,하], 0~1 비율. 불확실하면 [0,0,1,1].'
+        prompt += '\ntranslation은 한국 소비자가 읽기 편한 일상적 쇼핑몰 표현으로 의역. 소재·치수·수량·주의사항은 정확히 유지. has_overlay(boolean)는 사진 속 인쇄된 글자·화살표·배지·설명 그래픽이 있으면 true. 제품 고유 무늬는 제외.'
         content = [{'type': 'text', 'text': prompt + '\n아래는 제품 형태 판단용 기준 사진입니다.'}, image_content(path, anchor['file'])]
         for asset in batch:
             content.extend([{'type': 'text', 'text': f"분석 대상 id={asset['id']}; 출처={asset['origin']}; 단서={asset['hint']}"}, image_content(path, asset['file'])])
@@ -230,7 +231,7 @@ def analyze(assets, title, path, G, progress):
             raise ValueError('일부 제품 사진 분석이 누락됐습니다. 분석을 다시 시도해 주세요.')
         for asset in batch:
             row = indexed[asset['id']]
-            asset.update(information_only=row.get('information_only') is True, product_bbox=row.get('product_bbox',[0,0,1,1]), usable=row.get('usable') is True,
+            asset.update(has_overlay=row.get('has_overlay', bool(row.get('original_text'))), information_only=row.get('information_only') is True, product_bbox=row.get('product_bbox',[0,0,1,1]), usable=row.get('usable') is True,
                          role=row.get('role') if row.get('role') in ('product', 'detail', 'lifestyle', 'option', 'size') else asset['role'],
                          description=str(row.get('description') or '')[:700], view=str(row.get('view') or '')[:60],
                          original_text=str(row.get('original_text') or '')[:1000], translation=str(row.get('translation') or '')[:1000],
@@ -251,7 +252,13 @@ def choose(doc, index):
     def score(a):
         matched = sum(word in a.get('description', '') for word in keywords)
         return (50-planned.index(a['id']) if a['id'] in planned else 0) + min(30,matched*6) + (20 if index in a.get('sections', []) else 0) + (12 if a['origin'] == 'link' else 0) + (8 if a['role'] in wanted else 0) + (3 if doc.get('primary_color') in a.get('colors', []) else 0)
-    ranked = sorted(assets, key=score, reverse=True)
+    previous=set()
+    if doc.get('workflow_version')==4 and index in (4,5):
+        previous={choose(doc,i)[0]['id'] for i in range(3,index) if choose(doc,i)}
+    ranked = sorted(assets, key=lambda a:score(a)-(45 if a['id'] in previous else 0), reverse=True)
+    if doc.get('workflow_version')==4:
+        return ranked[:MAX_PRODUCT_REFS]
+
     selected, seen_views = [], set()
     # A clear product silhouette anchors identity; the rest prioritize relevant link views.
     anchor = next((a for a in ranked if a['origin'] == 'upload' and a['role'] == 'product'), None)

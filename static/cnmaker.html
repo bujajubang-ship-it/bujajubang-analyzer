@@ -149,14 +149,15 @@ lgLoad();
    <div id="photo-selection-actions" hidden>
      <p>사용할 사진만 체크하세요. 사진을 누르면 크게 볼 수 있습니다. 제품/정보 분류는 선택 후 분석합니다.</p>
      <button onclick="setAllPhotos(true)">사진 전체 선택</button><button onclick="setAllPhotos(false)">사진 전체 해제</button>
-     <button onclick="selectionAction('recollect')">링크 다시 수집</button><span id="selected-photo-count"></span><button class="primary" onclick="confirmPhotos()">선택한 사진만 분석</button>
+     <button onclick="selectionAction('recollect')">링크 다시 수집</button>
    </div>
    <details id="source-gallery" hidden><summary>수집한 제품 사진과 색상 기준 확인</summary><div id="source-photo-list" class="source-grid"></div></details>
+   <div id="photo-selection-bottom" hidden><span id="selected-photo-count"></span> <button id="analyze-selected" class="go" onclick="confirmPhotos()">선택한 사진만 분석</button></div>
    <p class="draft-help">먼저 구도와 분위기를 확인하세요. 필요한 구간만 수정한 뒤 고화질로 완성할 수 있습니다. 고화질 생성·부분 수정 시 세부 모습이 조금 달라질 수 있습니다.</p>
    <details id="plan-editor" hidden><summary>상품 정보·글 기획 확인 및 수정</summary>
      <div id="plan-fields"></div><button id="save-plan" onclick="savePlan()">기획 저장</button>
      <div id="photo-review-fields"></div>
-     <p class="draft-help" id="preserve-help" hidden>CHECK POINT·DETAIL은 기준 사진을 직접 배치합니다. 문구는 위 입력칸에서 수정하고, 사진 속 글자는 확대창의 사용 영역으로 제외하세요. 색상을 바꾼 사진은 디테일을 확인해 주세요.</p>
+     <p class="draft-help" id="preserve-help" hidden>사진은 구간별로 자동 선정합니다. CHECK POINT·DETAIL은 원본의 글자와 그래픽을 정리해 배치합니다. PRODUCT INFO는 누끼컷과 확정한 상품정보로 만듭니다. 보정된 제품 디테일은 시안에서 확인해 주세요.</p>
      <p class="draft-help" id="plan-message">저장한 내용은 이후 새로 만드는 구간에 적용됩니다.</p>
    </details>
    <button id="review-generate" class="go" hidden onclick="confirmReview()">문구 저장 후 전체 시안 생성</button>

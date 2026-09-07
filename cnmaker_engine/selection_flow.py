@@ -14,8 +14,9 @@ from concurrent.futures import ThreadPoolExecutor
 
 from PIL import Image
 import prompt_v3 as V
+import merchandising as M
 
-TITLES = V.TITLES[:8] + ['COLOR · PRODUCT INFO', '대표 썸네일']
+TITLES = V.TITLES[:8] + ['PRODUCT INFO', '대표 썸네일']
 
 
 def catalogue(url, path):
@@ -115,9 +116,14 @@ def analyze(D, jid):
         photo_ids={a['id'] for a in usable if a['use_as']=='product'}
         plan={str(i):[ident for ident in plan.get(str(i),[]) if isinstance(ident,str) and ident in photo_ids][:6]
               for i in range(11) if isinstance(plan,dict) and isinstance(plan.get(str(i)),list)}
+        extra={'product_info':M.recommend(form),'review_notes':[str(x)[:500] for x in form.get('review_notes',[])[:12]] if isinstance(form.get('review_notes',[]),list) else []}
         form={k:str(form.get(k) or '')[:500] for k in ('brand','product_name','category','option','size','mood')}|{'sellpoints':form['sellpoints']}
+        form.update(extra)
         form['brand']='';form['product_name']=doc.get('submitted_title') or doc['title']
         if doc.get('color_request'):form['option']=doc['color_request']
+        for row in form['product_info']:
+            if row['label'] in ('상품명','제품명'):row['value']=form['product_name']
+            if row['label'] in ('컬러','색상','판매 색상') and form.get('option'):row['value']=form['option']
         if doc.get('color_refs') and not form.get('option'):
             raise ValueError('색상 캡처에서 판매 색상을 확인하지 못했습니다. 색상명을 입력하거나 색상 기준을 다시 등록해 주세요.')
         if not doc.get('primary_color') and (doc.get('color_refs') or doc.get('color_request')):
@@ -128,7 +134,7 @@ def analyze(D, jid):
                 source_summary=dict(link=sum(a['origin']=='link' for a in chosen),upload=len(doc['inputs']),
                     usable=len(usable),excluded=len(doc['assets'])-len(chosen)),
                 sections=[dict(index=i,title=t,status='pending',error='',failed_action='',low='',high='',revision=0) for i,t in enumerate(TITLES)])
-            D.record_progress(doc,'분석 완료 — 번역·문구와 구간별 기준 사진을 확인한 뒤 생성해 주세요.')
+            D.record_progress(doc,'분석 완료 — 핵심 장점과 상품정보를 확인한 뒤 생성해 주세요. 사진은 구간에 맞게 자동 선정합니다.')
     except Exception as error:
         with D.LOCK:
             doc=D.read(jid)
@@ -181,6 +187,7 @@ def generate_all(D,jid):
 def save_review(doc,form):
     from mobile_layout import crop_box
     V.validate_form(doc['form'])
+    doc['form']['product_info']=M.normalize_rows(form['product_info']) if 'product_info' in form else M.recommend(doc['form'])
     choices=form.get('section_photos',doc.get('section_photos',{}))
     photos={a['id']:a for a in doc['assets'] if a.get('selected') and a.get('usable') and a.get('use_as')!='info' and a['origin']!='reference'}
     if not isinstance(choices,dict) or any(k not in {str(i) for i in range(10)} or v not in photos for k,v in choices.items() if v):

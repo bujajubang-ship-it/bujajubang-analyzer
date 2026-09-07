@@ -46,7 +46,7 @@ class SelectionTests(unittest.TestCase):
         jid=self.review();D.action(jid,{'action':'generate_all'});self.run_task()
         doc=D.status(jid);self.assertEqual(doc['status'],'done',doc.get('error'))
         self.assertEqual(len(doc['sections']),10)
-        self.assertEqual(doc['sections'][8]['title'],'COLOR · PRODUCT INFO')
+        self.assertEqual(doc['sections'][8]['title'],'PRODUCT INFO')
         self.assertEqual(self.generate.call_count,5)
         self.assertEqual(self.generate.call_args.kwargs['size'],'1024x1024')
         self.assertIn('상품명·한글·영문·숫자·아이콘·문구 모두 없음',self.generate.call_args_list[1].args[0])
