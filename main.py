@@ -4264,6 +4264,9 @@ async def cnmaker_result(job: str, thumb: str = ""):
         return Response(content=content, media_type="image/jpeg")
 
 
+from cn_draft_api import create_router as _create_cn_draft_router
+app.include_router(_create_cn_draft_router(_site_auth, CNMAKER_BASE, CNMAKER_SECRET, _cn_apply_logo))
+
 # ── 📊 시장조사 (쿠팡 윙 원천 데이터 뷰어) ──────────────────────────
 from market_api import router as market_router, upload_router as market_upload_router
 app.include_router(market_router)

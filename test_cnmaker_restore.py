@@ -20,7 +20,7 @@ class CnmakerRestoreTest(unittest.TestCase):
     def test_old_screen_and_logo_settings_are_available(self):
         with patch.object(main, '_site_auth', return_value=True):
             response = self.client.get('/cnmaker')
-        self.assertIn('/cnmaker/api/start_imgs', response.text)
+        self.assertIn('/static/cnmaker-drafts.js', response.text)
         self.assertIn('/cnmaker/api/logo_config', response.text)
         self.assertNotIn('/cnmaker/api/plan', response.text)
         self.assertEqual(self.client.get('/cnmaker/api/logo_config').status_code, 200)
