@@ -155,6 +155,8 @@ def _oai_image(prompt, ref_imgs_b64=None, size="1024x1536", quality="high"):
             msg = ""; code = ""
         if code == "billing_hard_limit_reached" or "billing" in (code or "").lower() or "billing" in (msg or "").lower():
             raise RuntimeError("OpenAI 결제 한도 초과 — platform.openai.com에서 크레딧 충전/한도 상향 필요")
+        if 'safety' in (code+' '+msg).lower() or 'moderation' in (code+' '+msg).lower():
+            raise RuntimeError('이미지 안전 검사에서 요청이 거절됐습니다. 참조 사진과 장면 지시를 확인해 주세요. 자동으로 같은 요청을 반복하지 않습니다. (OpenAI 안전 검사)')
         raise RuntimeError(f"OpenAI 오류 {e.code}: {msg or e.reason}")
     b64 = d["data"][0].get("b64_json")
     return base64.b64decode(b64)

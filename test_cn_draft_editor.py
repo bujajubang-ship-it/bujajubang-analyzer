@@ -46,6 +46,8 @@ class DraftEditorTests(unittest.TestCase):
 
     @staticmethod
     def analysis(content, *args):
+        if any('[상품이미지 검증]' in row.get('text','') for row in content):
+            return json.dumps(dict(structure_ok=True,color_ok=True,framing_ok=True,clean_ok=True,reason=''))
         if any('[구간별 문구 변주]' in row.get('text','') for row in content):
             return json.dumps({'hero':'가볍게 편안하게','details':[{'title':'확장 제목 '+str(i),'desc':'사용 장면을 자세하게 풀어 쓴 설명 '+str(i)} for i in range(3)]})
         identifiers = [re.search(r'id=([^;]+);', row.get('text', '')) for row in content]

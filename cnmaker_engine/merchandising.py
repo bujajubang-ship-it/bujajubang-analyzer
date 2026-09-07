@@ -59,7 +59,7 @@ def recommend(form):
 def section_copy(doc, G, path, progress):
     """Derive hero/detail copy from the latest reviewed summary, without changing it."""
     import prompt_v3 as V
-    source={'version':'section-copy-v1','model':getattr(G.P,'ANALYSIS_CACHE_ID','legacy'),'product_name':doc['form']['product_name'],'sellpoints':doc['form']['sellpoints'],
+    source={'version':'section-copy-v2-short-emotional','model':getattr(G.P,'ANALYSIS_CACHE_ID','legacy'),'product_name':doc['form']['product_name'],'sellpoints':doc['form']['sellpoints'],
             'evidence':[{'description':a.get('description',''),'translation':a.get('translation','')}
                         for a in doc.get('assets',[]) if a.get('selected',True) and a.get('usable') and a.get('origin')!='reference']}
     key=hashlib.sha256(json.dumps(source,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
@@ -67,22 +67,25 @@ def section_copy(doc, G, path, progress):
     prompt='''[구간별 문구 변주]
 사용자가 확정한 핵심 장점 3개를 기준으로 구간별 문구를 작성한다.
 2번 CHECK POINT 3개 요약에는 확정 문구를 그대로 사용하므로 절대 수정하지 않는다.
-HERO는 핵심 가치를 하나로 함축한 2~3단어(띄어쓰기 기준)의 짧은 문구 한 개만 작성한다.
+HERO는 제품 장점에 감성과 고객이 바라는 경험을 더한 짧은 한 줄(12~36자)을 쓴다. 예: 최상의 퍼포먼스를 위한 탄탄한 파트너. 2~3단어 제한 없음.
 CHECK POINT 01~03은 각각 대응하는 확정 장점을 고객이 이해하기 쉬운 일상적 말로 확장한다.
-제목은 요약 제목과 다르게 쓰고, 설명은 2~3문장으로 구체적인 사용 장면과 느낌을 상상력 있게 풀어 쓴다.
+제목은 요약 제목과 다르게 쓰고, 설명은 구체적인 사용감만 남겨 45~65자 안팎, 모바일 조판에서 2~3줄로 쓴다. 장황한 사용 장면 나열 금지.
 원문 번역의 장점과 구조를 활용해 풍부하게 작문한다. 요약 문장을 그대로 복사하거나 세 구간을 같은 내용으로 쓰지 않는다.
 사용자가 지운 장점이나 반대 의미를 다시 넣지 말고 확정 장점의 의도를 최우선으로 한다.
 없는 수치·인증·시험 결과·의학적 효능·소재·구성품은 만들어내지 않는다.
-JSON 객체 하나만 반환: {"hero":"두세 단어 문구","details":[{"title":"확장 제목","desc":"확장 설명"}, ... 총 3개]}.
+JSON 객체 하나만 반환: {"hero":"감성적인 한 줄","details":[{"title":"확장 제목","desc":"확장 설명"}, ... 총 3개]}.
 '''+json.dumps(source,ensure_ascii=False)
     def validate(value):
-        if not isinstance(value.get('hero'),str) or not 2<=len(value['hero'].split())<=3:
-            raise V.AnalysisFormatError('HERO 문구는 2~3단어여야 합니다.')
+        if not isinstance(value.get('hero'),str) or not 4<=len(value['hero'].strip())<=36 or '\n' in value.get('hero',''):
+            raise V.AnalysisFormatError('HERO 문구는 36자 이하의 감성적인 한 줄이어야 합니다.')
         V.validate_form({'sellpoints':value.get('details')})
+        from mobile_layout import lines
+        if any(len(lines(p['desc'],750,32))>3 for p in value['details']):
+            raise V.AnalysisFormatError('설명을 줄여 모바일 3줄 이내로 작성하세요.')
         for point,summary in zip(value['details'],source['sellpoints']):
             if point['title'].strip()==summary['title'].strip() or point['desc'].strip()==summary['desc'].strip():
                 raise V.AnalysisFormatError('개별 CHECK POINT는 요약과 다른 확장 문구가 필요합니다.')
-    progress('구간별 문구 작성 중 — HERO 압축·CHECK POINT 설명 확장')
+    progress('구간별 문구 작성 중 — HERO 감성 문구·CHECK POINT 2~3줄 작성')
     result=V.request_json(G.P,[{'type':'text','text':prompt}],4000,validate,path,'구간별 문구',progress)
     doc.update(section_copy_key=key,section_copy=result)
     return result
