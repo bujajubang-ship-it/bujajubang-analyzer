@@ -255,6 +255,14 @@ def generate(jid, index, action, instruction=''):
             with LOCK:record_progress(doc,message)
         M.section_copy(doc,G,folder(jid),copy_progress)
     chosen = S.choose(doc, 10 if thumbnail else index)
+    generated_point_scene=False
+    if doc.get('workflow_version')==4 and index in (3,4,5):
+        prior={x for s in doc.get('sections',[]) if s.get('index') in (3,4,5) and s.get('index')<index for x in s.get('reference_ids',[])}
+        unique=[a for a in chosen if a.get('id') not in prior]
+        if unique:
+            chosen=unique+ [a for a in chosen if a not in unique]
+        else:
+            generated_point_scene=True
     if not chosen:
         raise DraftError('제품 참고 사진이 없습니다. 사진 수집을 다시 시도해 주세요.')
     if doc.get('workflow_version')==4 and index in (1,3,4,5,7,8):
@@ -290,10 +298,12 @@ def generate(jid, index, action, instruction=''):
     try:
         for attempt in range(2):
             try:
-                if doc.get('workflow_version')==4 and index in (1,3,4,5,7,8):
+                if doc.get('workflow_version')==4 and index in (1,3,4,5,7,8) and not generated_point_scene:
                     from mobile_layout import compose
                     raw=compose(doc,index,chosen,folder(jid),quality,G,instruction)
                 else:
+                    if generated_point_scene:
+                        prompt+='\n[CHECK POINT 장면 생성]\n이 구간은 원본 사진을 그대로 확대해 붙이지 말고, 확정된 장점 문구를 중심으로 새 광고 장면을 구성하세요. 제품 전체 또는 장점이 드러나는 상황을 보여주되, 앞뒤 CHECK POINT에서 사용한 사진과 같은 구도·사진을 반복하지 마세요. 설명 텍스트는 한국어로 짧고 크게 별도 조판하며, 제품의 소재·형태·비율·대표 판매 색상은 유지하세요.'
                     raw = G._oai_image(prompt, ref_imgs_b64=refs, size='1024x1024' if thumbnail else '1024x1536', quality=quality)
                     if doc.get('workflow_version')==4:
                         import image_review as R
@@ -357,7 +367,7 @@ def initial(jid):
 
 def action(jid, body):
     kind = body.get('action')
-    if kind not in ('regenerate', 'edit', 'high', 'retry', 'plan','select_photos','back_to_selection','generate_all','recollect'):
+    if kind not in ('regenerate', 'edit', 'high', 'retry', 'plan','select_photos','back_to_selection','generate_all','recollect','remove_asset','replan'):
         raise DraftError('지원하지 않는 작업입니다.')
     instruction = str(body.get('instruction') or '')[:2000].strip()
     with LOCK:

@@ -149,6 +149,31 @@ def action(D,doc,body):
     if kind=='back_to_selection':
         doc.update(status='selecting',phase='selecting',error='',failure_id='',message='사용할 사진을 다시 선택해 주세요.')
         D.save(doc);return D.public(doc)
+    if kind=='remove_asset':
+        asset_id=body.get('asset_id')
+        asset=next((a for a in doc.get('assets',[]) if a.get('id')==asset_id),None)
+        if not asset or asset.get('origin')=='reference':
+            raise D.DraftError('분석 사진을 찾지 못했습니다.')
+        if doc.get('status') not in ('reviewing','partial','done'):
+            raise D.DraftError('문구 확인 단계에서만 분석 사진을 제외할 수 있습니다.')
+        product=[a for a in doc.get('assets',[]) if a.get('selected') and a.get('origin')!='reference' and a.get('id')!=asset_id and a.get('use_as')!='info']
+        if not product:
+            raise D.DraftError('제품 사진은 한 장 이상 남겨야 합니다.')
+        asset['selected']=False;asset['excluded_after_analysis']=True
+        for key,ids in list(doc.get('photo_plan',{}).items()):
+            doc['photo_plan'][key]=[x for x in ids if x!=asset_id]
+        for key,value in list(doc.get('section_photos',{}).items()):
+            if value==asset_id:doc['section_photos'].pop(key,None)
+        doc['refs']=[a['file'] for a in doc['assets'] if a.get('selected') and a.get('use_as')=='product']
+        D.record_progress(doc,f'사진 제외 — {asset.get("view") or asset_id}. 원본은 보존했습니다.')
+        D.save(doc);return D.public(doc)
+    if kind=='replan':
+        if doc.get('status')!='reviewing':
+            raise D.DraftError('문구 확인 단계에서 다시 기획할 수 있습니다.')
+        doc.update(status='running',phase='analysis',error='',message='선택한 사진으로 상품 기획을 다시 만드는 중입니다.',run_started_at=time.time())
+        D.ACTIVE.add(jid);D.save(doc)
+        D.threading.Thread(target=analyze,args=(D,jid),daemon=True).start()
+        return D.public(doc)
     if kind=='select_photos':
         ids=body.get('asset_ids')
         registered={a['id'] for a in doc['assets']}

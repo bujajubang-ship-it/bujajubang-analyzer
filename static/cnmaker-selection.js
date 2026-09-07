@@ -53,7 +53,11 @@ renderSources=function(doc){
 };
 const originalPhoto=sourcePhoto;
 sourcePhoto=function(doc,a){const f=originalPhoto(doc,a);f.querySelector('img').onclick=()=>openPhoto(a.id);f.querySelector('img').style.cursor='zoom-in';
-  if(doc.workflow_version===4)f.querySelector('figcaption').textContent=(a.origin==='reference'?'참고용':a.use_as==='info'?'정보 자료':a.use_as==='product'?'제품 사진':'분석 전')+(a.view?' · '+a.view:'');return f;};
+  if(doc.workflow_version===4){f.querySelector('figcaption').textContent=(a.origin==='reference'?'참고용':a.use_as==='info'?'정보 자료':a.use_as==='product'?'제품 사진':'분석 전')+(a.view?' · '+a.view:'');
+    if(doc.status==='reviewing'&&a.selected&&a.origin!=='reference'){
+      const button=document.createElement('button');button.type='button';button.className='remove-analysis-photo';button.textContent='분석에서 제외';button.onclick=async e=>{e.stopPropagation();if(confirm('이 사진을 분석 결과와 생성 참조에서 제외할까요? 원본 파일은 보존됩니다.'))await selectionAction('remove_asset',{asset_id:a.id});};f.append(button);
+    }
+  }return f;};
 function togglePhoto(id,value){value?photoChoices.add(id):photoChoices.delete(id);renderSources(state);}
 function setAllPhotos(value){photoChoices=new Set(value?state.assets.map(a=>a.id):[]);renderSources(state);}
 async function confirmPhotos(){if(!photoChoices.size)return fail('사용할 실제 상품 사진을 선택해 주세요.');await selectionAction('select_photos',{asset_ids:Array.from(photoChoices),uses:photoUses});}
@@ -95,6 +99,7 @@ renderPlan=function(doc){originalPlan(doc);if(doc.workflow_version!==4)return;
   const add=document.createElement('button');add.type='button';add.textContent='+ 상품정보 항목 추가';add.onclick=()=>addProductInfoRow({label:'',value:''});box.append(add);
   if(doc.form.review_notes?.length){const note=document.createElement('p');note.className='draft-help';note.textContent='문구 검토 참고: '+doc.form.review_notes.join(' / ');box.append(note);}
   const save=document.createElement('button');save.textContent='문구·상품정보 저장';save.onclick=()=>savePlan();box.append(save);
+  const replan=document.createElement('button');replan.type='button';replan.textContent='다시 기획하기';replan.title='현재 선택한 사진을 유지하고 상품 기획만 다시 만듭니다.';replan.onclick=async()=>{if(confirm('현재 선택한 사진으로 핵심장점과 상품정보를 다시 기획할까요?'))await selectionAction('replan');};box.append(replan);
   $('preserve-help').hidden=false;
 };
 function addProductInfoRow(row){
