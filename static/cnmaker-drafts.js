@@ -88,7 +88,7 @@ async function go() {
   if (!url && !files.length) return fail('상품 링크 또는 사진을 등록해 주세요.');
   submitting = true; $('go').disabled = true; fail('');
   try {
-    const result = await api('',{url,images:files,title:$('title').value.trim(),category:$('cat_kitchen').checked?'kitchen':'other',
+    const result = await api('',{url,images:files,title:$('title').value,category:$('cat_kitchen').checked?'kitchen':'other',
       color_request:$('color-request').value.trim(),primary_color:$('primary-color').value.trim(),color_images:colorFiles});
     await openDraft(result.id);
   } catch(error) {fail(error.message);}
@@ -120,6 +120,7 @@ function renderDraft(doc) {
   $('go').disabled = busy || importing || submitting;
   $('draft-name').textContent = doc.title || '저해상도 시안';
   $('draft-status').textContent = doc.message;
+  renderProgress(doc);
   $('draft-warning').textContent = [doc.warning,doc.error].filter(Boolean).join(' ');
   renderSources(doc);
   $('retry-failed').hidden = !doc.error && !doc.sections.some(s => ['error','pending'].includes(s.status));
@@ -217,11 +218,37 @@ async function loadHistory() {
     $('historylist').replaceChildren();
     (data.items||[]).forEach(item=>{
       const row=document.createElement('div');row.className='hrow';
-      const label=document.createElement('span');label.className='hinfo';label.textContent=item.product_name||'이전 상세페이지';
+      const label=document.createElement('span');label.className='hinfo';
+      const name=document.createElement('span');name.textContent=item.product_name||'이전 상세페이지';
+      const date=document.createElement('time');date.className='history-date';date.textContent=item.ts||'날짜 기록 없음';
+      label.append(name,date);
       const link=document.createElement('a');link.href='/cnmaker/api/result?job='+encodeURIComponent(item.job);link.textContent='다운로드';link.download='상세페이지.jpg';row.append(label,link);$('historylist').append(row);
     });
   } catch (_) {$('historylist').textContent='기존 기록을 불러오지 못했습니다. 새로고침해 주세요.';}
 }
+
+function renderProgress(doc) {
+  $('draft-progress').hidden = false;
+  const running=doc.status==='running', message=doc.failed_stage && !running ? doc.failed_stage : doc.message||'';
+  const steps=['사진 수집','사진 분석','상품·색상 기획','이미지 생성'];
+  const stage=doc.sections?.length ? 3 : /정보.*색상|색상.*기획/.test(message) ? 2 : /사진 분석|저장된 분석/.test(message) ? 1 : 0;
+  $('draft-stages').replaceChildren(...steps.map((label,index)=>{
+    const li=document.createElement('li');li.textContent=`${index+1}. ${label}`;
+    li.className=index<stage||doc.status==='done'?'complete':index===stage?'current':'';
+    if(index===stage)li.setAttribute('aria-current','step');return li;
+  }));
+  const completed=(doc.sections||[]).filter(s=>s.status==='done').length;
+  const start=doc.run_started_at||doc.created_at;
+  const elapsed=start?Math.max(0,Math.floor((running?Date.now()/1000:doc.updated)-start)):null;
+  const duration=elapsed===null?'':` · 경과 ${Math.floor(elapsed/60)}분 ${elapsed%60}초`;
+  const updated=doc.updated?new Date(doc.updated*1000).toLocaleTimeString('ko-KR'):'';
+  $('draft-timing').textContent=(stage===3?`이미지 ${completed}/${doc.sections.length}개 완료`:'사진 분석이 끝나면 이미지 생성을 시작합니다.')+duration+(updated?` · 마지막 진행 ${updated}`:'');
+  $('draft-failed-stage').textContent=doc.failed_stage&&!running?'중단 위치: '+doc.failed_stage:'';
+  $('draft-events').replaceChildren(...(doc.progress_events||[]).slice(-8).map(event=>{
+    const li=document.createElement('li');li.textContent=new Date(event.time*1000).toLocaleTimeString('ko-KR')+' · '+event.message;return li;
+  }));
+}
+setInterval(()=>{if(state?.status==='running')renderProgress(state);},1000);
 function sourcePhoto(doc,asset) {
   const figure=document.createElement('figure'),img=document.createElement('img'),caption=document.createElement('figcaption');
   img.src=`${API}/image?id=${encodeURIComponent(doc.id)}&asset=${encodeURIComponent(asset.id)}`;img.loading='lazy';

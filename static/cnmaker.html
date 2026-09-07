@@ -43,7 +43,7 @@ button.go:disabled{background:#d1a0a3;cursor:not-allowed}
 .hrow .hts{font-size:12px;color:#9ca3af}
 .hrow a{font-size:12px;text-decoration:none;background:#1f2937;color:#fff;border-radius:7px;padding:6px 10px;white-space:nowrap}
 .hrow a.t{background:#0891b2}
-</style><link rel="stylesheet" href="/static/cnmaker-drafts.css?v=2"></head><body>
+</style><link rel="stylesheet" href="/static/cnmaker-drafts.css?v=3"></head><body>
 <div class="top" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap"><h1 style="margin:0">🏭 CN메이커 — 부자주방 상세페이지 자동생성</h1><a id="backlink" href="/" style="text-decoration:none;background:#1f2937;color:#fff;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:600;white-space:nowrap">← 소싱 분석기</a></div>
 <script>if(window.self!==window.top){var _b=document.getElementById('backlink');if(_b)_b.style.display='none';}</script>
 <!-- 로고 자동삽입 설정 -->
@@ -58,6 +58,7 @@ button.go:disabled{background:#d1a0a3;cursor:not-allowed}
     <img src="/static/logo_bujajubang.png" style="height:22px" />
     <span id="lg-status" style="color:#059669;font-size:12px"></span>
   </div>
+  <p style="margin:8px 0 0;font-size:12px;color:#64748b">로고 설정은 아래 생성 히스토리의 이전 상세페이지 다운로드에 적용됩니다. 새 시안은 브랜드 로고 없이 생성·다운로드됩니다.</p>
 </div>
 <script>
 function lgLoad(){ fetch('/cnmaker/api/logo_config').then(r=>r.json()).then(c=>{
@@ -71,7 +72,7 @@ function lgSave(){
   const body={enabled:document.getElementById('lg-on').checked,position:document.getElementById('lg-pos').value,
     size_pct:parseInt(document.getElementById('lg-size').value)/100,margin_pct:parseInt(document.getElementById('lg-margin').value)/100};
   fetch('/cnmaker/api/logo_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.json()).then(()=>{
-    const s=document.getElementById('lg-status'); s.textContent='✅ 저장됨 (다음 생성부터 적용)'; setTimeout(()=>s.textContent='',2500);
+    const s=document.getElementById('lg-status'); s.textContent='✅ 저장됨 (이전 상세페이지 다운로드에 적용)'; setTimeout(()=>s.textContent='',2500);
   });
 }
 lgLoad();
@@ -93,7 +94,7 @@ lgLoad();
 
    <!-- 이미지 업로드 모드 -->
    <div id="imgmode">
-     <input class="t" id="title" placeholder="상품명/메모 (선택 — 적으면 카피가 더 정확해져요)">
+     <input class="t" id="title" maxlength="200" placeholder="판매상품명 (입력한 이름을 그대로 사용합니다)">
      <div class="drop" id="drop" role="button" tabindex="0" aria-label="제품 사진 등록">📷 상품 이미지를 끌어다 놓거나 클릭해서 선택<br><span style="font-size:12px">Ctrl+V 붙여넣기 · 끌어놓기 · 최대 10장</span></div>
      <input type="file" id="file" accept="image/*" multiple style="display:none">
      <div class="thumbs" id="thumbs"></div><div id="photo-count">0 / 10장</div>
@@ -115,11 +116,11 @@ lgLoad();
    <div style="display:flex;gap:14px;align-items:center;margin:12px 0 6px;flex-wrap:wrap">
      <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:14px">
        <input type="radio" name="cat" id="cat_kitchen" value="kitchen" checked style="width:18px;height:18px">
-       <span>🍳 <b>주방기구</b> <span style="color:#9ca3af;font-size:12px">(부자주방 로고·빨강 스타일)</span></span>
+       <span>🍳 <b>주방기구</b> <span style="color:#9ca3af;font-size:12px">(밝고 청결한 작업환경)</span></span>
      </label>
      <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:14px">
        <input type="radio" name="cat" id="cat_other" value="other" style="width:18px;height:18px">
-       <span>📦 <b>기타 제품</b> <span style="color:#9ca3af;font-size:12px">(원본 톤 살려 색만 변형, 로고 없음)</span></span>
+       <span>📦 <b>기타 제품</b> <span style="color:#9ca3af;font-size:12px">(제품에 맞는 생활·사용 장면)</span></span>
      </label>
    </div>
    <button class="go" id="go" onclick="go()" style="margin-top:6px">저해상도 시안 만들기</button>
@@ -130,6 +131,12 @@ lgLoad();
  <section class="card" id="draft-result" hidden>
    <h2 id="draft-name">저해상도 시안</h2>
    <div id="draft-status" role="status" aria-live="polite"></div>
+   <div id="draft-progress" class="draft-progress" hidden>
+     <ol id="draft-stages"></ol>
+     <p id="draft-timing"></p>
+     <p id="draft-failed-stage"></p>
+     <details><summary>최근 진행 기록</summary><ol id="draft-events"></ol></details>
+   </div>
    <p id="draft-warning" role="alert"></p>
    <p id="draft-action-error" class="section-error" role="alert"></p>
    <p id="source-summary" class="draft-help"></p>
@@ -158,4 +165,4 @@ lgLoad();
    <div id="historylist" class="note">불러오는 중…</div>
  </div>
 </div>
-<script src="/static/cnmaker-drafts.js?v=2"></script></body></html>
+<script src="/static/cnmaker-drafts.js?v=3"></script></body></html>
