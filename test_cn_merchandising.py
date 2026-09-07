@@ -10,6 +10,33 @@ D=B.D
 
 
 class MerchandisingTests(B.SelectionTests):
+    def test_point_sections_prefer_unused_photo_ids(self):
+        jid=self.review();doc=D.read(jid)
+        for i,a in enumerate(doc['assets']):
+            a.update(id='p'+str(i),usable=True,selected=True,use_as='product',view='full')
+        doc['sections'][3]['reference_ids']=['p0'];doc['sections'][4]['reference_ids']=['p1']
+        self.assertEqual(D.S.choose(doc,5)[0]['id'],'p0')
+        D.save(doc)
+    def test_replan_keeps_selected_photos_and_does_not_generate_images(self):
+        jid=self.review();doc=D.read(jid);selected={a['id'] for a in doc['assets'] if a.get('selected')}
+        D.action(jid,{'action':'replan'});self.run_task();current=D.status(jid)
+        self.assertEqual(current['status'],'reviewing',current.get('error'))
+        self.assertEqual({a['id'] for a in current['assets'] if a.get('selected')},selected)
+        self.generate.assert_not_called()
+    def test_review_can_exclude_analyzed_photo_without_deleting_original(self):
+        jid=self.collect();D.action(jid,{'action':'select_photos','asset_ids':['input-0','input-1']});self.run_task();doc=D.read(jid);asset=doc['assets'][0];original=asset['file']
+        result=D.action(jid,{'action':'remove_asset','asset_id':asset['id']})
+        current=D.read(jid)
+        self.assertFalse(current['assets'][0]['selected'])
+        self.assertTrue(current['assets'][0]['excluded_after_analysis'])
+        self.assertTrue((D.folder(jid)/original).exists())
+        self.assertNotIn(asset['id'],sum(current.get('photo_plan',{}).values(),[]))
+
+    def test_review_cannot_remove_last_product_photo(self):
+        jid=self.review();doc=D.read(jid)
+        for asset in doc['assets'][1:]: asset['selected']=False
+        D.save(doc)
+        with self.assertRaises(D.DraftError):D.action(jid,{'action':'remove_asset','asset_id':doc['assets'][0]['id']})
     def test_edited_summary_invalidates_derived_copy_without_changing_summary(self):
         jid=self.review();doc=D.read(jid)
         original=[dict(p) for p in doc['form']['sellpoints']]

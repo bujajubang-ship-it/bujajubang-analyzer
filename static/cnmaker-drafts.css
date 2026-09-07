@@ -36,3 +36,4 @@ dialog::backdrop {background:#000a}
 .photo-stage:has(.native-size) {justify-content:flex-start}
 
 .product-info-row{display:grid;grid-template-columns:minmax(90px,1fr) minmax(130px,2fr) auto;gap:8px;margin:10px 0;align-items:start}.product-info-row input,.product-info-row textarea{box-sizing:border-box;width:100%;min-width:0}#photo-selection-bottom{margin:16px 0}#photo-selection-bottom .go{margin-top:8px}
+.remove-analysis-photo{display:block;margin:4px auto 0;padding:3px 7px;border:1px solid #d1d5db;border-radius:5px;background:#fff;color:#6b7280;font-size:11px;cursor:pointer}.remove-analysis-photo:hover{color:#b91c1c;border-color:#fca5a5}
