@@ -1,6 +1,7 @@
 /* The restored screen with a draft-first workflow. */
 let job = null, mode = 'url', src = 'cninsider', files = [], state = null;
 let polling = null, importing = false, submitting = false, selected = new Set(), edits = {}, planJob = null;
+let colorFiles = [], pasteTarget = 'product';
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const API = '/cnmaker/api/drafts';
@@ -21,16 +22,18 @@ document.querySelectorAll('.tab').forEach(tab => tab.onclick = () => {
   $('urlmode').hidden = mode !== 'url'; $('urlnote').textContent = NOTES[src] || '';
 });
 $('urlnote').textContent = NOTES.cninsider;
-function renderThumbs() {
-  $('thumbs').replaceChildren();
-  files.forEach((data, index) => {
+function renderThumbs(target='product') {
+  const colors = target === 'color', list = colors ? colorFiles : files;
+  const container = $(colors ? 'color-thumbs' : 'thumbs');
+  container.replaceChildren();
+  list.forEach((data, index) => {
     const box = document.createElement('div'); box.className = 'thumb';
-    const img = document.createElement('img'); img.src = data; img.alt = `제품 사진 ${index+1}`;
+    const img = document.createElement('img'); img.src = data; img.alt = `${colors?'색상 기준':'제품'} 사진 ${index+1}`;
     const button = document.createElement('button'); button.type = 'button'; button.className = 'x'; button.textContent = '×'; button.setAttribute('aria-label',`사진 ${index+1} 삭제`);
-    button.onclick = event => {event.stopPropagation(); if (!importing) {files.splice(index,1);renderThumbs();}};
-    box.append(img,button); $('thumbs').append(box);
+    button.onclick = event => {event.stopPropagation(); if (!importing) {list.splice(index,1);renderThumbs(target);}};
+    box.append(img,button); container.append(box);
   });
-  $('photo-count').textContent = `${files.length} / 10장`;
+  $(colors ? 'color-photo-count' : 'photo-count').textContent = `${list.length} / ${colors?3:10}장`;
 }
 async function normalizePhoto(file) {
   if (file.size > 20*1024*1024) throw new Error('사진 한 장은 20MB 이하로 선택해 주세요.');
@@ -43,24 +46,40 @@ async function normalizePhoto(file) {
     return canvas.toDataURL('image/jpeg',0.88);
   } finally {URL.revokeObjectURL(url);}
 }
-async function addFiles(list) {
+async function addFiles(list, target='product') {
   if (importing) return fail('사진을 등록하고 있습니다. 잠시만 기다려 주세요.');
   const images = Array.from(list).filter(f => f.type.startsWith('image/'));
-  if (images.length + files.length > 10) return fail('사진은 최대 10장입니다. 기존 사진을 삭제한 뒤 등록해 주세요.');
+  const destination = target === 'color' ? colorFiles : files, maximum = target === 'color' ? 3 : 10;
+  if (images.length + destination.length > maximum) return fail(`${target==='color'?'색상 기준':'제품'} 사진은 최대 ${maximum}장입니다. 기존 사진을 삭제한 뒤 등록해 주세요.`);
   importing = true; $('go').disabled = true; fail('');
-  try {for (const file of images) files.push(await normalizePhoto(file));}
+  try {for (const file of images) destination.push(await normalizePhoto(file));}
   catch(error) {fail(error.message || '읽을 수 없는 사진입니다. JPG·PNG·WebP를 사용해 주세요.');}
-  finally {importing = false; $('go').disabled = submitting || state?.status === 'running'; renderThumbs(); $('file').value = '';}
+  finally {importing = false; $('go').disabled = submitting || state?.status === 'running'; renderThumbs(target); $(target==='color'?'color-file':'file').value = '';}
 }
-$('drop').onclick = () => $('file').click();
+$('drop').onclick = () => {pasteTarget='product';$('file').click();};
+$('drop').onfocus = () => {pasteTarget='product';};
 $('drop').onkeydown = event => {if (event.key === 'Enter' || event.key === ' ') {event.preventDefault();$('file').click();}};
 $('file').onchange = event => addFiles(event.target.files);
 ['dragenter','dragover'].forEach(name => $('drop').addEventListener(name,event => {event.preventDefault();$('drop').classList.add('over');}));
 ['dragleave','drop'].forEach(name => $('drop').addEventListener(name,event => {event.preventDefault();$('drop').classList.remove('over');}));
 $('drop').addEventListener('drop',event => addFiles(event.dataTransfer.files));
+$('color-drop').onclick = () => {pasteTarget='color';$('color-drop').focus();};
+$('color-pick').onclick = () => {pasteTarget='color';$('color-file').click();};
+$('color-drop').onfocus = () => {pasteTarget='color';};
+$('color-drop').onkeydown = event => {if (event.key==='Enter'||event.key===' ') {event.preventDefault();$('color-file').click();}};
+$('color-file').onchange = event => addFiles(event.target.files,'color');
+['dragenter','dragover'].forEach(name=>$('color-drop').addEventListener(name,event=>{event.preventDefault();$('color-drop').classList.add('over');}));
+['dragleave','drop'].forEach(name=>$('color-drop').addEventListener(name,event=>{event.preventDefault();$('color-drop').classList.remove('over');}));
+$('color-drop').addEventListener('drop',event=>{pasteTarget='color';addFiles(event.dataTransfer.files,'color');});
+document.addEventListener('focusin',event=>{
+  if(event.target.closest('.color-settings')) pasteTarget='color';
+  else if(event.target.closest('#imgmode') || event.target.closest('#urlmode')) pasteTarget='product';
+  $('color-drop').classList.toggle('paste-active',pasteTarget==='color');
+  $('drop').classList.toggle('paste-active',pasteTarget==='product');
+});
 document.addEventListener('paste',event => {
   const images = Array.from(event.clipboardData?.items || []).filter(item => item.type.startsWith('image/')).map(item => item.getAsFile()).filter(Boolean);
-  if (images.length) {event.preventDefault();addFiles(images);}
+  if (images.length) {event.preventDefault();addFiles(images,pasteTarget);}
 });
 async function go() {
   if (importing || submitting) return;
@@ -69,7 +88,8 @@ async function go() {
   if (!url && !files.length) return fail('상품 링크 또는 사진을 등록해 주세요.');
   submitting = true; $('go').disabled = true; fail('');
   try {
-    const result = await api('',{url,images:files,title:$('title').value.trim(),category:$('cat_kitchen').checked?'kitchen':'other'});
+    const result = await api('',{url,images:files,title:$('title').value.trim(),category:$('cat_kitchen').checked?'kitchen':'other',
+      color_request:$('color-request').value.trim(),primary_color:$('primary-color').value.trim(),color_images:colorFiles});
     await openDraft(result.id);
   } catch(error) {fail(error.message);}
   finally {submitting = false; $('go').disabled = importing || state?.status === 'running';}
@@ -101,6 +121,7 @@ function renderDraft(doc) {
   $('draft-name').textContent = doc.title || '저해상도 시안';
   $('draft-status').textContent = doc.message;
   $('draft-warning').textContent = [doc.warning,doc.error].filter(Boolean).join(' ');
+  renderSources(doc);
   $('retry-failed').hidden = !doc.error && !doc.sections.some(s => ['error','pending'].includes(s.status));
   $('retry-failed').disabled = busy;
   $('high-selected').disabled = busy; $('select-all').disabled = busy;
@@ -121,6 +142,13 @@ function renderDraft(doc) {
         button.disabled = busy || (['edit','high'].includes(button.dataset.kind) && !section.low);
         button.onclick = () => runAction(button.dataset.kind,[i],edits[i] || '');
       });
+      if (section.reference_ids?.length) {
+        const detail=document.createElement('details');detail.className='section-sources';
+        const summary=document.createElement('summary');summary.textContent=`이 구간에 사용한 제품 사진 ${section.reference_ids.length}장`;
+        const grid=document.createElement('div');grid.className='source-grid';
+        for(const id of section.reference_ids) {const asset=doc.assets?.find(a=>a.id===id);if(asset)grid.append(sourcePhoto(doc,asset));}
+        detail.append(summary,grid);card.querySelector('.draft-controls').append(detail);
+      }
       $('section-list').append(card);
     });
   }
@@ -129,7 +157,9 @@ function renderDraft(doc) {
 }
 function renderPlan(doc) {
   const form = doc.form;
-  $('plan-fields').innerHTML = ['product_name','option','size','mood'].map((key,i)=>`<label>${['상품명','색상·옵션','규격','분위기'][i]}<input data-field="${key}" value="${esc(form[key])}"></label>`).join('') + [0,1,2].map(i=>`<label>핵심장점 ${i+1}<input data-point-title="${i}" value="${esc(form.sellpoints?.[i]?.title)}"><textarea data-point-desc="${i}">${esc(form.sellpoints?.[i]?.desc)}</textarea></label>`).join('');
+  $('plan-fields').innerHTML = ['product_name','option','size','mood'].map((key,i)=>`<label>${['상품명','색상·옵션 안내 문구','규격','분위기'][i]}<input data-field="${key}" value="${esc(form[key])}"></label>`).join('') +
+    `<label>판매 색상 지정<input data-field="color_request" maxlength="300" placeholder="아이보리, 블랙" value="${esc(doc.color_request)}"></label><label>대표 색상<input data-field="primary_color" maxlength="60" value="${esc(doc.primary_color)}"></label>` +
+    [0,1,2].map(i=>`<label>핵심장점 ${i+1}<input data-point-title="${i}" value="${esc(form.sellpoints?.[i]?.title)}"><textarea data-point-desc="${i}">${esc(form.sellpoints?.[i]?.desc)}</textarea></label>`).join('');
   $('plan-editor').hidden = false;
 }
 async function savePlan() {
@@ -145,7 +175,7 @@ async function runAction(action,indices=[],instruction='',form) {
   try {
     const result = await api('/action?id='+encodeURIComponent(job),{action,indices,instruction,form});
     state = result; renderDraft(result);
-    if (action === 'plan') $('plan-message').textContent = '저장했습니다. 이후 다시 만드는 구간에 적용됩니다.';
+    if (action === 'plan') {renderPlan(result);$('plan-message').textContent = '저장했습니다. 이후 다시 만드는 구간에 적용됩니다.';}
     await poll();
   } catch(error) {fail(error.message);}
   finally {submitting = false; $('go').disabled = importing || state?.status === 'running';}
@@ -192,5 +222,22 @@ async function loadHistory() {
     });
   } catch (_) {$('historylist').textContent='기존 기록을 불러오지 못했습니다. 새로고침해 주세요.';}
 }
-loadHistory();loadDraftHistory();renderThumbs();
+function sourcePhoto(doc,asset) {
+  const figure=document.createElement('figure'),img=document.createElement('img'),caption=document.createElement('figcaption');
+  img.src=`${API}/image?id=${encodeURIComponent(doc.id)}&asset=${encodeURIComponent(asset.id)}`;img.loading='lazy';
+  img.alt=asset.description || '참고 사진';
+  caption.textContent=`${asset.origin==='color'?'색상 기준':asset.origin==='link'?'링크':'직접 등록'} · ${asset.usable===false?'다른 제품 등으로 제외':asset.view || ''} ${asset.colors?.join(', ') || ''}`;
+  figure.title=asset.description || '';figure.append(img,caption);return figure;
+}
+function renderSources(doc) {
+  const stats=doc.source_summary;
+  $('source-summary').textContent=stats?`링크 사진 ${stats.link}장 · 직접 등록 ${stats.upload}장 · 제품 참고 ${stats.usable}장${stats.excluded?` · 제외 ${stats.excluded}장`:''}${doc.color_request || doc.color_samples?.length?` / 판매 색상: ${doc.form.option} / 대표: ${doc.primary_color}`:''}`:'';
+  const assets=[...(doc.assets || []),...(doc.color_samples || []).map(id=>({id,origin:'color'}))];
+  $('source-gallery').hidden=!assets.length;
+  const signature=JSON.stringify([doc.id,assets]);
+  if($('source-photo-list').dataset.signature===signature)return;
+  $('source-photo-list').dataset.signature=signature;$('source-photo-list').replaceChildren();
+  assets.forEach(asset=>$('source-photo-list').append(sourcePhoto(doc,asset)));
+}
+loadHistory();loadDraftHistory();renderThumbs();renderThumbs('color');
 try {const previous=localStorage.getItem('cnmaker-draft-job');if(previous)openDraft(previous);} catch (_) {}
