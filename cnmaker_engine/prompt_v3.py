@@ -92,8 +92,10 @@ def validate_form(value):
 
 
 def request_json(P, content, tokens, validate, path, label, progress):
-    """Cache only validated responses; one bounded retry on malformed model output."""
-    key = hashlib.sha256(json.dumps(content, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+    """Cache only validated responses; three total attempts on malformed model output."""
+    identity = getattr(P, "ANALYSIS_CACHE_ID", "legacy")
+    identity = identity if isinstance(identity, str) else "legacy"
+    key = hashlib.sha256(json.dumps({"ai": identity, "content": content}, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
     target = Path(path) / ('analysis-v3-' + key + '.json')
     if target.exists():
         try:
