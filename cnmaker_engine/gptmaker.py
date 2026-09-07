@@ -29,12 +29,21 @@ def _solve_captcha(b64, mime):
     # 가장 긴 토큰(보통 캡차 코드)
     return max(m, key=len) if m else ""
 
+def _dismiss_login_notices(pg):
+    """Dismiss closable notices that would otherwise cover the login button."""
+    for dialog in pg.locator('.el-dialog__wrapper:visible').all():
+        close = dialog.locator('button.el-dialog__headerbtn:visible')
+        if close.count():
+            close.first.click(timeout=4000)
+
+
 def _do_captcha_login(pg):
     """로그인 페이지에서 캡차 풀어 로그인. 성공 여부 반환."""
     pg.goto("https://www.cninsider.co.kr/mall/#/login", wait_until="domcontentloaded", timeout=40000)
     pg.wait_for_timeout(3500)
     for att in range(6):
-        info=pg.eval_on_selector_all("img[src^='data:image']","els=>els.map(e=>({w:e.naturalWidth,src:e.src}))")
+        _dismiss_login_notices(pg)
+        info=pg.eval_on_selector_all("img[src^='data:image']","els=>els.filter(e=>e.getClientRects().length).map(e=>({w:e.naturalWidth,src:e.src}))")
         if not info: pg.wait_for_timeout(1500); continue
         cap=max(info,key=lambda x:x['w'])
         b64=cap['src'].split(",",1)[1]; raw=base64.b64decode(b64)
@@ -44,13 +53,13 @@ def _do_captcha_login(pg):
         elif raw[:4]==b"GIF8": mime="image/gif"
         elif raw[:4]==b"RIFF": mime="image/webp"
         else: mime="image/jpeg"
-        code=_solve_captcha(b64,mime); log(f"캡차[{att+1}]: {code} (mime={mime})")
-        ins=pg.query_selector_all("input.el-input__inner")
+        code=_solve_captcha(b64,mime); log(f"로그인 인증 이미지 판독 {att+1}회")
+        ins=[el for el in pg.query_selector_all("input.el-input__inner") if el.is_visible()]
         if len(ins)<3: pg.wait_for_timeout(1500); continue
         ins[0].fill(ENV["CN_ID"]); ins[1].fill(ENV["CN_PW"]); ins[2].fill(code)
         pg.wait_for_timeout(400)
-        try: pg.click("button.logo_btn", timeout=6000)
-        except: pass
+        _dismiss_login_notices(pg)
+        pg.click("button.logo_btn:visible", timeout=6000)
         pg.wait_for_timeout(4500)
         if "login" not in pg.url.lower():
             log("로그인 성공·세션저장"); pg.context.storage_state(path=P.STATE); return True
@@ -58,12 +67,12 @@ def _do_captcha_login(pg):
         try:
             for im in pg.query_selector_all("img[src^='data:image']"):
                 bb=im.bounding_box()
-                if bb and bb["width"]>150: im.click(); break
+                if bb and im.is_visible() and bb["width"]>150: im.click(); break
         except: pass
         pg.wait_for_timeout(1500)
     return False
 
-def login_and_scrape(url):
+def login_and_scrape(url, include_details=False):
     """상품 페이지 기준으로 로그인 검증 → 막히면 캡차 로그인 → 스크랩."""
     from playwright.sync_api import sync_playwright
     url=normalize_url(url)
@@ -72,8 +81,14 @@ def login_and_scrape(url):
         ctx=b.new_context(storage_state=P.STATE if os.path.exists(P.STATE) else None,
                           viewport={"width":1366,"height":3000},locale="ko-KR")
         pg=ctx.new_page()
+        if include_details:
+            from source_photos import open_product
+            try:
+                return open_product(pg, url, _do_captcha_login, log)
+            finally:
+                b.close()
         pg.goto(url, wait_until="domcontentloaded", timeout=60000); pg.wait_for_timeout(6000)
-        if "login" in pg.url.lower():   # 세션 만료 → 상품페이지가 로그인으로 튕김
+        if "login" in pg.url.lower():
             log("상품페이지 접근에 로그인 필요 → 캡차 로그인")
             if not _do_captcha_login(pg):
                 b.close(); raise RuntimeError("로그인 실패")
@@ -116,7 +131,10 @@ def _oai_image(prompt, ref_imgs_b64=None, size="1024x1536", quality="high"):
         add_field("size", size)
         add_field("quality", quality)
         add_field("n", "1")
-        for i,(mime,b64) in enumerate(ref_imgs_b64[:4]):
+        # https://developers.openai.com/api/reference/resources/images/methods/edit
+        if len(ref_imgs_b64) > 16:
+            raise ValueError("참고 이미지는 최대 16장입니다. 사진 선택을 확인해 주세요.")
+        for i,(mime,b64) in enumerate(ref_imgs_b64):
             ext = "png" if "png" in mime else "jpg"
             add_file("image[]", f"ref{i}.{ext}", mime, base64.b64decode(b64))
         parts.append(f'--{boundary}--\r\n'.encode())

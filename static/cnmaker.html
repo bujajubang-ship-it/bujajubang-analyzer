@@ -43,7 +43,7 @@ button.go:disabled{background:#d1a0a3;cursor:not-allowed}
 .hrow .hts{font-size:12px;color:#9ca3af}
 .hrow a{font-size:12px;text-decoration:none;background:#1f2937;color:#fff;border-radius:7px;padding:6px 10px;white-space:nowrap}
 .hrow a.t{background:#0891b2}
-</style><link rel="stylesheet" href="/static/cnmaker-drafts.css?v=1"></head><body>
+</style><link rel="stylesheet" href="/static/cnmaker-drafts.css?v=2"></head><body>
 <div class="top" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap"><h1 style="margin:0">🏭 CN메이커 — 부자주방 상세페이지 자동생성</h1><a id="backlink" href="/" style="text-decoration:none;background:#1f2937;color:#fff;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:600;white-space:nowrap">← 소싱 분석기</a></div>
 <script>if(window.self!==window.top){var _b=document.getElementById('backlink');if(_b)_b.style.display='none';}</script>
 <!-- 로고 자동삽입 설정 -->
@@ -100,6 +100,18 @@ lgLoad();
      <div class="note">실제 판매하는 제품 사진을 올려주세요. 상품 링크와 사진을 함께 등록할 수 있습니다.</div>
    </div>
 
+   <fieldset class="color-settings">
+     <legend>판매할 색상 지정 (선택)</legend>
+     <label>판매 색상<input id="color-request" maxlength="300" placeholder="예: 아이보리, 블랙, 연핑크 — 여러 색상은 쉼표로 구분"></label>
+     <label>대표 색상<input id="primary-color" maxlength="60" placeholder="예: 아이보리 — 비워두면 첫 번째 판매 색상"></label>
+     <p class="draft-help">링크 사진은 다른 색상이어도 구도·착용 모습·디테일을 활용하고, 제품 색상만 지정한 색으로 바꿉니다. 일반 구간은 대표 색상, 컬러 안내는 판매 색상 전체를 보여줍니다.</p>
+     <div id="color-drop" class="drop" role="button" tabindex="0" aria-label="색상 기준 사진 등록">🎨 색상 기준 캡처 붙여넣기<br><span style="font-size:12px">이 칸을 클릭한 뒤 Ctrl+V · 끌어놓기 · 최대 3장</span></div>
+     <button id="color-pick" type="button">색상 기준 사진 선택</button>
+     <input type="file" id="color-file" accept="image/*" multiple hidden>
+     <div id="color-thumbs" class="thumbs"></div><div id="color-photo-count">0 / 3장</div>
+     <p class="draft-help">색상명 또는 캡처만 등록해도 됩니다. 캡처는 원하는 색이 잘 보이는 부분으로 잘라주세요. 이름과 캡처를 함께 넣으면 이름으로 판매 색상을 정하고 캡처로 색조를 맞춥니다. 캡처의 구도는 따라하지 않습니다. 모두 비우면 원본 색상을 유지합니다.</p>
+   </fieldset>
+
    <div style="display:flex;gap:14px;align-items:center;margin:12px 0 6px;flex-wrap:wrap">
      <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:14px">
        <input type="radio" name="cat" id="cat_kitchen" value="kitchen" checked style="width:18px;height:18px">
@@ -120,6 +132,8 @@ lgLoad();
    <div id="draft-status" role="status" aria-live="polite"></div>
    <p id="draft-warning" role="alert"></p>
    <p id="draft-action-error" class="section-error" role="alert"></p>
+   <p id="source-summary" class="draft-help"></p>
+   <details id="source-gallery" hidden><summary>수집한 제품 사진과 색상 기준 확인</summary><div id="source-photo-list" class="source-grid"></div></details>
    <p class="draft-help">먼저 구도와 분위기를 확인하세요. 필요한 구간만 수정한 뒤 고화질로 완성할 수 있습니다. 고화질 생성·부분 수정 시 세부 모습이 조금 달라질 수 있습니다.</p>
    <details id="plan-editor" hidden><summary>상품 정보·글 기획 확인 및 수정</summary>
      <div id="plan-fields"></div><button id="save-plan" onclick="savePlan()">기획 저장</button>
@@ -144,4 +158,4 @@ lgLoad();
    <div id="historylist" class="note">불러오는 중…</div>
  </div>
 </div>
-<script src="/static/cnmaker-drafts.js?v=1"></script></body></html>
+<script src="/static/cnmaker-drafts.js?v=2"></script></body></html>

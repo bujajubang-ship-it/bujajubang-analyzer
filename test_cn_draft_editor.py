@@ -1,6 +1,7 @@
 import base64
 import io
 import json
+import re
 from pathlib import Path
 import sys
 import tempfile
@@ -35,13 +36,22 @@ class DraftEditorTests(unittest.TestCase):
         class Thread:
             def __init__(self, target, args=(), **kwargs): self.target, self.args = target, args
             def start(self): tasks.append((self.target, self.args))
-        self.patches = [patch.object(D, 'ROOT', Path(self.temp.name)), patch.object(D, 'ACTIVE', set()),
+        self.patches = [patch.object(D.G, 'log'), patch.object(D, 'ROOT', Path(self.temp.name)), patch.object(D, 'ACTIVE', set()),
                         patch.object(D.threading, 'Thread', Thread), patch.object(D.time, 'sleep'),
-                        patch.object(D.G.P, '_claude', return_value=json.dumps(FORM)),
+                        patch.object(D.G.P, '_claude', side_effect=self.analysis),
                         patch.object(D.G, '_oai_image', return_value=picture())]
         self.mocks = [p.start() for p in self.patches]
         self.addCleanup(lambda: [p.stop() for p in reversed(self.patches)])
         self.generate = self.mocks[-1]
+
+    @staticmethod
+    def analysis(content, *args):
+        identifiers = [re.search(r'id=([^;]+);', row.get('text', '')) for row in content]
+        identifiers = [match.group(1) for match in identifiers if match]
+        if identifiers:
+            return json.dumps({'photos': [dict(id=ident, usable=True, description='같은 제품의 다른 구도',
+                role='product', view=ident, colors=['흰색'], sections=[0,7,8]) for ident in identifiers]})
+        return json.dumps(FORM)
 
     def create(self, count=1, finish=True):
         jid = D.create({'images': [base64.b64encode(picture()).decode()] * count})['id']
@@ -62,7 +72,9 @@ class DraftEditorTests(unittest.TestCase):
         self.assertTrue(all(s['low'] and not s['high'] for s in doc['sections']))
         self.assertEqual(Image.open(io.BytesIO(D.image_bytes(jid, 0, 'low'))).width, 430)
         # All ten uploaded photos are attached to the product analysis.
-        self.assertEqual(len(self.mocks[-2].call_args.args[0]), 11)
+        photo_calls = [call for call in self.mocks[-2].call_args_list if '분석 대상 id=' in str(call)]
+        self.assertEqual(len(photo_calls), 1)
+        self.assertEqual(sum(row['type']=='image' for row in photo_calls[0].args[0]), 11)  # ten views + identity anchor
 
     def test_only_selected_sections_use_high_and_existing_drafts_survive(self):
         jid = self.create()
