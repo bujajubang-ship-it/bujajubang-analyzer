@@ -43,7 +43,7 @@ def image_candidates(rows):
         src = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, path, '', ''))
         width, height = int(row.get('w') or 0), int(row.get('h') or 0)
         hint = str(row.get('hint') or '')[:160]
-        role = 'option' if re.search(r'sku|option|spec|색상|옵션|规格|颜色', hint, re.I) else 'detail' if height > width * 1.35 and width else 'product'
+        role = 'option' if re.search(r'sku|option|spec|color-line|color-cell|info-color|색상|옵션|规格|颜色', hint, re.I) else 'detail' if 'info-html' in hint or (height > width * 1.35 and width) else 'product'
         if width and height and max(width, height) < (32 if role == 'option' else 100):
             continue
         item = dict(url=src, hint=hint, role=role)
@@ -62,19 +62,19 @@ def image_candidates(rows):
 def collect_page(page):
     rows = []
     scan = r'''() => {
-      const out=[];
+      const out=[],root=document.querySelector('.productinfo')||document;
       const collect=(el,src,w,h)=>{
         if(!src) return;
         const parents=[];for(let p=el;p&&p!==document.body&&parents.length<8;p=p.parentElement)parents.push(p);
         const hint=parents.map(p=>String(p.className||'')+' '+(p.id||'')).join(' ');
-        const excluded=parents.some(p=>/recommend|related|hot-list|card-item-container|猜你喜欢|推荐/.test(String(p.className||'')+' '+(p.id||'')));
+        const excluded=parents.some(p=>/recommend|related|hot-list|card-item-container|sellcarousel|sell-content|猜你喜欢|推荐/.test(String(p.className||'')+' '+(p.id||'')));
         out.push({src,w,h,hint:hint+' '+(el.alt||''),excluded});
       };
-      document.querySelectorAll('img').forEach(el=>{
+      root.querySelectorAll('img').forEach(el=>{
         ['currentSrc','src','data-src','data-lazy-src','data-original'].forEach(k=>collect(el,el[k]||el.getAttribute(k),el.naturalWidth||el.width,el.naturalHeight||el.height));
         [el.srcset,el.getAttribute('data-srcset')].filter(Boolean).forEach(s=>s.split(',').forEach(x=>collect(el,x.trim().split(/\s+/)[0],0,0)));
       });
-      document.querySelectorAll('[style*="background"]').forEach(el=>{
+      root.querySelectorAll('[style*="background"]').forEach(el=>{
         const m=getComputedStyle(el).backgroundImage.match(/url\(["']?(.*?)["']?\)/);
         if(m) collect(el,m[1],el.clientWidth,el.clientHeight);
       });
