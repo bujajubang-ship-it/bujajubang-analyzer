@@ -10,6 +10,26 @@ D=B.D
 
 
 class MerchandisingTests(B.SelectionTests):
+    def test_edited_summary_invalidates_derived_copy_without_changing_summary(self):
+        jid=self.review();doc=D.read(jid)
+        original=[dict(p) for p in doc['form']['sellpoints']]
+        first=M.section_copy(doc,D.G,D.folder(jid),lambda s:None)
+        count=self.mocks[-2].call_count
+        M.section_copy(doc,D.G,D.folder(jid),lambda s:None)
+        self.assertEqual(self.mocks[-2].call_count,count)
+        self.assertEqual(doc['form']['sellpoints'],original)
+        doc['form']['sellpoints'][0]['desc']='새로 확정한 장점 설명'
+        M.section_copy(doc,D.G,D.folder(jid),lambda s:None)
+        self.assertEqual(self.mocks[-2].call_count,count+1)
+        self.assertIn('새로 확정한 장점 설명',self.mocks[-2].call_args.args[0][0]['text'])
+        with patch.object(L,'lines',wraps=L.lines) as draw:
+            L.compose(doc,1,[doc['assets'][0]],D.folder(jid),'low',D.G)
+        self.assertIn('새로 확정한 장점 설명',[c.args[0] for c in draw.call_args_list])
+        with patch.object(L,'lines',wraps=L.lines) as draw:
+            L.compose(doc,3,[doc['assets'][0]],D.folder(jid),'low',D.G)
+        self.assertIn(first['details'][0]['desc'],[c.args[0] for c in draw.call_args_list])
+        self.assertNotIn('새로 확정한 장점 설명',[c.args[0] for c in draw.call_args_list])
+
     def test_specs_are_editable_and_empty_values_stay_empty(self):
         jid=self.review();form=dict(D.read(jid)['form'])
         form['product_info']=[{'label':'제조국','value':''},{'label':'소재','value':'면 80%'}]

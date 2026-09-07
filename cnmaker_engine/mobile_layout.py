@@ -10,6 +10,7 @@ import prompt_v3 as V
 
 def prompt(form,index,action='',instruction='',current=False):
     mapped=10 if index==9 else index
+    if index==0:form=dict(form,sellpoints=[])
     text=V.image_prompt(form,mapped,action,instruction,current)
     rules={0:'HERO는 큰 메인 사진 한 장과 상품명·짧은 핵심 문구만. 확대컷·디테일컷·원형 인셋·작은 사진·아이콘을 절대 넣지 마세요.',
         1:'모바일 한 열에 CHECK POINT 3개를 세로로 배치. 오른쪽 큰 사진 없음. 글자는 크고 설명은 짧게.',
@@ -74,7 +75,7 @@ def lines(text,width,size):
 
 def compose(doc,index,chosen,path,quality,G,instruction=''):
     """Photo pixels are pasted, not regenerated, unless color conversion is requested."""
-    points=doc['form'].get('sellpoints',[])
+    points=doc['form'].get('sellpoints',[]) if index==1 else doc.get('section_copy',{}).get('details',doc['form'].get('sellpoints',[]))
     if index==1:
         heights=[max(360,80+len(lines(p['title'],750,48))*62+len(lines(p['desc'],750,32))*45+60) for p in points[:3]]
         canvas=Image.new('RGB',(860,200+sum(heights)),'white');draw=ImageDraw.Draw(canvas)

@@ -1,4 +1,6 @@
 """Consumer copy instructions and editable category-specific specifications."""
+import hashlib
+import json
 COPY_RULES = '''
 [최우선 한국 소비자용 작문 규칙]
 사진 원문은 직역하지 말고 한국 쇼핑몰에서 일상적으로 쓰는 표현으로 의역한다.
@@ -52,3 +54,35 @@ def recommend(form):
     elif any(k in kind for k in ('스포츠','운동','sports')):labels+=['무게','사용 방법']
     values={'상품명':form.get('product_name',''),'컬러':form.get('option',''),'사이즈':form.get('size','')}
     return [{'label':k,'value':values.get(k,'')} for k in labels]
+
+
+def section_copy(doc, G, path, progress):
+    """Derive hero/detail copy from the latest reviewed summary, without changing it."""
+    import prompt_v3 as V
+    source={'version':'section-copy-v1','model':getattr(G.P,'ANALYSIS_CACHE_ID','legacy'),'product_name':doc['form']['product_name'],'sellpoints':doc['form']['sellpoints'],
+            'evidence':[{'description':a.get('description',''),'translation':a.get('translation','')}
+                        for a in doc.get('assets',[]) if a.get('selected',True) and a.get('usable') and a.get('origin')!='reference']}
+    key=hashlib.sha256(json.dumps(source,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
+    if doc.get('section_copy_key')==key and doc.get('section_copy'):return doc['section_copy']
+    prompt='''[구간별 문구 변주]
+사용자가 확정한 핵심 장점 3개를 기준으로 구간별 문구를 작성한다.
+2번 CHECK POINT 3개 요약에는 확정 문구를 그대로 사용하므로 절대 수정하지 않는다.
+HERO는 핵심 가치를 하나로 함축한 2~3단어(띄어쓰기 기준)의 짧은 문구 한 개만 작성한다.
+CHECK POINT 01~03은 각각 대응하는 확정 장점을 고객이 이해하기 쉬운 일상적 말로 확장한다.
+제목은 요약 제목과 다르게 쓰고, 설명은 2~3문장으로 구체적인 사용 장면과 느낌을 상상력 있게 풀어 쓴다.
+원문 번역의 장점과 구조를 활용해 풍부하게 작문한다. 요약 문장을 그대로 복사하거나 세 구간을 같은 내용으로 쓰지 않는다.
+사용자가 지운 장점이나 반대 의미를 다시 넣지 말고 확정 장점의 의도를 최우선으로 한다.
+없는 수치·인증·시험 결과·의학적 효능·소재·구성품은 만들어내지 않는다.
+JSON 객체 하나만 반환: {"hero":"두세 단어 문구","details":[{"title":"확장 제목","desc":"확장 설명"}, ... 총 3개]}.
+'''+json.dumps(source,ensure_ascii=False)
+    def validate(value):
+        if not isinstance(value.get('hero'),str) or not 2<=len(value['hero'].split())<=3:
+            raise V.AnalysisFormatError('HERO 문구는 2~3단어여야 합니다.')
+        V.validate_form({'sellpoints':value.get('details')})
+        for point,summary in zip(value['details'],source['sellpoints']):
+            if point['title'].strip()==summary['title'].strip() or point['desc'].strip()==summary['desc'].strip():
+                raise V.AnalysisFormatError('개별 CHECK POINT는 요약과 다른 확장 문구가 필요합니다.')
+    progress('구간별 문구 작성 중 — HERO 압축·CHECK POINT 설명 확장')
+    result=V.request_json(G.P,[{'type':'text','text':prompt}],4000,validate,path,'구간별 문구',progress)
+    doc.update(section_copy_key=key,section_copy=result)
+    return result

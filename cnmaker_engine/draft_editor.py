@@ -236,6 +236,7 @@ def prompt_for(doc, index, action='', instruction='', current=False):
     form = dict(doc['form'], brand='', product_name=doc.get('submitted_title') or doc['title'])
     if doc.get('workflow_version')==4:
         from mobile_layout import prompt
+        form['section_copy']=doc.get('section_copy',{})
         return prompt(form,index,action,instruction,current)
     return V3.image_prompt(form, index, action, instruction, current)
 
@@ -248,6 +249,11 @@ def generate(jid, index, action, instruction=''):
         thumbnail=index==(9 if doc.get('workflow_version')==4 else 10)
         section.update(status='running', error='', failed_action=action)
         record_progress(doc, f'{index + 1}/{len(titles)} 구간 · {titles[index]} {"고화질" if action == "high" else "부분 수정" if action == "edit" else "저해상도"} 생성 중')
+    if doc.get('workflow_version')==4 and index in (0,3,4,5):
+        import merchandising as M
+        def copy_progress(message):
+            with LOCK:record_progress(doc,message)
+        M.section_copy(doc,G,folder(jid),copy_progress)
     chosen = S.choose(doc, 10 if thumbnail else index)
     if not chosen:
         raise DraftError('제품 참고 사진이 없습니다. 사진 수집을 다시 시도해 주세요.')
@@ -271,6 +277,8 @@ def generate(jid, index, action, instruction=''):
         prompt += '\n첫 제품 참고 사진을 이 구간의 큰 구도·크기·착용 방식 기준으로 사용하세요. 제품 형태는 그대로, 포즈·패션·배경만 자연스럽게 변형하세요.'
     if doc.get('workflow_version')==4:
         prompt += '\n내부 번역 자료는 의미 이해에만 참고하세요. 실제 출력 문구는 사용자가 확정한 기획을 우선하고, 사진 속 원문이나 직역 문장을 그대로 출력하지 마세요: '+json.dumps({a['id']:doc.get('translations',{}).get(a['id'],a.get('translation','')) for a in chosen},ensure_ascii=False)
+    if doc.get('workflow_version')==4 and index==0:
+        prompt+='\nHERO 최종 문구 규칙: 상품명과 다음 2~3단어 문구만 출력. 핵심 장점 3개·설명·번역 원문·디테일 인셋을 추가하지 마세요: '+doc.get('section_copy',{}).get('hero','')
     if instruction:
         prompt += '\n현재 수정 요청(판매 색상 설정을 바꾸려면 상품 정보에서 변경): ' + instruction
     with LOCK:
