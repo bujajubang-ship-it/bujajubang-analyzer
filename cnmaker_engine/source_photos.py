@@ -9,7 +9,7 @@ import urllib.request
 
 from PIL import Image, ImageOps
 
-MAX_SOURCES = 32
+MAX_SOURCES = 48
 MAX_ASSETS = 64
 MAX_PRODUCT_REFS = 12  # Leaves room for three color samples and the current draft.
 
