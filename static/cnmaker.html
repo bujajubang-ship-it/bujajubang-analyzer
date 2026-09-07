@@ -43,7 +43,7 @@ button.go:disabled{background:#d1a0a3;cursor:not-allowed}
 .hrow .hts{font-size:12px;color:#9ca3af}
 .hrow a{font-size:12px;text-decoration:none;background:#1f2937;color:#fff;border-radius:7px;padding:6px 10px;white-space:nowrap}
 .hrow a.t{background:#0891b2}
-</style><link rel="stylesheet" href="/static/cnmaker-drafts.css?v=3"></head><body>
+</style><link rel="stylesheet" href="/static/cnmaker-drafts.css?v=4"></head><body>
 <div class="top" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap"><h1 style="margin:0">🏭 CN메이커 — 부자주방 상세페이지 자동생성</h1><a id="backlink" href="/" style="text-decoration:none;background:#1f2937;color:#fff;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:600;white-space:nowrap">← 소싱 분석기</a></div>
 <script>if(window.self!==window.top){var _b=document.getElementById('backlink');if(_b)_b.style.display='none';}</script>
 <!-- 로고 자동삽입 설정 -->
@@ -95,12 +95,18 @@ lgLoad();
    <!-- 이미지 업로드 모드 -->
    <div id="imgmode">
      <input class="t" id="title" maxlength="200" placeholder="판매상품명 (입력한 이름을 그대로 사용합니다)">
-     <div class="drop" id="drop" role="button" tabindex="0" aria-label="제품 사진 등록">📷 상품 이미지를 끌어다 놓거나 클릭해서 선택<br><span style="font-size:12px">Ctrl+V 붙여넣기 · 끌어놓기 · 최대 10장</span></div>
+     <div class="drop" id="drop" role="button" tabindex="0" aria-label="제품 사진 등록">📷 실제 상품 이미지를 끌어다 놓거나 클릭해서 선택<br><span style="font-size:12px">Ctrl+V 붙여넣기 · 끌어놓기 · 최대 10장</span></div>
      <input type="file" id="file" accept="image/*" multiple style="display:none">
      <div class="thumbs" id="thumbs"></div><div id="photo-count">0 / 10장</div>
      <div class="note">실제 판매하는 제품 사진을 올려주세요. 상품 링크와 사진을 함께 등록할 수 있습니다.</div>
    </div>
 
+   <fieldset id="reference-upload" class="color-settings"><legend>참고용 이미지</legend>
+     <p class="draft-help">구도·포즈·패션·배경만 참고합니다. 사진 속 상품명·수량·스펙은 상품 정보에 반영하지 않습니다.</p>
+     <div id="reference-drop" class="drop" tabindex="0" role="button">참고용 사진 붙여넣기 · 끌어놓기</div>
+     <button id="reference-pick" type="button">참고용 사진 선택</button><input type="file" id="reference-file" accept="image/*" multiple hidden>
+     <div id="reference-thumbs" class="thumbs"></div><div id="reference-photo-count">0 / 10장</div>
+   </fieldset>
    <fieldset class="color-settings">
      <legend>판매할 색상 지정 (선택)</legend>
      <label>판매 색상<input id="color-request" maxlength="300" placeholder="예: 아이보리, 블랙, 연핑크 — 여러 색상은 쉼표로 구분"></label>
@@ -123,7 +129,7 @@ lgLoad();
        <span>📦 <b>기타 제품</b> <span style="color:#9ca3af;font-size:12px">(제품에 맞는 생활·사용 장면)</span></span>
      </label>
    </div>
-   <button class="go" id="go" onclick="go()" style="margin-top:6px">저해상도 시안 만들기</button>
+   <button class="go" id="go" onclick="go()" style="margin-top:6px">사진 수집하고 선택하기</button>
    <div id="err"></div>
  </div>
 
@@ -140,12 +146,21 @@ lgLoad();
    <p id="draft-warning" role="alert"></p>
    <p id="draft-action-error" class="section-error" role="alert"></p>
    <p id="source-summary" class="draft-help"></p>
+   <div id="photo-selection-actions" hidden>
+     <p>사용할 사진만 체크하세요. 사진을 누르면 크게 볼 수 있습니다. 제품/정보 분류는 선택 후 분석합니다.</p>
+     <button onclick="setAllPhotos(true)">사진 전체 선택</button><button onclick="setAllPhotos(false)">사진 전체 해제</button>
+     <button onclick="selectionAction('recollect')">링크 다시 수집</button><span id="selected-photo-count"></span><button class="primary" onclick="confirmPhotos()">선택한 사진만 분석</button>
+   </div>
    <details id="source-gallery" hidden><summary>수집한 제품 사진과 색상 기준 확인</summary><div id="source-photo-list" class="source-grid"></div></details>
    <p class="draft-help">먼저 구도와 분위기를 확인하세요. 필요한 구간만 수정한 뒤 고화질로 완성할 수 있습니다. 고화질 생성·부분 수정 시 세부 모습이 조금 달라질 수 있습니다.</p>
    <details id="plan-editor" hidden><summary>상품 정보·글 기획 확인 및 수정</summary>
      <div id="plan-fields"></div><button id="save-plan" onclick="savePlan()">기획 저장</button>
+     <div id="photo-review-fields"></div>
+     <p class="draft-help" id="preserve-help" hidden>CHECK POINT·DETAIL은 기준 사진을 직접 배치합니다. 문구는 위 입력칸에서 수정하고, 사진 속 글자는 확대창의 사용 영역으로 제외하세요. 색상을 바꾼 사진은 디테일을 확인해 주세요.</p>
      <p class="draft-help" id="plan-message">저장한 내용은 이후 새로 만드는 구간에 적용됩니다.</p>
    </details>
+   <button id="review-generate" class="go" hidden onclick="confirmReview()">문구 저장 후 전체 시안 생성</button>
+   <button id="back-photos" hidden onclick="runAction('back_to_selection')">사진 선택으로 돌아가기</button>
    <div class="draft-toolbar">
      <button id="retry-failed" onclick="runAction('retry')" hidden>실패 구간 재시도</button>
      <button id="select-all" onclick="selectAll()">전체 선택</button>
@@ -165,4 +180,6 @@ lgLoad();
    <div id="historylist" class="note">불러오는 중…</div>
  </div>
 </div>
-<script src="/static/cnmaker-drafts.js?v=3"></script></body></html>
+<dialog id="photo-modal"><button class="modal-close" onclick="document.getElementById('photo-modal').close()" aria-label="확대 보기 닫기">닫기 ×</button><div class="photo-stage"><button onclick="movePhoto(-1)" aria-label="이전 사진">‹</button><img id="photo-large" alt="선택 사진 확대"><button onclick="movePhoto(1)" aria-label="다음 사진">›</button></div><div id="photo-modal-controls"></div></dialog>
+<dialog id="analysis-error-modal"><h3>분석을 완료하지 못했습니다</h3><p id="analysis-error-message"></p><button onclick="document.getElementById('analysis-error-modal').close();runAction('retry')">다시 시도</button><button onclick="document.getElementById('analysis-error-modal').close();runAction('back_to_selection')">사진 선택으로 돌아가기</button><button onclick="document.getElementById('analysis-error-modal').close()">닫기</button></dialog>
+<script src="/static/cnmaker-drafts.js?v=4"></script><script src="/static/cnmaker-selection.js?v=4"></script></body></html>

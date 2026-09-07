@@ -34,7 +34,7 @@ class ResponseTests(unittest.TestCase):
             self.assertEqual(api._claude.call_count,2)
             self.assertEqual(V.request_json(api,content,5500,V.validate_form,path,'기획',progress),first)
             self.assertEqual(api._claude.call_count,2)
-            api._claude.side_effect=['{','{']
+            api._claude.side_effect=['{','{','{']
             with self.assertRaises(V.AnalysisFormatError):
                 V.request_json(api,[{'type':'text','text':'changed'}],5500,V.validate_form,path,'기획',progress)
             self.assertEqual(len(list(Path(path).glob('analysis-v3-*.json'))),1)
