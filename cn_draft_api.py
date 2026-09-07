@@ -35,8 +35,6 @@ def create_router(auth, base, secret, apply_logo):
                 mime = response.headers.get('content-type', 'image/jpeg').split(';')[0]
                 headers = {'Cache-Control': 'no-store'}
                 if suffix == 'download':
-                    if mime == 'image/jpeg':
-                        content = apply_logo(content)
                     extension = 'zip' if mime == 'application/zip' else 'jpg'
                     headers['Content-Disposition'] = f'attachment; filename="cnmaker-{request.query_params.get("quality", "low")}.{extension}"'
                 return Response(content, media_type=mime, headers=headers)

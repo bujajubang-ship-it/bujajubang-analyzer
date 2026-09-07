@@ -69,3 +69,18 @@ python3 -m venv .venv
 
 검증: `python -m unittest -q test_cn_draft_editor test_cn_source_photos test_cnmaker_restore test_cnmaker_engine_security`. 이미지 생성과 사진 분석 API는 모의 처리한다.
 
+
+## 운영 안정화 프롬프트 v3 (2026-09-07)
+
+현재 시안 API는 사용자 제공 원문 `prompt_v3.txt`를 `prompt_v3.py`에서 읽는다. 사진 분석 B, 기획 A+C, 생성 D+E+I, 부분 수정 G, 고화질 H를 각 요청에 적용한다. 참고 사진·색상 규칙 F는 `source_photos.reference_prompt`의 구간별 실제 첨부 목록과 함께 적용한다. 기존 단일 생성 API의 프롬프트와 히스토리는 별도로 유지한다.
+
+- 입력 판매상품명은 공백·문자를 그대로 보존하며 모델 반환값으로 바꾸지 않는다. 200자 초과는 잘라내지 않고 거절한다. 기획 편집에서 사용자가 직접 이름을 수정할 수 있다.
+- brand는 빈 문자열. 새 시안 JPG 다운로드에 기존 자동 로고 합성을 적용하지 않는다. 로고 설정은 이전 생성 히스토리 다운로드용이다.
+- 0~10 인덱스는 유지. 2=실사용 메인 장면, 6=추가 활용 장면이며 후기·별점·타사 비교를 요청하지 않는다. 고화질/부분 수정은 새 구도 지시 대신 현재 시안 보존 지시를 사용한다.
+- 분석 응답은 하나의 완전한 JSON 및 사진 id/usable 또는 서로 다른 CHECK POINT 제목 3개를 검증한다. 코드블록·주변 설명은 허용하되 여러 JSON·누락·잘린 응답은 해당 묶음만 1회 재요청한다. 임의로 첫 객체만 선택하거나 잘린 내용을 보완하지 않는다.
+- 완료한 분석은 요청 내용 해시별 `analysis-v3-*.json`에 저장한다. 재시도 때 완료된 분석을 재사용한다. 신규 경로의 수집 사진도 실패 전에 등록·보존한다. 이 파일은 공개 이미지 경로에서 다운로드할 수 없다.
+- 진행 화면은 수집·다운로드 장수, 사진 분석 범위/완료 장수, 상품·색상 기획, 구간별 생성과 경과 시간·마지막 진행·최근 기록·중단 위치를 표시한다. 히스토리 ts를 다시 표시한다.
+- 배포 파일: `draft_editor.py`, `source_photos.py`, `prompt_v3.py`, `prompt_v3.txt` (검증된 기존 gptmaker.py 의존). 텍스트 파일도 엔진과 함께 배포해야 한다. Render에는 cn_draft_api.py와 화면 파일을 반영한다.
+- 기존 시안을 자동 재생성하지 않는다. 실패한 구간 없는 초기 분석 오류는 '실패 구간 재시도'로 다시 시작한다. v3 이전에 실패한 분석은 유효한 캐시가 없으므로 첫 재시도에서 다시 분석한다.
+
+검증: `python -m unittest -q test_cn_v3 test_cn_draft_editor test_cn_source_photos test_cnmaker_restore test_cnmaker_engine_security test_finance_assistant test_jageum_state test_jageum_status`. 모의 API 테스트와 실제 분석 검증은 구분하여 배포 기록에 남긴다.
