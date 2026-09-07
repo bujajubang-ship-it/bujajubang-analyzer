@@ -3,6 +3,7 @@ import os, json, threading, time, traceback, subprocess
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pipeline
 import gptmaker  # CN인사이더 신방식(gpt-image)
+import draft_editor
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 JOBS = {}   # job_id -> {status, msg, result_url, product_name, error}
@@ -166,6 +167,8 @@ class H(BaseHTTPRequestHandler):
             return self._send(500,{"error":str(e)[:200]})
 
     def do_POST(self):
+        self.draft_secret = SECRET
+        if draft_editor.handle(self, 'POST'): return
         if self.headers.get("x-secret")!=SECRET: return self._send(403,{"error":"forbidden"})
         if self.path=="/transcribe": return self._transcribe()
         ln=int(self.headers.get("Content-Length",0)); body=json.loads(self.rfile.read(ln) or "{}")
@@ -212,6 +215,8 @@ class H(BaseHTTPRequestHandler):
             return self._send(200,{"job_id":jid})
         self._send(404,{"error":"unknown"})
     def do_GET(self):
+        self.draft_secret = SECRET
+        if draft_editor.handle(self, 'GET'): return
         # /cnmaker/status?job=xxx  /cnmaker/result?job=xxx
         from urllib.parse import urlparse, parse_qs
         q=parse_qs(urlparse(self.path).query); jid=(q.get("job",[""])[0])
