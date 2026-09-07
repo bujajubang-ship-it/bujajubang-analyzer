@@ -111,10 +111,19 @@ def analyze(D, jid):
             ('id','description','view','role','sections','colors','original_text','translation')} for a in usable])}]
         for name in doc.get('color_refs',[]):content.extend([{'type':'text','text':'색상 기준 캡처 — 색조만 참고'},D.S.image_content(path,name)])
         form=V.request_json(D.G.P,content,5500,V.validate_form,path,'상품·색상 기획',progress)
+        plan=form.get('photo_plan') or {}
+        photo_ids={a['id'] for a in usable if a['use_as']=='product'}
+        plan={str(i):[ident for ident in plan.get(str(i),[]) if isinstance(ident,str) and ident in photo_ids][:6]
+              for i in range(11) if isinstance(plan,dict) and isinstance(plan.get(str(i)),list)}
+        form={k:str(form.get(k) or '')[:500] for k in ('brand','product_name','category','option','size','mood')}|{'sellpoints':form['sellpoints']}
         form['brand']='';form['product_name']=doc.get('submitted_title') or doc['title']
         if doc.get('color_request'):form['option']=doc['color_request']
+        if doc.get('color_refs') and not form.get('option'):
+            raise ValueError('색상 캡처에서 판매 색상을 확인하지 못했습니다. 색상명을 입력하거나 색상 기준을 다시 등록해 주세요.')
+        if not doc.get('primary_color') and (doc.get('color_refs') or doc.get('color_request')):
+            doc['primary_color']=form['option'].split(',')[0].strip()
         with D.LOCK:
-            doc.update(form=form,photo_plan=form.pop('photo_plan',{}),status='reviewing',phase='reviewing',error='',
+            doc.update(form=form,photo_plan=plan,status='reviewing',phase='reviewing',error='',
                 source_version=2,prompt_version=4,refs=[a['file'] for a in usable if a['use_as']=='product'],
                 source_summary=dict(link=sum(a['origin']=='link' for a in chosen),upload=len(doc['inputs']),
                     usable=len(usable),excluded=len(doc['assets'])-len(chosen)),

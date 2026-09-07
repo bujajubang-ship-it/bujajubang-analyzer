@@ -68,7 +68,7 @@ function openPhoto(id){modalId=id;const a=state.assets.find(a=>a.id===id);if(!a)
       const select=document.createElement('select');select.innerHTML='<option value="auto">용도 자동 분류</option><option value="product">제품 사진</option><option value="info">정보만 참고</option>';select.value=photoUses[id]||a.use_override||'auto';select.onchange=()=>photoUses[id]=select.value;box.append(select);
     }
   }
-  if(['reviewing','done','partial'].includes(state.status)&&a.origin!=='reference'){
+  if(state.workflow_version===4&&['reviewing','done','partial'].includes(state.status)&&a.origin!=='reference'){
     const text=document.createElement('p');text.textContent='제품 사진 사용 영역 (%) — 원본 글자를 제외할 수 있습니다. 기획 저장 시 적용됩니다.';box.append(text);
     const crop=photoCrops[id]||a.crop||a.product_bbox||[0,0,1,1];
     ['왼쪽','위','오른쪽','아래'].forEach((name,i)=>{
