@@ -5,11 +5,14 @@ const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const API = '/cnmaker/api/drafts';
 const NOTES = {cninsider:'상품 링크와 실제 제품 사진을 등록하면 저해상도 시안을 먼저 만듭니다.',cafe24:'상품 정보를 바탕으로 저해상도 시안을 먼저 만듭니다.'};
-function fail(message) { $('err').textContent = message; $('err').className = message ? 'err' : ''; }
+function fail(message) {
+  $('err').textContent = message; $('err').className = message ? 'err' : '';
+  $('draft-action-error').textContent = message;
+}
 async function api(path='', body) {
   const response = await fetch(API + path, body === undefined ? {} : {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const result = await response.json();
-  if (!response.ok || result.error) throw new Error(result.error || '요청을 처리하지 못했습니다.');
+  if (!response.ok || (result.error && !result.id)) throw new Error(result.error || '요청을 처리하지 못했습니다.');
   return result;
 }
 document.querySelectorAll('.tab').forEach(tab => tab.onclick = () => {
