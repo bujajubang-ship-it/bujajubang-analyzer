@@ -228,6 +228,21 @@ async function loadHistory() {
 }
 
 function renderProgress(doc) {
+  // Play a short completion chime once for each newly finished section.
+  // Audio failures are intentionally ignored so generation never depends on sound.
+  const finished=(doc.sections||[]).filter(s=>s.status==='done').length;
+  if (typeof window.__cnmakerFinishedCount !== 'number') window.__cnmakerFinishedCount=finished;
+  if (finished>window.__cnmakerFinishedCount && typeof window.AudioContext==='function') {
+    try {
+      const ctx=window.__cnmakerAudioContext || (window.__cnmakerAudioContext=new AudioContext());
+      if (ctx.state==='suspended') ctx.resume().catch(()=>{});
+      const now=ctx.currentTime, osc=ctx.createOscillator(), gain=ctx.createGain();
+      osc.type='sine'; osc.frequency.setValueAtTime(880,now); osc.frequency.exponentialRampToValueAtTime(1320,now+.12);
+      gain.gain.setValueAtTime(.0001,now); gain.gain.exponentialRampToValueAtTime(.07,now+.015); gain.gain.exponentialRampToValueAtTime(.0001,now+.22);
+      osc.connect(gain);gain.connect(ctx.destination);osc.start(now);osc.stop(now+.23);
+    } catch (_) {}
+  }
+  window.__cnmakerFinishedCount=finished;
   $('draft-progress').hidden = false;
   const running=doc.status==='running', message=doc.failed_stage && !running ? doc.failed_stage : doc.message||'';
   const steps=['사진 수집','사진 분석','상품·색상 기획','이미지 생성'];
