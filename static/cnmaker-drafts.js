@@ -88,7 +88,7 @@ async function go() {
   if (!url && !files.length) return fail('상품 링크 또는 사진을 등록해 주세요.');
   submitting = true; $('go').disabled = true; fail('');
   try {
-    const result = await api('',{url,images:files,title:$('title').value,category:$('cat_kitchen').checked?'kitchen':'other',
+    const result = await api('',{workflow_version:4,reference_images:referenceFiles,url,images:files,title:$('title').value,category:$('cat_kitchen').checked?'kitchen':'other',
       color_request:$('color-request').value.trim(),primary_color:$('primary-color').value.trim(),color_images:colorFiles});
     await openDraft(result.id);
   } catch(error) {fail(error.message);}

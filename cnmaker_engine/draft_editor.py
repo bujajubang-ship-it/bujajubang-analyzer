@@ -3,6 +3,7 @@ import base64
 import io
 import json
 import os
+import sys
 from pathlib import Path
 import re
 import threading
@@ -15,6 +16,7 @@ from PIL import Image, ImageOps
 import gptmaker as G
 import source_photos as S
 import prompt_v3 as V3
+import selection_flow as F
 
 ROOT = Path(__file__).resolve().parent / 'results' / 'drafts'
 LOCK = threading.RLock()
@@ -58,7 +60,7 @@ def read(jid):
 
 
 def public(doc):
-    result = {key: value for key, value in doc.items() if key not in ('refs', 'url', 'inputs', 'assets', 'color_refs')}
+    result = {key: value for key, value in doc.items() if key not in ('refs', 'url', 'inputs', 'assets', 'color_refs', 'style_refs')}
     result['assets'] = [{key: value for key, value in asset.items() if key not in ('file', 'url')} for asset in doc.get('assets', [])]
     result['color_samples'] = [name[:-4] for name in doc.get('color_refs', [])]
     return result
@@ -129,6 +131,7 @@ def create(body):
         raise DraftError('CN인사이더·카페24 상품 링크를 사용하거나 사진을 직접 올려주세요.')
     decoded = decode_images(images, 10)
     color_images = decode_images(body.get('color_images') or [], 3)
+    style_images = decode_images(body.get('reference_images') or [], 10)
     color_request, primary_color = color_settings(body.get('color_request'), body.get('primary_color'))
     if primary_color and not color_request and not color_images:
         color_request = primary_color
@@ -138,7 +141,7 @@ def create(body):
     jid = uuid.uuid4().hex[:12]
     doc = dict(id=jid, title=title, submitted_title=title, created_at=time.time(), run_started_at=time.time(), url=url, category=body.get('category', 'kitchen'),
                status='running', message='상품 정보 확인 중', sections=[], form={}, refs=[], inputs=[], warning='', error='',
-               color_request=color_request, primary_color=primary_color, color_refs=[], assets=[])
+               color_request=color_request, primary_color=primary_color, color_refs=[], style_refs=[], assets=[], workflow_version=body.get('workflow_version',3))
     with LOCK:
         folder(jid).mkdir(parents=True)
         for i, raw in enumerate(decoded):
@@ -149,9 +152,14 @@ def create(body):
             name = f'color-{i}.jpg'
             (folder(jid) / name).write_bytes(raw)
             doc['color_refs'].append(name)
+        for i, raw in enumerate(style_images):
+            name=f'reference-{i}.jpg';(folder(jid)/name).write_bytes(raw);doc['style_refs'].append(name)
         ACTIVE.add(jid)
         save(doc)
-        threading.Thread(target=initial, args=(jid,), daemon=True).start()
+        if doc['workflow_version']==4:
+            threading.Thread(target=F.collect,args=(sys.modules[__name__],jid),daemon=True).start()
+        else:
+            threading.Thread(target=initial, args=(jid,), daemon=True).start()
     return {'id': jid}
 
 
@@ -226,6 +234,9 @@ def prepare(jid, preserve=False):
 
 def prompt_for(doc, index, action='', instruction='', current=False):
     form = dict(doc['form'], brand='', product_name=doc.get('submitted_title') or doc['title'])
+    if doc.get('workflow_version')==4:
+        from mobile_layout import prompt
+        return prompt(form,index,action,instruction,current)
     return V3.image_prompt(form, index, action, instruction, current)
 
 
@@ -233,12 +244,25 @@ def generate(jid, index, action, instruction=''):
     with LOCK:
         doc = read(jid)
         section = doc['sections'][index]
+        titles=F.TITLES if doc.get('workflow_version')==4 else TITLES
+        thumbnail=index==(9 if doc.get('workflow_version')==4 else 10)
         section.update(status='running', error='', failed_action=action)
-        record_progress(doc, f'{index + 1}/{len(TITLES)} 구간 · {TITLES[index]} {"고화질" if action == "high" else "부분 수정" if action == "edit" else "저해상도"} 생성 중')
-    chosen = S.choose(doc, index)
+        record_progress(doc, f'{index + 1}/{len(titles)} 구간 · {titles[index]} {"고화질" if action == "high" else "부분 수정" if action == "edit" else "저해상도"} 생성 중')
+    chosen = S.choose(doc, 10 if thumbnail else index)
+    if doc.get('workflow_version')==4:
+        lead=doc.get('section_photos',{}).get(str(index))
+        if lead:
+            chosen=sorted(chosen,key=lambda a:a['id']!=lead)
+            primary=next((a for a in doc['assets'] if a['id']==lead and a.get('selected') and a.get('use_as')!='info' and a.get('usable')),None)
+            if primary and primary not in chosen:chosen=[primary]+chosen[:11]
     if not chosen:
         raise DraftError('제품 참고 사진이 없습니다. 사진 수집을 다시 시도해 주세요.')
-    reference_names = [a['file'] for a in chosen] + doc.get('color_refs', [])
+    if doc.get('workflow_version')==4 and index in (1,3,4,5,7):
+        chosen=chosen[:2 if index==7 else 1]
+    styles=[a for a in doc.get('assets',[]) if a.get('selected') and a['origin']=='reference'][:2] if doc.get('workflow_version')==4 else []
+    if doc.get('workflow_version')==4 and index in (1,3,4,5,7):styles=[]
+    if styles:chosen=chosen[:10]
+    reference_names = [a['file'] for a in chosen] + doc.get('color_refs', []) + [a['file'] for a in styles]
     refs = [('image/jpeg', base64.b64encode((folder(jid) / name).read_bytes()).decode()) for name in reference_names]
     current = section['high'] or section['low']
     prompt = prompt_for(doc, index, action, instruction, bool(current))
@@ -247,6 +271,12 @@ def generate(jid, index, action, instruction=''):
     elif instruction:
         prompt += '\n추가 요청: ' + instruction
     prompt += '\n' + S.reference_prompt(doc, index, chosen, int(bool(current and action in ('edit', 'high'))))
+    if styles:
+        prompt += '\n마지막 '+str(len(styles))+'장은 참고용 이미지입니다. 구도·포즈·패션·배경만 참고하고 제품 형태·수량·글자·스펙·구성은 절대 가져오지 마세요.'
+    if doc.get('workflow_version')==4:
+        prompt += '\n첫 제품 참고 사진을 이 구간의 큰 구도·크기·착용 방식 기준으로 사용하세요. 제품 형태는 그대로, 포즈·패션·배경만 자연스럽게 변형하세요.'
+    if doc.get('workflow_version')==4:
+        prompt += '\n사용자가 수정·확정한 번역 자료(새로운 상품명·수량·스펙을 추가하지 마세요): '+json.dumps({a['id']:doc.get('translations',{}).get(a['id'],a.get('translation','')) for a in chosen},ensure_ascii=False)
     if instruction:
         prompt += '\n현재 수정 요청(판매 색상 설정을 바꾸려면 상품 정보에서 변경): ' + instruction
     with LOCK:
@@ -257,7 +287,11 @@ def generate(jid, index, action, instruction=''):
     try:
         for attempt in range(2):
             try:
-                raw = G._oai_image(prompt, ref_imgs_b64=refs, size='1024x1024' if index == 10 else '1024x1536', quality=quality)
+                if doc.get('workflow_version')==4 and index in (1,3,4,5,7):
+                    from mobile_layout import compose
+                    raw=compose(doc,index,chosen,folder(jid),quality,G,instruction)
+                else:
+                    raw = G._oai_image(prompt, ref_imgs_b64=refs, size='1024x1024' if thumbnail else '1024x1536', quality=quality)
                 break
             except Exception as error:
                 temporary = any(word in str(error).lower() for word in ('429', '500', '502', '503', '504', 'timeout', 'timed out', 'temporar', 'server_error', 'connection reset'))
@@ -268,7 +302,7 @@ def generate(jid, index, action, instruction=''):
                     save(doc)
                 time.sleep(2)
         image = Image.open(io.BytesIO(raw)).convert('RGB')
-        width = (1000 if index == 10 else 860) if quality == 'high' else 430
+        width = (1000 if thumbnail else 860) if quality == 'high' else 430
         image = image.resize((width, round(image.height * width / image.width)), Image.Resampling.LANCZOS)
         name = f'{index}-{quality}-{uuid.uuid4().hex[:8]}.jpg'
         image.save(folder(jid) / name, 'JPEG', quality=92 if quality == 'high' else 85)
@@ -278,9 +312,9 @@ def generate(jid, index, action, instruction=''):
                 section['high'] = ''
             section.update(status='done', error='', failed_action='', revision=section['revision'] + 1, prompt_version=3)
             if action not in ('edit', 'high'):
-                section['title'] = TITLES[index]
+                section['title'] = titles[index]
             section.update(reference_ids=[a['id'] for a in chosen], color_sample_ids=[name[:-4] for name in doc.get('color_refs', [])], reference_count=len(refs))
-            record_progress(doc, f'{index + 1}/{len(TITLES)} 구간 · {TITLES[index]} 완료')
+            record_progress(doc, f'{index + 1}/{len(titles)} 구간 · {titles[index]} 완료')
     except Exception as error:
         with LOCK:
             section.update(status='error', error=error_text(error))
@@ -315,13 +349,18 @@ def initial(jid):
 
 def action(jid, body):
     kind = body.get('action')
-    if kind not in ('regenerate', 'edit', 'high', 'retry', 'plan'):
+    if kind not in ('regenerate', 'edit', 'high', 'retry', 'plan','select_photos','back_to_selection','generate_all','recollect'):
         raise DraftError('지원하지 않는 작업입니다.')
     instruction = str(body.get('instruction') or '')[:2000].strip()
     with LOCK:
         doc = read(jid)
         if jid in ACTIVE:
             raise DraftError('현재 작업이 끝난 뒤 다시 눌러주세요.', 409)
+        if doc.get('workflow_version')==4:
+            result=F.action(sys.modules[__name__],doc,body)
+            if result is not None:return result
+            if doc.get('status') in ('selecting','reviewing') and kind!='plan':
+                raise DraftError('사진 선택과 문구 확인을 완료하고 전체 생성 버튼을 눌러주세요.')
         if kind == 'plan':
             if not doc['sections']:
                 raise DraftError('상품 분석을 먼저 완료해 주세요.')
@@ -341,6 +380,8 @@ def action(jid, body):
                 if points != doc['form'].get('sellpoints'):
                     doc.pop('photo_plan', None)
                 doc['form']['sellpoints'] = [{k: str(x.get(k, ''))[:500] for k in ('title', 'desc')} for x in points]
+            if doc.get('workflow_version')==4:
+                F.save_review(doc,form)
             doc['title'] = doc['form']['product_name'] or doc['title']
             doc['submitted_title'] = doc['title']
             doc['form']['brand'] = ''
@@ -362,6 +403,8 @@ def action(jid, body):
         indices = list(dict.fromkeys(indices))
         if kind == 'edit' and (not instruction or len(indices) != 1):
             raise DraftError('수정할 구간 하나와 수정 내용을 입력해 주세요.')
+        if doc.get('workflow_version')==4 and kind=='edit' and indices[0] in (1,3,4,5,7):
+            raise DraftError('원본 사진 유지 구간입니다. 기획에서 문구·기준 사진·사용 영역을 저장한 뒤 이 구간 새로 만들기를 눌러주세요.')
         if kind in ('edit', 'high') and any(not doc['sections'][i]['low'] for i in indices):
             raise DraftError('저해상도 시안을 먼저 만들어 주세요.')
         tasks = [(i, (doc['sections'][i]['failed_action'] or 'low') if kind == 'retry' else kind) for i in indices]
@@ -416,11 +459,14 @@ def image_bytes(jid, index, quality):
 def source_bytes(jid, asset_id):
     with LOCK:
         doc = read(jid)
+        asset=next((dict(a) for a in doc.get('assets',[]) if a['id']==asset_id),None)
         registered = {a['id']: a['file'] for a in doc.get('assets', [])}
         registered.update({name[:-4]: name for name in doc.get('color_refs', [])})
         if asset_id not in registered:
             raise DraftError('등록된 참고 사진이 아닙니다.', 404)
-        return (folder(jid) / registered[asset_id]).read_bytes()
+    if asset and doc.get('workflow_version')==4:
+        return F.materialize(folder(jid),asset)
+    return (folder(jid) / registered[asset_id]).read_bytes()
 
 
 def download(jid, quality, indices=None):
@@ -435,9 +481,10 @@ def download(jid, quality, indices=None):
                 for i in indices:
                     output.writestr(f'{i+1:02d}.jpg', (folder(jid) / doc['sections'][i]['high']).read_bytes())
             return buffer.getvalue(), 'application/zip'
-        if quality not in ('low', 'high') or len(doc['sections']) < 10 or any(not s[quality] for s in doc['sections'][:10]):
-            raise DraftError('상세페이지 10개 구간을 모두 완성한 뒤 다운로드해 주세요.', 409)
-        images = [Image.open(io.BytesIO((folder(jid) / s[quality]).read_bytes())).convert('RGB') for s in doc['sections'][:10]]
+        count=9 if doc.get('workflow_version')==4 else 10
+        if quality not in ('low', 'high') or len(doc['sections']) < count or any(not s[quality] for s in doc['sections'][:count]):
+            raise DraftError(f'상세페이지 {count}개 구간을 모두 완성한 뒤 다운로드해 주세요.', 409)
+        images = [Image.open(io.BytesIO((folder(jid) / s[quality]).read_bytes())).convert('RGB') for s in doc['sections'][:count]]
     width = 860 if quality == 'high' else 430
     canvas = Image.new('RGB', (width, sum(im.height for im in images)), 'white')
     y = 0

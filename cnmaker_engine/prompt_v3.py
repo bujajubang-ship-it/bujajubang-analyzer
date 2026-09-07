@@ -3,6 +3,8 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import time
+import urllib.error
 
 TEXT = Path(__file__).with_name('prompt_v3.txt').read_text(encoding='utf-8-sig')
 _parts = re.split(r'(?m)^={10,}\n(?=(?:[A-I]|E-\d+)\. )', TEXT.replace('\r\n', '\n'))
@@ -101,7 +103,7 @@ def request_json(P, content, tokens, validate, path, label, progress):
             return value
         except (ValueError, TypeError, AttributeError):
             pass
-    for attempt in range(2):
+    for attempt in range(3):
         try:
             request = content if not attempt else content + [{'type': 'text', 'text':
                 '직전 응답 형식 검증에 실패했습니다. 완전한 JSON 객체 하나만 출력하세요. 코드블록·설명·추가 JSON 금지. 요청한 모든 id 및 필수 항목을 빠짐없이 반환하세요.'}]
@@ -111,7 +113,8 @@ def request_json(P, content, tokens, validate, path, label, progress):
             temp.write_text(json.dumps(value, ensure_ascii=False), encoding='utf-8')
             temp.replace(target)
             return value
-        except AnalysisFormatError as error:
-            if attempt:
-                raise AnalysisFormatError(label + ' 응답 형식을 두 번 확인했지만 읽지 못했습니다. 재시도하면 저장된 분석 이후부터 이어갑니다.') from error
-            progress(label + ' — 응답 형식 오류, 해당 분석 1회 재시도 중')
+        except (AnalysisFormatError, urllib.error.URLError, TimeoutError, ConnectionError, json.JSONDecodeError, RuntimeError) as error:
+            if attempt == 2:
+                raise AnalysisFormatError(label + ' 분석을 3번 시도했지만 완료하지 못했습니다. 재시도하면 저장된 분석 이후부터 이어갑니다.') from error
+            progress(label + f' — 분석 재시도 중 {attempt+2}/3')
+            time.sleep(1)

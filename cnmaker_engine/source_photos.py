@@ -3,6 +3,8 @@ import base64
 import hashlib
 import io
 import json
+import os
+from pathlib import Path
 import re
 import urllib.parse
 import urllib.request
@@ -83,6 +85,12 @@ def collect_page(page):
     }'''
     for step in range(30):
         rows.extend(page.evaluate(scan))
+        snapshot=os.environ.get('CN_SELECTION_CATALOGUE')
+        if snapshot and same_product_page(os.environ.get('CN_SELECTION_URL',''),page.url):
+            images,total=image_candidates(rows)
+            target=Path(snapshot);temp=target.with_suffix('.tmp')
+            temp.write_text(json.dumps(dict(images=images,candidate_count=total,warning='현재까지 확보한 사진입니다. 누락된 사진은 직접 추가할 수 있습니다.'),ensure_ascii=False),encoding='utf-8')
+            temp.replace(target)
         bottom = page.evaluate('''() => {
           const root=document.scrollingElement;
           const old=root.scrollTop; root.scrollTop+=1000;
@@ -211,7 +219,7 @@ def analyze(assets, title, path, G, progress):
         batch = assets[start:start + 10]
         label = f'제품 사진 분석 {start + 1}~{min(start + 10, len(assets))}/{len(assets)}장'
         progress(label + f' 진행 중 — {start}장 완료')
-        prompt = V3.fill(V3.BLOCKS['B'], {'상품명': title})
+        prompt = V3.fill(V3.BLOCKS['B'], {'상품명': title}) + '\n추가 필드: information_only(boolean)는 글자·규격·정보 위주 사진이면 true. 같은 제품의 정보 자료는 usable=true. 다른 모델 자료는 false. product_bbox는 글자 영역을 제외한 실제 제품 사진 영역 [좌,상,우,하], 0~1 비율. 불확실하면 [0,0,1,1].'
         content = [{'type': 'text', 'text': prompt + '\n아래는 제품 형태 판단용 기준 사진입니다.'}, image_content(path, anchor['file'])]
         for asset in batch:
             content.extend([{'type': 'text', 'text': f"분석 대상 id={asset['id']}; 출처={asset['origin']}; 단서={asset['hint']}"}, image_content(path, asset['file'])])
@@ -222,7 +230,7 @@ def analyze(assets, title, path, G, progress):
             raise ValueError('일부 제품 사진 분석이 누락됐습니다. 분석을 다시 시도해 주세요.')
         for asset in batch:
             row = indexed[asset['id']]
-            asset.update(usable=row.get('usable') is True,
+            asset.update(information_only=row.get('information_only') is True, product_bbox=row.get('product_bbox',[0,0,1,1]), usable=row.get('usable') is True,
                          role=row.get('role') if row.get('role') in ('product', 'detail', 'lifestyle', 'option', 'size') else asset['role'],
                          description=str(row.get('description') or '')[:700], view=str(row.get('view') or '')[:60],
                          original_text=str(row.get('original_text') or '')[:1000], translation=str(row.get('translation') or '')[:1000],
@@ -234,7 +242,7 @@ def analyze(assets, title, path, G, progress):
 
 
 def choose(doc, index):
-    assets = [a for a in doc.get('assets', []) if a.get('usable')]
+    assets = [a for a in doc.get('assets', []) if a.get('usable') and a.get('selected',True) and a.get('use_as')!='info' and a['origin']!='reference']
     wanted = ('product', 'lifestyle') if index in (0, 2, 6, 10) else ('detail',) if index in (3, 4, 5, 7) else ('option', 'size') if index in (8, 9) else ('product', 'detail', 'lifestyle')
     planned = doc.get('photo_plan', {}).get(str(index), [])
     points = doc.get('form', {}).get('sellpoints', [])

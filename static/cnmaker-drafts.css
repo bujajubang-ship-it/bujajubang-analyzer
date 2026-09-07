@@ -12,3 +12,25 @@
 #draft-events {padding-left:20px;overflow-wrap:anywhere}
 .history-date {display:block;font-size:11px;color:#64748b;margin-top:4px}
 @media(max-width:480px) {#draft-stages {grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+dialog {border:0;border-radius:14px;padding:20px;max-width:min(94vw,1100px);max-height:94vh;overflow:auto;box-shadow:0 20px 60px #0004}
+dialog::backdrop {background:#000a}
+.photo-stage {display:flex;align-items:center;justify-content:center;gap:8px}
+#photo-large {max-width:calc(90vw - 120px);max-height:72vh;object-fit:contain}
+#photo-modal-controls {display:flex;flex-wrap:wrap;gap:12px;margin-top:14px}
+#photo-modal-controls input[type=number] {width:60px}
+#photo-modal-controls p {width:100%}
+.modal-close {display:block;margin:0 0 12px auto}
+.source-grid figure.photo-excluded {opacity:.4}
+.source-grid figure label {display:block;padding:8px;font-size:14px;cursor:pointer}
+.source-grid input[type=checkbox] {width:18px;height:18px;vertical-align:middle}
+#photo-selection-actions {padding:12px;background:#f2f6fb;border-radius:10px;margin:10px 0}
+#photo-selection-actions button {margin:4px;padding:9px}
+#photo-review-fields {display:grid;gap:12px;margin:15px 0}
+#photo-review-fields label {display:grid;gap:6px;margin:8px 0}
+#photo-review-fields select,#photo-review-fields textarea {width:100%;box-sizing:border-box;padding:10px;border:1px solid #ccd4df;border-radius:7px}
+#photo-review-fields p {font-size:12px;overflow-wrap:anywhere}
+#draft-stages {grid-template-columns:repeat(auto-fit,minmax(100px,1fr))}
+
+#photo-large.native-size {max-width:none;max-height:none;flex-shrink:0}
+.photo-stage:has(.native-size) {justify-content:flex-start}
